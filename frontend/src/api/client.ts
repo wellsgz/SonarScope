@@ -7,10 +7,24 @@ import type {
   TimeSeriesResponse
 } from "../types/api";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
+
+function buildURL(path: string): string {
+  if (!API_BASE) {
+    return path;
+  }
+  const base = API_BASE.endsWith("/") ? API_BASE : `${API_BASE}/`;
+  return new URL(path, base).toString();
+}
+
+function buildWSURL(path: string): string {
+  const base = API_BASE ? new URL(API_BASE) : new URL(window.location.origin);
+  const protocol = base.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${base.host}${path}`;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(buildURL(path), {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -139,7 +153,7 @@ export async function importInventoryPreview(file: File): Promise<ImportPreview>
   const form = new FormData();
   form.append("file", file);
 
-  const response = await fetch(`${API_BASE}/api/inventory/import-preview`, {
+  const response = await fetch(buildURL("/api/inventory/import-preview"), {
     method: "POST",
     body: form
   });
@@ -169,8 +183,7 @@ export async function applyInventoryPreview(payload: {
 }
 
 export function createMonitorSocket(onMessage: (message: unknown) => void): WebSocket {
-  const wsBase = API_BASE.replace("http://", "ws://").replace("https://", "wss://");
-  const socket = new WebSocket(`${wsBase}/ws/monitor`);
+  const socket = new WebSocket(buildWSURL("/ws/monitor"));
   socket.onmessage = (event) => {
     try {
       onMessage(JSON.parse(event.data));
