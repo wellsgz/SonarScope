@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getSettings,
@@ -40,12 +40,33 @@ export function MonitorPage() {
   const [customEnd, setCustomEnd] = useState(toDateTimeLocal(new Date()));
   const [selectedEndpointID, setSelectedEndpointID] = useState<number | null>(null);
   const [probeRunning, setProbeRunning] = useState(false);
+  const lastRealtimeRefreshRef = useRef(0);
 
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: getSettings });
   const groupsQuery = useQuery({ queryKey: ["groups"], queryFn: listGroups });
   const filterOptionsQuery = useQuery({ queryKey: ["filter-options"], queryFn: listFilterOptions });
 
-  const autoRefreshMs = (settingsQuery.data?.auto_refresh_sec ?? 10) * 1000;
+  const autoRefreshMs = Math.max(1000, (settingsQuery.data?.auto_refresh_sec ?? 10) * 1000);
+
+  useEffect(() => {
+    lastRealtimeRefreshRef.current = 0;
+  }, [autoRefreshMs]);
+
+  const socketConnected = useMonitorSocket((message) => {
+    const event = message as { type?: string; endpoint_id?: number };
+    if (event.type !== "probe_update") {
+      return;
+    }
+    const now = Date.now();
+    if (now - lastRealtimeRefreshRef.current < autoRefreshMs) {
+      return;
+    }
+    lastRealtimeRefreshRef.current = now;
+    queryClient.invalidateQueries({ queryKey: ["monitor-endpoints"] });
+    if (event.endpoint_id && selectedEndpointID === event.endpoint_id) {
+      queryClient.invalidateQueries({ queryKey: ["timeseries"] });
+    }
+  });
 
   const monitorQuery = useQuery({
     queryKey: ["monitor-endpoints", filters],
@@ -56,7 +77,7 @@ export function MonitorPage() {
         ports: filters.ports,
         groups: filters.groups
       }),
-    refetchInterval: autoRefreshMs
+    refetchInterval: socketConnected ? false : autoRefreshMs
   });
 
   const monitorRows = monitorQuery.data || [];
@@ -95,7 +116,7 @@ export function MonitorPage() {
         end: toApiTime(end)
       }),
     enabled: selectedEndpointID !== null,
-    refetchInterval: autoRefreshMs
+    refetchInterval: socketConnected ? false : autoRefreshMs
   });
 
   const settingsMutation = useMutation({
@@ -113,16 +134,6 @@ export function MonitorPage() {
   const stopProbeMutation = useMutation({
     mutationFn: stopProbe,
     onSuccess: () => setProbeRunning(false)
-  });
-
-  useMonitorSocket((message) => {
-    const event = message as { type?: string; endpoint_id?: number };
-    if (event.type === "probe_update") {
-      queryClient.invalidateQueries({ queryKey: ["monitor-endpoints"] });
-      if (event.endpoint_id && selectedEndpointID === event.endpoint_id) {
-        queryClient.invalidateQueries({ queryKey: ["timeseries"] });
-      }
-    }
   });
 
   return (

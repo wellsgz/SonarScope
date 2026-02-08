@@ -17,6 +17,17 @@ body,
 body {
   font-family: var(--font-body);
   color: var(--color-text);
+  background: var(--color-bg);
+}
+
+html[data-theme="light"] body {
+  background:
+    radial-gradient(1120px 560px at 100% -10%, rgba(91, 98, 246, 0.14), transparent 64%),
+    radial-gradient(920px 520px at -12% -16%, rgba(59, 130, 246, 0.1), transparent 62%),
+    linear-gradient(180deg, var(--color-bg-strong), var(--color-bg));
+}
+
+html[data-theme="dark"] body {
   background:
     radial-gradient(1200px 700px at 12% -8%, color-mix(in srgb, var(--color-accent) 24%, transparent), transparent 62%),
     linear-gradient(180deg, var(--color-bg-strong), var(--color-bg));

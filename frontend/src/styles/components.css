@@ -3,6 +3,7 @@
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface) 94%, transparent);
   box-shadow: var(--shadow-soft);
+  min-width: 0;
 }
 
 .panel-header {
@@ -211,10 +212,12 @@ label {
 .table-scroll {
   overflow: auto;
   max-height: 100%;
+  max-width: 100%;
 }
 
 .monitor-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: var(--table-font-size);
 }

@@ -3,12 +3,14 @@
   grid-template-rows: auto minmax(320px, 1fr) minmax(300px, 0.9fr);
   gap: var(--space-4);
   min-height: calc(100vh - var(--topbar-height) - var(--space-6));
+  min-width: 0;
 }
 
 .monitor-pane-top,
 .monitor-pane-middle,
 .monitor-pane-bottom {
   min-height: 0;
+  min-width: 0;
 }
 
 .toolbar-panel {
@@ -19,6 +21,7 @@
   display: grid;
   grid-template-columns: 1.2fr 1.4fr 1fr 1fr;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .toolbar-block {
@@ -29,6 +32,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .toolbar-title {
@@ -122,11 +126,13 @@
 .chart-canvas {
   height: calc(100% - 52px);
   min-height: 248px;
+  min-width: 0;
 }
 
 .inventory-page-v13 {
   display: grid;
   gap: var(--space-4);
+  min-width: 0;
 }
 
 .inventory-import-panel,
