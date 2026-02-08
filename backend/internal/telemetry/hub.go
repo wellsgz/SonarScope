@@ -10,6 +10,7 @@ import (
 
 type Hub struct {
 	mu       sync.RWMutex
+	writeMu  sync.Mutex
 	clients  map[*websocket.Conn]struct{}
 	upgrader websocket.Upgrader
 }
@@ -58,6 +59,11 @@ func (h *Hub) Broadcast(event any) {
 	if err != nil {
 		return
 	}
+
+	// Gorilla websockets do not allow concurrent writers on the same connection.
+	// Serialize broadcast writes to prevent panics under high probe fan-out.
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
 
 	h.mu.RLock()
 	clients := make([]*websocket.Conn, 0, len(h.clients))
