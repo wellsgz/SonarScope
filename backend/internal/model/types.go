@@ -102,6 +102,7 @@ type Group struct {
 type Settings struct {
 	PingIntervalSec int `json:"ping_interval_sec"`
 	ICMPPayloadSize int `json:"icmp_payload_bytes"`
+	ICMPTimeoutMs   int `json:"icmp_timeout_ms"`
 	AutoRefreshSec  int `json:"auto_refresh_sec"`
 }
 

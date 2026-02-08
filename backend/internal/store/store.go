@@ -36,20 +36,20 @@ func New(pool *pgxpool.Pool) *Store {
 
 func (s *Store) EnsureDefaultSettings(ctx context.Context, defaults model.Settings) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO app_settings(id, ping_interval_sec, icmp_payload_bytes, auto_refresh_sec)
-		VALUES (TRUE, $1, $2, $3)
+		INSERT INTO app_settings(id, ping_interval_sec, icmp_payload_bytes, icmp_timeout_ms, auto_refresh_sec)
+		VALUES (TRUE, $1, $2, $3, $4)
 		ON CONFLICT (id) DO NOTHING
-	`, defaults.PingIntervalSec, defaults.ICMPPayloadSize, defaults.AutoRefreshSec)
+	`, defaults.PingIntervalSec, defaults.ICMPPayloadSize, defaults.ICMPTimeoutMs, defaults.AutoRefreshSec)
 	return err
 }
 
 func (s *Store) GetSettings(ctx context.Context) (model.Settings, error) {
 	settings := model.Settings{}
 	err := s.pool.QueryRow(ctx, `
-		SELECT ping_interval_sec, icmp_payload_bytes, auto_refresh_sec
+		SELECT ping_interval_sec, icmp_payload_bytes, icmp_timeout_ms, auto_refresh_sec
 		FROM app_settings
 		WHERE id = TRUE
-	`).Scan(&settings.PingIntervalSec, &settings.ICMPPayloadSize, &settings.AutoRefreshSec)
+	`).Scan(&settings.PingIntervalSec, &settings.ICMPPayloadSize, &settings.ICMPTimeoutMs, &settings.AutoRefreshSec)
 	if err != nil {
 		return model.Settings{}, err
 	}
@@ -61,10 +61,11 @@ func (s *Store) UpdateSettings(ctx context.Context, settings model.Settings) err
 		UPDATE app_settings
 		SET ping_interval_sec = $1,
 			icmp_payload_bytes = $2,
-			auto_refresh_sec = $3,
+			icmp_timeout_ms = $3,
+			auto_refresh_sec = $4,
 			updated_at = now()
 		WHERE id = TRUE
-	`, settings.PingIntervalSec, settings.ICMPPayloadSize, settings.AutoRefreshSec)
+	`, settings.PingIntervalSec, settings.ICMPPayloadSize, settings.ICMPTimeoutMs, settings.AutoRefreshSec)
 	if err != nil {
 		return err
 	}

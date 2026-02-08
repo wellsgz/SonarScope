@@ -10,7 +10,7 @@
 
 2. API + Probe Engine (`backend`)
 - Go HTTP API
-- ICMP probe scheduler with worker pool and jitter
+- Interval-driven ICMP scheduler with per-round fan-out and overlap support
 - Import preview/apply workflow
 - Group and settings management
 
@@ -28,7 +28,7 @@
 
 2. Probing:
 - UI starts probe session (`all` or group scope)
-- Engine resolves targets and executes ICMP probes
+- Engine resolves targets and executes ICMP probes per endpoint each interval
 - Raw events inserted into `ping_raw`
 - Current counters updated in `endpoint_stats_current`
 - Events broadcast over `/ws/monitor`

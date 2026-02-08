@@ -397,13 +397,43 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
-	var settings model.Settings
-	if err := util.DecodeJSON(r, &settings); err != nil {
+	type settingsPatch struct {
+		PingIntervalSec *int `json:"ping_interval_sec"`
+		ICMPPayloadSize *int `json:"icmp_payload_bytes"`
+		ICMPTimeoutMs   *int `json:"icmp_timeout_ms"`
+		AutoRefreshSec  *int `json:"auto_refresh_sec"`
+	}
+
+	var patch settingsPatch
+	if err := util.DecodeJSON(r, &patch); err != nil {
 		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
 
-	if err := config.ValidateSettings(settings.PingIntervalSec, settings.ICMPPayloadSize, settings.AutoRefreshSec); err != nil {
+	settings, err := s.store.GetSettings(r.Context())
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if patch.PingIntervalSec != nil {
+		settings.PingIntervalSec = *patch.PingIntervalSec
+	}
+	if patch.ICMPPayloadSize != nil {
+		settings.ICMPPayloadSize = *patch.ICMPPayloadSize
+	}
+	if patch.ICMPTimeoutMs != nil {
+		settings.ICMPTimeoutMs = *patch.ICMPTimeoutMs
+	}
+	if patch.AutoRefreshSec != nil {
+		settings.AutoRefreshSec = *patch.AutoRefreshSec
+	}
+
+	if err := config.ValidateSettings(
+		settings.PingIntervalSec,
+		settings.ICMPPayloadSize,
+		settings.AutoRefreshSec,
+		settings.ICMPTimeoutMs,
+	); err != nil {
 		util.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}

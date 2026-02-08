@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"os"
 	"strings"
@@ -26,28 +25,25 @@ type Engine struct {
 	store   *store.Store
 	hub     *telemetry.Hub
 	workers int
-	timeout time.Duration
 
 	settings atomic.Value // model.Settings
 	seq      atomic.Uint32
+	roundSeq atomic.Uint64
+
+	activeRounds atomic.Int64
 
 	mu       sync.Mutex
 	running  bool
 	cancel   context.CancelFunc
 	scope    string
 	groupIDs []int64
-
-	randMu sync.Mutex
-	rand   *rand.Rand
 }
 
-func NewEngine(st *store.Store, hub *telemetry.Hub, workers int, timeout time.Duration, initialSettings model.Settings) *Engine {
+func NewEngine(st *store.Store, hub *telemetry.Hub, workers int, initialSettings model.Settings) *Engine {
 	engine := &Engine{
 		store:   st,
 		hub:     hub,
 		workers: workers,
-		timeout: timeout,
-		rand:    rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 	engine.settings.Store(initialSettings)
 	return engine
@@ -106,18 +102,24 @@ func (e *Engine) UpdateSettings(settings model.Settings) {
 func (e *Engine) CurrentSettings() model.Settings {
 	value := e.settings.Load()
 	if value == nil {
-		return model.Settings{PingIntervalSec: 1, ICMPPayloadSize: 56, AutoRefreshSec: 10}
+		return model.Settings{
+			PingIntervalSec: 1,
+			ICMPPayloadSize: 56,
+			ICMPTimeoutMs:   500,
+			AutoRefreshSec:  10,
+		}
 	}
 	return value.(model.Settings)
 }
 
 func (e *Engine) loop(ctx context.Context) {
 	settings := e.CurrentSettings()
-	ticker := time.NewTicker(time.Duration(settings.PingIntervalSec) * time.Second)
+	interval := time.Duration(settings.PingIntervalSec) * time.Second
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	log.Printf("probe loop started interval_sec=%d payload_bytes=%d", settings.PingIntervalSec, settings.ICMPPayloadSize)
-	e.runRound(ctx, settings)
+	log.Printf("probe loop started interval_sec=%d payload_bytes=%d timeout_ms=%d", settings.PingIntervalSec, settings.ICMPPayloadSize, settings.ICMPTimeoutMs)
+	e.launchRound(ctx, settings)
 
 	for {
 		select {
@@ -127,18 +129,36 @@ func (e *Engine) loop(ctx context.Context) {
 		case <-ticker.C:
 			updatedSettings := e.CurrentSettings()
 			if updatedSettings.PingIntervalSec != settings.PingIntervalSec {
-				ticker.Reset(time.Duration(updatedSettings.PingIntervalSec) * time.Second)
-				settings = updatedSettings
-			} else {
-				settings = updatedSettings
+				interval = time.Duration(updatedSettings.PingIntervalSec) * time.Second
+				ticker.Reset(interval)
 			}
-
-			e.runRound(ctx, settings)
+			settings = updatedSettings
+			e.launchRound(ctx, settings)
 		}
 	}
 }
 
-func (e *Engine) runRound(ctx context.Context, settings model.Settings) {
+func (e *Engine) launchRound(ctx context.Context, settings model.Settings) {
+	roundID := e.roundSeq.Add(1)
+	active := e.activeRounds.Add(1)
+	started := time.Now()
+	if active > 1 {
+		log.Printf("probe round overlap detected round_id=%d active_rounds=%d", roundID, active)
+	}
+
+	go func() {
+		defer func() {
+			duration := time.Since(started)
+			remaining := e.activeRounds.Add(-1)
+			overrun := duration > time.Duration(settings.PingIntervalSec)*time.Second
+			log.Printf("probe round finished round_id=%d duration_ms=%d overrun=%t active_rounds=%d", roundID, duration.Milliseconds(), overrun, remaining)
+		}()
+
+		e.runRound(ctx, roundID, settings)
+	}()
+}
+
+func (e *Engine) runRound(ctx context.Context, roundID uint64, settings model.Settings) {
 	e.mu.Lock()
 	scope := e.scope
 	groupIDs := append([]int64{}, e.groupIDs...)
@@ -146,7 +166,10 @@ func (e *Engine) runRound(ctx context.Context, settings model.Settings) {
 
 	targets, err := e.store.ListProbeTargets(ctx, scope, groupIDs)
 	if err != nil {
-		log.Printf("probe round target lookup failed: %v", err)
+		if ctx.Err() != nil {
+			return
+		}
+		log.Printf("probe round target lookup failed round_id=%d: %v", roundID, err)
 		e.hub.Broadcast(map[string]any{
 			"type":      "probe_error",
 			"message":   fmt.Sprintf("failed to list probe targets: %v", err),
@@ -155,99 +178,76 @@ func (e *Engine) runRound(ctx context.Context, settings model.Settings) {
 		return
 	}
 	if len(targets) == 0 {
-		log.Printf("probe round skipped: no targets (scope=%s)", scope)
+		log.Printf("probe round skipped round_id=%d: no targets (scope=%s)", roundID, scope)
 		return
 	}
-	log.Printf("probe round started: targets=%d scope=%s", len(targets), scope)
+	log.Printf("probe round started round_id=%d targets=%d scope=%s timeout_ms=%d", roundID, len(targets), scope, settings.ICMPTimeoutMs)
 
-	workerCount := e.workers
-	if workerCount > len(targets) {
-		workerCount = len(targets)
-	}
-	if workerCount < 1 {
-		workerCount = 1
-	}
-
-	jobs := make(chan store.ProbeTarget, len(targets))
 	wg := sync.WaitGroup{}
+	for _, target := range targets {
+		if ctx.Err() != nil {
+			break
+		}
 
-	for i := 0; i < workerCount; i++ {
+		currentTarget := target
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for target := range jobs {
+
+			if ctx.Err() != nil {
+				return
+			}
+
+			result, canceled := e.probeTarget(ctx, currentTarget, settings)
+			if canceled {
+				return
+			}
+
+			if err := e.store.RecordPingResult(ctx, result); err != nil {
 				if ctx.Err() != nil {
 					return
 				}
-				e.sleepJitter(ctx, settings.PingIntervalSec)
-				result := e.probeTarget(ctx, target, settings)
-				if err := e.store.RecordPingResult(ctx, result); err != nil {
-					log.Printf("probe persist failed endpoint_id=%d ip=%s err=%v", target.EndpointID, target.IP, err)
-					e.hub.Broadcast(map[string]any{
-						"type":        "probe_error",
-						"endpoint_id": target.EndpointID,
-						"message":     fmt.Sprintf("persist ping failed: %v", err),
-						"timestamp":   time.Now().UTC(),
-					})
-					continue
-				}
-
-				status := "failed"
-				if result.Success {
-					status = "succeeded"
-				}
-				log.Printf("probe result endpoint_id=%d ip=%s status=%s latency_ms=%v", target.EndpointID, target.IP, status, result.LatencyMs)
-
+				log.Printf("probe persist failed round_id=%d endpoint_id=%d ip=%s err=%v", roundID, currentTarget.EndpointID, currentTarget.IP, err)
 				e.hub.Broadcast(map[string]any{
-					"type":        "probe_update",
-					"endpoint_id": result.EndpointID,
-					"ip":          target.IP,
-					"status":      status,
-					"latency_ms":  result.LatencyMs,
-					"timestamp":   result.Timestamp,
+					"type":        "probe_error",
+					"endpoint_id": currentTarget.EndpointID,
+					"message":     fmt.Sprintf("persist ping failed: %v", err),
+					"timestamp":   time.Now().UTC(),
 				})
+				return
 			}
+
+			if ctx.Err() != nil {
+				return
+			}
+
+			status := "failed"
+			if result.Success {
+				status = "succeeded"
+			}
+			log.Printf("probe result round_id=%d endpoint_id=%d ip=%s status=%s latency_ms=%v", roundID, currentTarget.EndpointID, currentTarget.IP, status, result.LatencyMs)
+
+			e.hub.Broadcast(map[string]any{
+				"type":        "probe_update",
+				"endpoint_id": result.EndpointID,
+				"ip":          currentTarget.IP,
+				"status":      status,
+				"latency_ms":  result.LatencyMs,
+				"timestamp":   result.Timestamp,
+			})
 		}()
 	}
 
-	for _, target := range targets {
-		select {
-		case <-ctx.Done():
-			close(jobs)
-			wg.Wait()
-			return
-		case jobs <- target:
-		}
-	}
-	close(jobs)
 	wg.Wait()
 }
 
-func (e *Engine) sleepJitter(ctx context.Context, intervalSec int) {
-	maxJitterMs := 250
-	if intervalSec <= 1 {
-		maxJitterMs = 100
-	} else if intervalSec > 1 {
-		maxJitterMs = min(500, intervalSec*300)
-	}
-
-	e.randMu.Lock()
-	jitterMs := e.rand.Intn(maxJitterMs + 1)
-	e.randMu.Unlock()
-
-	timer := time.NewTimer(time.Duration(jitterMs) * time.Millisecond)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return
-	case <-timer.C:
-		return
-	}
-}
-
-func (e *Engine) probeTarget(ctx context.Context, target store.ProbeTarget, settings model.Settings) model.PingResult {
+func (e *Engine) probeTarget(ctx context.Context, target store.ProbeTarget, settings model.Settings) (model.PingResult, bool) {
 	now := time.Now().UTC()
-	latency, replyIP, ttl, err := e.sendICMPEcho(ctx, target.IP, settings.ICMPPayloadSize)
+	latency, replyIP, ttl, err := e.sendICMPEcho(ctx, target.IP, settings.ICMPPayloadSize, settings.ICMPTimeoutMs)
+	if err != nil && errors.Is(err, context.Canceled) {
+		return model.PingResult{}, true
+	}
+
 	result := model.PingResult{
 		EndpointID:   target.EndpointID,
 		Timestamp:    now,
@@ -260,13 +260,16 @@ func (e *Engine) probeTarget(ctx context.Context, target store.ProbeTarget, sett
 	if err != nil {
 		result.ErrorCode = mapProbeError(err)
 	}
-	return result
+	return result, false
 }
 
-func (e *Engine) sendICMPEcho(ctx context.Context, ip string, payloadSize int) (*float64, *string, *int, error) {
+func (e *Engine) sendICMPEcho(ctx context.Context, ip string, payloadSize, timeoutMs int) (*float64, *string, *int, error) {
 	parsedIP := net.ParseIP(ip)
 	if parsedIP == nil {
 		return nil, nil, nil, fmt.Errorf("invalid target ip")
+	}
+	if ctx.Err() != nil {
+		return nil, nil, nil, context.Canceled
 	}
 
 	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
@@ -275,11 +278,21 @@ func (e *Engine) sendICMPEcho(ctx context.Context, ip string, payloadSize int) (
 	}
 	defer func() { _ = conn.Close() }()
 
-	deadline := time.Now().Add(e.timeout)
-	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
-		deadline = d
+	cancelWatchDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.SetDeadline(time.Now())
+		case <-cancelWatchDone:
+		}
+	}()
+	defer close(cancelWatchDone)
+
+	probeDeadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	if d, ok := ctx.Deadline(); ok && d.Before(probeDeadline) {
+		probeDeadline = d
 	}
-	if err := conn.SetDeadline(deadline); err != nil {
+	if err := conn.SetDeadline(probeDeadline); err != nil {
 		return nil, nil, nil, err
 	}
 
@@ -303,6 +316,9 @@ func (e *Engine) sendICMPEcho(ctx context.Context, ip string, payloadSize int) (
 
 	start := time.Now()
 	if _, err := conn.WriteTo(wire, &net.IPAddr{IP: parsedIP}); err != nil {
+		if ctx.Err() != nil {
+			return nil, nil, nil, context.Canceled
+		}
 		return nil, nil, nil, err
 	}
 
@@ -310,6 +326,9 @@ func (e *Engine) sendICMPEcho(ctx context.Context, ip string, payloadSize int) (
 	for {
 		n, peer, err := conn.ReadFrom(buffer)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, nil, nil, context.Canceled
+			}
 			return nil, nil, nil, err
 		}
 
@@ -355,11 +374,4 @@ func mapProbeError(err error) string {
 		return "Permission Denied"
 	}
 	return "Probe Error"
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

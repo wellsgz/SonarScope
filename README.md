@@ -15,7 +15,7 @@ SonarScope is a web-based endpoint reachability platform for network operations 
 - Inventory apply flow with user-selected Add/Update actions
 - Group CRUD with endpoint membership
 - Probe control API (`start` all/groups, `stop`)
-- Global settings API (`ping_interval_sec`, `icmp_payload_bytes`, `auto_refresh_sec`)
+- Global settings API (`ping_interval_sec`, `icmp_payload_bytes`, `icmp_timeout_ms`, `auto_refresh_sec`)
 - Persistent storage model for inventory, groups, raw ping events, and current stats
 - Monitoring API for upper grid and lower time-series chart
 - WebSocket stream for live monitor update events
@@ -47,6 +47,7 @@ docker compose --env-file .env up --build
 cd backend
 export DATABASE_URL="postgres://sonarscope:sonarscope@localhost:5432/sonarscope?sslmode=disable"
 export MIGRATIONS_DIR="migrations"
+export DEFAULT_ICMP_TIMEOUT_MS="500"
 go run ./cmd/sonarscope-api
 ```
 

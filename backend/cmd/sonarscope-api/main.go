@@ -45,6 +45,7 @@ func main() {
 	defaults := model.Settings{
 		PingIntervalSec: cfg.DefaultInterval,
 		ICMPPayloadSize: cfg.DefaultPayload,
+		ICMPTimeoutMs:   cfg.DefaultTimeoutMs,
 		AutoRefreshSec:  cfg.DefaultRefresh,
 	}
 	if err := st.EnsureDefaultSettings(ctx, defaults); err != nil {
@@ -58,7 +59,7 @@ func main() {
 	}
 
 	hub := telemetry.NewHub()
-	probeEngine := probe.NewEngine(st, hub, cfg.ProbeWorkers, time.Duration(cfg.PingTimeoutSec)*time.Second, settings)
+	probeEngine := probe.NewEngine(st, hub, cfg.ProbeWorkers, settings)
 	apiServer := api.NewServer(cfg, st, probeEngine, hub)
 
 	httpServer := &http.Server{

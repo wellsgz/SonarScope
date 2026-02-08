@@ -209,6 +209,22 @@ export function MonitorToolbar({
             />
           </label>
           <label>
+            ICMP Timeout (20-1000ms)
+            <input
+              type="number"
+              min={20}
+              max={1000}
+              value={settings?.icmp_timeout_ms ?? 500}
+              onChange={(event) =>
+                settings &&
+                onSettingsPatch({
+                  ...settings,
+                  icmp_timeout_ms: Number(event.target.value)
+                })
+              }
+            />
+          </label>
+          <label>
             Auto Refresh (1-60s)
             <input
               type="number"

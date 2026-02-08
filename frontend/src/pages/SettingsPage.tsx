@@ -9,6 +9,7 @@ export function SettingsPage() {
   const [draft, setDraft] = useState<Settings>({
     ping_interval_sec: 1,
     icmp_payload_bytes: 56,
+    icmp_timeout_ms: 500,
     auto_refresh_sec: 10
   });
 
@@ -54,6 +55,20 @@ export function SettingsPage() {
               onChange={(event) => setDraft((prev) => ({ ...prev, icmp_payload_bytes: Number(event.target.value) }))}
             />
             <span className="settings-inline-help">56 bytes is standard and safe for most environments.</span>
+          </label>
+
+          <label>
+            ICMP Timeout (20-1000ms)
+            <input
+              type="number"
+              min={20}
+              max={1000}
+              value={draft.icmp_timeout_ms}
+              onChange={(event) => setDraft((prev) => ({ ...prev, icmp_timeout_ms: Number(event.target.value) }))}
+            />
+            <span className="settings-inline-help">
+              Lower values fail faster; higher values tolerate transient network jitter.
+            </span>
           </label>
 
           <label>

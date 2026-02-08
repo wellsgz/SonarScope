@@ -49,6 +49,7 @@ export type Group = {
 export type Settings = {
   ping_interval_sec: number;
   icmp_payload_bytes: number;
+  icmp_timeout_ms: number;
   auto_refresh_sec: number;
 };
 

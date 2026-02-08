@@ -8,27 +8,34 @@ import (
 
 // Config holds runtime settings for the API and probe engine.
 type Config struct {
-	AppEnv          string
-	HTTPAddr        string
-	DatabaseURL     string
-	ProbeWorkers    int
-	PingTimeoutSec  int
-	DefaultInterval int
-	DefaultPayload  int
-	DefaultRefresh  int
-	AllowedOrigins  []string
+	AppEnv           string
+	HTTPAddr         string
+	DatabaseURL      string
+	ProbeWorkers     int
+	DefaultInterval  int
+	DefaultPayload   int
+	DefaultTimeoutMs int
+	DefaultRefresh   int
+	AllowedOrigins   []string
 }
 
 func Load() (Config, error) {
+	defaultTimeoutMs := 500
+	if timeoutMs, ok := getEnvIntWithPresence("DEFAULT_ICMP_TIMEOUT_MS"); ok {
+		defaultTimeoutMs = timeoutMs
+	} else if legacyTimeoutSec, ok := getEnvIntWithPresence("PING_TIMEOUT_SEC"); ok {
+		defaultTimeoutMs = legacyTimeoutSec * 1000
+	}
+
 	cfg := Config{
-		AppEnv:          getEnv("APP_ENV", "development"),
-		HTTPAddr:        getEnv("HTTP_ADDR", ":8080"),
-		DatabaseURL:     getEnv("DATABASE_URL", "postgres://sonarscope:sonarscope@localhost:5432/sonarscope?sslmode=disable"),
-		ProbeWorkers:    getEnvInt("PROBE_WORKERS", 256),
-		PingTimeoutSec:  getEnvInt("PING_TIMEOUT_SEC", 2),
-		DefaultInterval: getEnvInt("DEFAULT_PING_INTERVAL_SEC", 1),
-		DefaultPayload:  getEnvInt("DEFAULT_ICMP_PAYLOAD_BYTES", 56),
-		DefaultRefresh:  getEnvInt("DEFAULT_AUTO_REFRESH_SEC", 10),
+		AppEnv:           getEnv("APP_ENV", "development"),
+		HTTPAddr:         getEnv("HTTP_ADDR", ":8080"),
+		DatabaseURL:      getEnv("DATABASE_URL", "postgres://sonarscope:sonarscope@localhost:5432/sonarscope?sslmode=disable"),
+		ProbeWorkers:     getEnvInt("PROBE_WORKERS", 256),
+		DefaultInterval:  getEnvInt("DEFAULT_PING_INTERVAL_SEC", 1),
+		DefaultPayload:   getEnvInt("DEFAULT_ICMP_PAYLOAD_BYTES", 56),
+		DefaultTimeoutMs: clampInt(defaultTimeoutMs, 20, 1000),
+		DefaultRefresh:   getEnvInt("DEFAULT_AUTO_REFRESH_SEC", 10),
 	}
 
 	origins := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
@@ -41,22 +48,22 @@ func Load() (Config, error) {
 	if cfg.ProbeWorkers < 1 {
 		return Config{}, fmt.Errorf("PROBE_WORKERS must be >= 1")
 	}
-	if cfg.PingTimeoutSec < 1 {
-		return Config{}, fmt.Errorf("PING_TIMEOUT_SEC must be >= 1")
-	}
-	if err := ValidateSettings(cfg.DefaultInterval, cfg.DefaultPayload, cfg.DefaultRefresh); err != nil {
+	if err := ValidateSettings(cfg.DefaultInterval, cfg.DefaultPayload, cfg.DefaultRefresh, cfg.DefaultTimeoutMs); err != nil {
 		return Config{}, err
 	}
 
 	return cfg, nil
 }
 
-func ValidateSettings(intervalSec, payloadBytes, refreshSec int) error {
+func ValidateSettings(intervalSec, payloadBytes, refreshSec, timeoutMs int) error {
 	if intervalSec < 1 || intervalSec > 30 {
 		return fmt.Errorf("ping_interval_sec must be between 1 and 30")
 	}
 	if payloadBytes < 8 || payloadBytes > 1400 {
 		return fmt.Errorf("icmp_payload_bytes must be between 8 and 1400")
+	}
+	if timeoutMs < 20 || timeoutMs > 1000 {
+		return fmt.Errorf("icmp_timeout_ms must be between 20 and 1000")
 	}
 	if refreshSec < 1 || refreshSec > 60 {
 		return fmt.Errorf("auto_refresh_sec must be between 1 and 60")
@@ -83,6 +90,18 @@ func getEnvInt(key string, fallback int) int {
 	return parsed
 }
 
+func getEnvIntWithPresence(key string) (int, bool) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return 0, false
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
 func splitCSV(raw string) []string {
 	items := []string{}
 	start := 0
@@ -106,4 +125,14 @@ func trimSpace(s string) string {
 		end--
 	}
 	return s[start:end]
+}
+
+func clampInt(v, minValue, maxValue int) int {
+	if v < minValue {
+		return minValue
+	}
+	if v > maxValue {
+		return maxValue
+	}
+	return v
 }
