@@ -1,8 +1,11 @@
 .app-shell-v13 {
+  --content-max-width: 1680px;
+  --shell-gutter: var(--space-6);
   min-height: 100vh;
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
   position: relative;
+  overflow-x: clip;
 }
 
 .sidebar {
@@ -113,15 +116,21 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  min-height: var(--topbar-height);
+  min-height: calc(var(--topbar-height) - 4px);
+  padding: var(--space-3) var(--shell-gutter);
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.topbar-frame {
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-4) var(--space-6);
-  border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-bg) 86%, transparent);
-  backdrop-filter: blur(8px);
 }
 
 .topbar-title-group {
@@ -162,9 +171,16 @@
 }
 
 .app-content {
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--shell-gutter) var(--space-5);
   min-width: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+.app-content-frame {
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  min-width: 0;
 }
 
 .shell-backdrop {
@@ -174,6 +190,7 @@
 @media (max-width: 1024px) {
   .app-shell-v13 {
     grid-template-columns: 1fr;
+    --shell-gutter: var(--space-4);
   }
 
   .sidebar {
@@ -205,21 +222,13 @@
     display: inline-flex;
   }
 
-  .topbar {
-    padding: var(--space-4);
-  }
-
-  .app-content {
-    padding: var(--space-4);
-  }
-
   .topbar-actions {
     gap: var(--space-1);
   }
 }
 
 @media (max-width: 768px) {
-  .topbar {
+  .topbar-frame {
     align-items: flex-start;
     flex-direction: column;
   }

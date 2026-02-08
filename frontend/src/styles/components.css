@@ -1,36 +1,38 @@
 .panel {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  background: var(--color-surface);
   box-shadow: var(--shadow-soft);
   min-width: 0;
 }
 
 .panel-header {
-  padding: var(--space-4) var(--space-4) var(--space-2);
+  padding: var(--space-4) var(--space-4) var(--space-3);
   border-bottom: 1px solid var(--color-border);
 }
 
 .panel-title {
   font-family: var(--font-heading);
-  font-size: 0.96rem;
+  font-size: 0.95rem;
+  line-height: 1.28;
   color: var(--color-text);
 }
 
 .panel-subtitle {
   margin-top: 0.2rem;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
+  line-height: 1.3;
   color: var(--color-text-subtle);
 }
 
 .btn {
   border: 1px solid var(--color-border-strong);
-  background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
+  background: var(--color-surface-elevated);
   color: var(--color-text);
   border-radius: var(--radius-sm);
-  min-height: 2.1rem;
+  min-height: 2.08rem;
   padding: 0.35rem 0.72rem;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 600;
 }
 
@@ -50,7 +52,7 @@
 
 .btn-primary {
   border-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 22%, var(--color-surface-elevated));
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface-elevated));
 }
 
 .btn-danger {
@@ -82,7 +84,7 @@
 .theme-toggle {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
+  background: var(--color-surface-elevated);
   height: 2.2rem;
   padding: 0 var(--space-3);
   display: inline-flex;
@@ -110,17 +112,45 @@
   gap: 0.36rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
-  padding: 0.25rem 0.56rem;
+  padding: 0.24rem 0.58rem;
   font-size: 0.72rem;
   font-weight: 600;
+  white-space: nowrap;
   color: var(--color-text-muted);
-  background: color-mix(in srgb, var(--color-surface-elevated) 80%, transparent);
+  background: color-mix(in srgb, var(--color-surface-elevated) 86%, transparent);
 }
 
 .status-chip-live {
   color: var(--color-success);
   border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-border));
   background: color-mix(in srgb, var(--color-success) 12%, var(--color-surface-elevated));
+}
+
+[data-theme="light"] .status-chip {
+  border-color: #d3dceb;
+  background: #f4f7fc;
+  color: #475569;
+}
+
+[data-theme="light"] .status-chip-live {
+  border-color: rgba(15, 159, 114, 0.34);
+  background: rgba(15, 159, 114, 0.1);
+  color: #0d7d5a;
+}
+
+[data-theme="light"] .theme-toggle {
+  border-color: #bfd0e6;
+  background: #ffffff;
+}
+
+[data-theme="light"] .btn {
+  border-color: #c8d4e6;
+  background: #f8faff;
+}
+
+[data-theme="light"] .btn-primary {
+  border-color: #1d4ed8;
+  background: rgba(29, 78, 216, 0.12);
 }
 
 .status-dot {
@@ -140,10 +170,10 @@ select,
 textarea {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
+  background: var(--color-surface-elevated);
   color: var(--color-text);
-  padding: 0.34rem 0.52rem;
-  font-size: 0.82rem;
+  padding: 0.36rem 0.56rem;
+  font-size: 0.8rem;
 }
 
 select[multiple] {
@@ -189,7 +219,7 @@ label {
 .chip {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--color-surface-elevated) 86%, transparent);
+  background: var(--color-surface-elevated);
   color: var(--color-text-muted);
   font-size: 0.75rem;
   font-weight: 600;
@@ -238,7 +268,7 @@ label {
   border-bottom: 1px solid var(--color-border);
   text-align: left;
   white-space: nowrap;
-  padding: 0.26rem 0.42rem;
+  padding: 0.3rem 0.48rem;
   min-height: var(--table-row-height);
 }
 

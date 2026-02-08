@@ -1,6 +1,6 @@
 :root {
-  --font-heading: "Space Grotesk", "IBM Plex Sans", sans-serif;
-  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-heading: "Lexend", "Source Sans 3", sans-serif;
+  --font-body: "Source Sans 3", system-ui, sans-serif;
   --font-mono: "Fira Code", "IBM Plex Mono", monospace;
 
   --radius-xs: 0.4rem;
@@ -32,29 +32,29 @@
 }
 
 [data-theme="light"] {
-  --color-bg: #f5f7fc;
-  --color-bg-strong: #eff3fb;
+  --color-bg: #f8fafc;
+  --color-bg-strong: #f1f5f9;
   --color-surface: #ffffff;
-  --color-surface-elevated: #fbfcff;
-  --color-border: #d9e2f0;
-  --color-border-strong: #c4d0e5;
+  --color-surface-elevated: #fcfdff;
+  --color-border: #d6deeb;
+  --color-border-strong: #becbde;
 
-  --color-text: #111827;
+  --color-text: #1e293b;
   --color-text-muted: #334155;
-  --color-text-subtle: #667085;
+  --color-text-subtle: #64748b;
 
-  --color-accent: #5b62f6;
-  --color-accent-soft: rgba(91, 98, 246, 0.14);
-  --color-accent-strong: #494fd6;
+  --color-accent: #1e40af;
+  --color-accent-soft: rgba(30, 64, 175, 0.12);
+  --color-accent-strong: #1d4ed8;
 
   --color-success: #0f9f72;
-  --color-warning: #d9922d;
+  --color-warning: #f59e0b;
   --color-danger: #dc4f65;
 
-  --color-focus-ring: rgba(91, 98, 246, 0.3);
+  --color-focus-ring: rgba(30, 64, 175, 0.28);
   --color-overlay: rgba(17, 24, 39, 0.22);
-  --shadow-soft: 0 8px 22px rgba(17, 24, 39, 0.08);
-  --shadow-elevated: 0 18px 38px rgba(17, 24, 39, 0.14);
+  --shadow-soft: 0 8px 20px rgba(15, 23, 42, 0.07);
+  --shadow-elevated: 0 16px 34px rgba(15, 23, 42, 0.11);
 }
 
 [data-theme="dark"] {

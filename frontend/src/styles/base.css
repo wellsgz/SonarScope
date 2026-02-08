@@ -22,8 +22,9 @@ body {
 
 html[data-theme="light"] body {
   background:
-    radial-gradient(1120px 560px at 100% -10%, rgba(91, 98, 246, 0.14), transparent 64%),
-    radial-gradient(920px 520px at -12% -16%, rgba(59, 130, 246, 0.1), transparent 62%),
+    radial-gradient(1180px 620px at 104% -12%, rgba(30, 64, 175, 0.14), transparent 64%),
+    radial-gradient(960px 520px at -8% -14%, rgba(59, 130, 246, 0.1), transparent 62%),
+    radial-gradient(700px 380px at 50% -18%, rgba(245, 158, 11, 0.08), transparent 74%),
     linear-gradient(180deg, var(--color-bg-strong), var(--color-bg));
 }
 

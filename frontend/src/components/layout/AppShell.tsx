@@ -73,7 +73,7 @@ export function AppShell({
         />
 
         <main className="app-content" id="main-content" tabIndex={-1}>
-          {children}
+          <div className="app-content-frame">{children}</div>
         </main>
       </div>
     </div>

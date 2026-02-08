@@ -4,6 +4,7 @@
   gap: var(--space-4);
   min-height: calc(100vh - var(--topbar-height) - var(--space-6));
   min-width: 0;
+  overflow-x: clip;
 }
 
 .monitor-pane-top,
@@ -11,6 +12,7 @@
 .monitor-pane-bottom {
   min-height: 0;
   min-width: 0;
+  overflow: hidden;
 }
 
 .toolbar-panel {
@@ -19,8 +21,8 @@
 
 .toolbar-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1.4fr 1fr 1fr;
-  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
   min-width: 0;
 }
 
@@ -28,7 +30,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-  padding: var(--space-3);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -45,13 +47,13 @@
   margin-top: var(--space-1);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
 .filter-stack {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
 .filter-card {
@@ -165,7 +167,7 @@
 .inventory-filter-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
 .inventory-table-scroll {
@@ -176,6 +178,7 @@
   display: grid;
   grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.4fr);
   gap: var(--space-4);
+  min-width: 0;
 }
 
 .group-form,
@@ -188,6 +191,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
+  min-width: 0;
 }
 
 .settings-inline-help {
