@@ -18,10 +18,8 @@ type InventoryEndpoint struct {
 	VLAN        string    `json:"vlan"`
 	SwitchName  string    `json:"switch"`
 	Port        string    `json:"port"`
+	PortType    string    `json:"port_type"`
 	Description string    `json:"description"`
-	Status      string    `json:"status"`
-	Zone        string    `json:"zone"`
-	FWLB        string    `json:"fw_lb"`
 	Hostname    string    `json:"hostname"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -63,6 +61,7 @@ type MonitorEndpoint struct {
 	VLAN                   string     `json:"vlan"`
 	Switch                 string     `json:"switch"`
 	Port                   string     `json:"port"`
+	PortType               string     `json:"port_type"`
 	Groups                 []string   `json:"group"`
 	EndpointID             int64      `json:"endpoint_id"`
 }
@@ -75,10 +74,8 @@ type InventoryEndpointView struct {
 	VLAN        string    `json:"vlan"`
 	Switch      string    `json:"switch"`
 	Port        string    `json:"port"`
+	PortType    string    `json:"port_type"`
 	Description string    `json:"description"`
-	Status      string    `json:"status"`
-	Zone        string    `json:"zone"`
-	FWLB        string    `json:"fw_lb"`
 	Groups      []string  `json:"group"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -89,10 +86,8 @@ type InventoryEndpointUpdate struct {
 	VLAN        string `json:"vlan"`
 	Switch      string `json:"switch"`
 	Port        string `json:"port"`
+	PortType    string `json:"port_type"`
 	Description string `json:"description"`
-	Status      string `json:"status"`
-	Zone        string `json:"zone"`
-	FWLB        string `json:"fw_lb"`
 }
 
 type Group struct {
@@ -141,12 +136,9 @@ type ImportCandidate struct {
 	VLAN        string               `json:"vlan"`
 	SwitchName  string               `json:"switch"`
 	Port        string               `json:"port"`
-	Description string               `json:"description"`
-	Status      string               `json:"status"`
-	Zone        string               `json:"zone"`
-	FWLB        string               `json:"fw_lb"`
-	Sorting     string               `json:"sorting"`
 	PortType    string               `json:"port_type"`
+	Description string               `json:"description"`
+	Sorting     string               `json:"sorting"`
 	Hostname    string               `json:"hostname"`
 	Message     string               `json:"message"`
 	Action      ImportClassification `json:"action"`

@@ -22,10 +22,8 @@ type InventoryPatch = {
   vlan: string;
   switch: string;
   port: string;
+  port_type: string;
   description: string;
-  status: string;
-  zone: string;
-  fw_lb: string;
 };
 
 const defaultFilters: FilterState = {
@@ -42,10 +40,8 @@ function toPatch(row: InventoryEndpoint): InventoryPatch {
     vlan: row.vlan,
     switch: row.switch,
     port: row.port,
+    port_type: row.port_type,
     description: row.description,
-    status: row.status,
-    zone: row.zone,
-    fw_lb: row.fw_lb
   };
 }
 
@@ -191,7 +187,7 @@ export function InventoryPage() {
                   <th>VLAN</th>
                   <th>Switch</th>
                   <th>Port</th>
-                  <th>Status</th>
+                  <th>Port Type</th>
                   <th>Message</th>
                 </tr>
               </thead>
@@ -240,7 +236,7 @@ export function InventoryPage() {
                       <td>{candidate.vlan}</td>
                       <td>{candidate.switch}</td>
                       <td>{candidate.port}</td>
-                      <td>{candidate.status}</td>
+                      <td>{candidate.port_type}</td>
                       <td>{candidate.message}</td>
                     </tr>
                   );
@@ -363,10 +359,8 @@ export function InventoryPage() {
                 <th>VLAN</th>
                 <th>Switch</th>
                 <th>Port</th>
+                <th>Port Type</th>
                 <th>Description</th>
-                <th>Status</th>
-                <th>Zone</th>
-                <th>FW/LB</th>
                 <th>Group</th>
                 <th>Updated At</th>
                 <th>Actions</th>
@@ -441,6 +435,18 @@ export function InventoryPage() {
                     <td>
                       {isEditing ? (
                         <input
+                          value={editingPatch.port_type}
+                          onChange={(event) =>
+                            setEditingPatch((prev) => (prev ? { ...prev, port_type: event.target.value } : prev))
+                          }
+                        />
+                      ) : (
+                        row.port_type || "-"
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input
                           value={editingPatch.description}
                           onChange={(event) =>
                             setEditingPatch((prev) => (prev ? { ...prev, description: event.target.value } : prev))
@@ -448,42 +454,6 @@ export function InventoryPage() {
                         />
                       ) : (
                         row.description || "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editingPatch.status}
-                          onChange={(event) =>
-                            setEditingPatch((prev) => (prev ? { ...prev, status: event.target.value } : prev))
-                          }
-                        />
-                      ) : (
-                        row.status || "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editingPatch.zone}
-                          onChange={(event) =>
-                            setEditingPatch((prev) => (prev ? { ...prev, zone: event.target.value } : prev))
-                          }
-                        />
-                      ) : (
-                        row.zone || "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editingPatch.fw_lb}
-                          onChange={(event) =>
-                            setEditingPatch((prev) => (prev ? { ...prev, fw_lb: event.target.value } : prev))
-                          }
-                        />
-                      ) : (
-                        row.fw_lb || "-"
                       )}
                     </td>
                     <td>{row.group.join(", ") || "-"}</td>

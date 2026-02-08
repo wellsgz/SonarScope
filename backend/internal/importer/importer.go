@@ -19,13 +19,10 @@ var requiredHeaders = map[string]string{
 	"switch":      "switch",
 	"port":        "port",
 	"sorting":     "sorting",
-	"status":      "status",
 	"description": "description",
 	"vlan":        "vlan",
 	"mac":         "mac",
 	"port-type":   "port_type",
-	"fw/lb":       "fw_lb",
-	"zone":        "zone",
 	"ip":          "ip",
 }
 
@@ -140,18 +137,15 @@ func parseRows(rows [][]string) ([]model.ImportCandidate, error) {
 			Action:    model.ImportInvalid,
 		}
 
-		candidate.IP = cell(row, headerMap["ip"])
-		candidate.MAC = normalizeMAC(cell(row, headerMap["mac"]))
-		candidate.VLAN = cell(row, headerMap["vlan"])
-		candidate.SwitchName = cell(row, headerMap["switch"])
-		candidate.Port = cell(row, headerMap["port"])
-		candidate.Description = cell(row, headerMap["description"])
-		candidate.Status = cell(row, headerMap["status"])
-		candidate.Zone = cell(row, headerMap["zone"])
-		candidate.FWLB = cell(row, headerMap["fw_lb"])
-		candidate.Sorting = cell(row, headerMap["sorting"])
-		candidate.PortType = cell(row, headerMap["port_type"])
-		candidate.Hostname = cell(row, headerMap["description"])
+		candidate.IP = cellByKey(row, headerMap, "ip")
+		candidate.MAC = normalizeMAC(cellByKey(row, headerMap, "mac"))
+		candidate.VLAN = cellByKey(row, headerMap, "vlan")
+		candidate.SwitchName = cellByKey(row, headerMap, "switch")
+		candidate.Port = cellByKey(row, headerMap, "port")
+		candidate.PortType = normalizePortType(cellByKey(row, headerMap, "port_type"))
+		candidate.Description = cellByKey(row, headerMap, "description")
+		candidate.Sorting = cellByKey(row, headerMap, "sorting")
+		candidate.Hostname = cellByKey(row, headerMap, "description")
 
 		if candidate.IP == "" {
 			candidate.Message = "missing IP"
@@ -198,6 +192,14 @@ func cell(row []string, idx int) string {
 	return strings.TrimSpace(row[idx])
 }
 
+func cellByKey(row []string, headerMap map[string]int, key string) string {
+	idx, ok := headerMap[key]
+	if !ok {
+		return ""
+	}
+	return cell(row, idx)
+}
+
 func normalizeMAC(mac string) string {
 	mac = strings.TrimSpace(strings.ToUpper(mac))
 	if mac == "" {
@@ -205,6 +207,10 @@ func normalizeMAC(mac string) string {
 	}
 	mac = strings.ReplaceAll(mac, "-", ":")
 	return mac
+}
+
+func normalizePortType(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func hasDiff(candidate model.ImportCandidate, existing model.InventoryEndpoint) bool {
@@ -223,13 +229,7 @@ func hasDiff(candidate model.ImportCandidate, existing model.InventoryEndpoint) 
 	if candidate.Description != existing.Description {
 		return true
 	}
-	if candidate.Status != existing.Status {
-		return true
-	}
-	if candidate.Zone != existing.Zone {
-		return true
-	}
-	if candidate.FWLB != existing.FWLB {
+	if candidate.PortType != existing.PortType {
 		return true
 	}
 	if candidate.Hostname != existing.Hostname {

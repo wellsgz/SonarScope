@@ -17,10 +17,8 @@ func TestClassify(t *testing.T) {
 			VLAN:        "100",
 			SwitchName:  "sw1",
 			Port:        "1/1",
+			PortType:    "access",
 			Description: "db",
-			Status:      "up",
-			Zone:        "prod",
-			FWLB:        "fw1",
 			Hostname:    "db1",
 			UpdatedAt:   now,
 		},
@@ -28,8 +26,8 @@ func TestClassify(t *testing.T) {
 
 	input := []model.ImportCandidate{
 		{RowID: "row-2", IP: "10.0.0.2", MAC: "11:22", VLAN: "200", SwitchName: "sw2", Port: "1/2", Action: model.ImportAdd},
-		{RowID: "row-3", IP: "10.0.0.1", MAC: "AA:BB:CC:DD:EE:FF", VLAN: "100", SwitchName: "sw1", Port: "1/1", Description: "db", Status: "up", Zone: "prod", FWLB: "fw1", Hostname: "db1", Action: model.ImportAdd},
-		{RowID: "row-4", IP: "10.0.0.1", MAC: "AA:BB:CC:DD:EE:01", VLAN: "100", SwitchName: "sw1", Port: "1/1", Description: "db", Status: "up", Zone: "prod", FWLB: "fw1", Hostname: "db1", Action: model.ImportAdd},
+		{RowID: "row-3", IP: "10.0.0.1", MAC: "AA:BB:CC:DD:EE:FF", VLAN: "100", SwitchName: "sw1", Port: "1/1", PortType: "access", Description: "db", Hostname: "db1", Action: model.ImportAdd},
+		{RowID: "row-4", IP: "10.0.0.1", MAC: "AA:BB:CC:DD:EE:01", VLAN: "100", SwitchName: "sw1", Port: "1/1", PortType: "access", Description: "db", Hostname: "db1", Action: model.ImportAdd},
 	}
 
 	out := Classify(input, existing)
@@ -50,8 +48,8 @@ func TestClassify(t *testing.T) {
 
 func TestParseRowsMissingIP(t *testing.T) {
 	rows := [][]string{
-		{"Switch", "Port", "Sorting", "Status", "Description", "VLAN", "MAC", "Port-Type", "FW/LB", "Zone", "IP"},
-		{"sw", "1/1", "", "", "", "", "", "", "", "", ""},
+		{"Switch", "Port", "Sorting", "Description", "VLAN", "MAC", "Port-Type", "IP"},
+		{"sw", "1/1", "", "", "", "", "", ""},
 	}
 
 	candidates, err := parseRows(rows)

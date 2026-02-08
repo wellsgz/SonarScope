@@ -76,7 +76,7 @@ func (s *Store) UpdateSettings(ctx context.Context, settings model.Settings) err
 
 func (s *Store) InventoryByIP(ctx context.Context) (map[string]model.InventoryEndpoint, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, host(ip), mac, vlan, switch_name, port, description, status, zone, fw_lb, hostname, updated_at
+		SELECT id, host(ip), mac, vlan, switch_name, port, port_type, description, hostname, updated_at
 		FROM inventory_endpoint
 	`)
 	if err != nil {
@@ -94,10 +94,8 @@ func (s *Store) InventoryByIP(ctx context.Context) (map[string]model.InventoryEn
 			&endpoint.VLAN,
 			&endpoint.SwitchName,
 			&endpoint.Port,
+			&endpoint.PortType,
 			&endpoint.Description,
-			&endpoint.Status,
-			&endpoint.Zone,
-			&endpoint.FWLB,
 			&endpoint.Hostname,
 			&endpoint.UpdatedAt,
 		); err != nil {
@@ -117,10 +115,10 @@ func (s *Store) ApplyImport(ctx context.Context, rows []model.ImportCandidate) (
 		switch row.Action {
 		case model.ImportAdd:
 			cmd, err := s.pool.Exec(ctx, `
-				INSERT INTO inventory_endpoint(ip, mac, vlan, switch_name, port, description, status, zone, fw_lb, hostname, updated_at)
-				VALUES ($1::inet, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+				INSERT INTO inventory_endpoint(ip, mac, vlan, switch_name, port, port_type, description, hostname, updated_at)
+				VALUES ($1::inet, $2, $3, $4, $5, $6, $7, $8, now())
 				ON CONFLICT (ip) DO NOTHING
-			`, row.IP, row.MAC, row.VLAN, row.SwitchName, row.Port, row.Description, row.Status, row.Zone, row.FWLB, row.Hostname)
+			`, row.IP, row.MAC, row.VLAN, row.SwitchName, row.Port, row.PortType, row.Description, row.Hostname)
 			if err != nil {
 				errorsOut = append(errorsOut, fmt.Sprintf("%s: %v", row.RowID, err))
 				continue
@@ -137,14 +135,12 @@ func (s *Store) ApplyImport(ctx context.Context, rows []model.ImportCandidate) (
 					vlan = $3,
 					switch_name = $4,
 					port = $5,
-					description = $6,
-					status = $7,
-					zone = $8,
-					fw_lb = $9,
-					hostname = $10,
+					port_type = $6,
+					description = $7,
+					hostname = $8,
 					updated_at = now()
 				WHERE ip = $1::inet
-			`, row.IP, row.MAC, row.VLAN, row.SwitchName, row.Port, row.Description, row.Status, row.Zone, row.FWLB, row.Hostname)
+			`, row.IP, row.MAC, row.VLAN, row.SwitchName, row.Port, row.PortType, row.Description, row.Hostname)
 			if err != nil {
 				errorsOut = append(errorsOut, fmt.Sprintf("%s: %v", row.RowID, err))
 				continue
@@ -463,6 +459,7 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 			ie.vlan,
 			ie.switch_name,
 			ie.port,
+			ie.port_type,
 			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups
 		FROM inventory_endpoint ie
 		LEFT JOIN endpoint_stats_current es ON es.endpoint_id = ie.id
@@ -502,7 +499,7 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 			es.last_success_on, es.success_count, es.failed_count, es.consecutive_failed_count,
 			es.max_consecutive_failed_count, es.max_consecutive_failed_count_time, es.failed_pct,
 			es.total_sent_ping, es.last_ping_status, es.last_ping_latency, es.average_latency,
-			ie.vlan, ie.switch_name, ie.port
+			ie.vlan, ie.switch_name, ie.port, ie.port_type
 		ORDER BY ie.ip
 	`
 
@@ -536,6 +533,7 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 			&item.VLAN,
 			&item.Switch,
 			&item.Port,
+			&item.PortType,
 			&item.Groups,
 		); err != nil {
 			return nil, err
@@ -555,10 +553,8 @@ func (s *Store) ListInventoryEndpoints(ctx context.Context, filters MonitorFilte
 			ie.vlan,
 			ie.switch_name,
 			ie.port,
+			ie.port_type,
 			ie.description,
-			ie.status,
-			ie.zone,
-			ie.fw_lb,
 			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
 			ie.updated_at
 		FROM inventory_endpoint ie
@@ -595,7 +591,7 @@ func (s *Store) ListInventoryEndpoints(ctx context.Context, filters MonitorFilte
 
 	query += `
 		GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.switch_name, ie.port,
-			ie.description, ie.status, ie.zone, ie.fw_lb, ie.updated_at
+			ie.port_type, ie.description, ie.updated_at
 		ORDER BY ie.ip
 	`
 
@@ -616,10 +612,8 @@ func (s *Store) ListInventoryEndpoints(ctx context.Context, filters MonitorFilte
 			&item.VLAN,
 			&item.Switch,
 			&item.Port,
+			&item.PortType,
 			&item.Description,
-			&item.Status,
-			&item.Zone,
-			&item.FWLB,
 			&item.Groups,
 			&item.UpdatedAt,
 		); err != nil {
@@ -638,13 +632,11 @@ func (s *Store) UpdateInventoryEndpoint(ctx context.Context, endpointID int64, p
 			vlan = $4,
 			switch_name = $5,
 			port = $6,
-			description = $7,
-			status = $8,
-			zone = $9,
-			fw_lb = $10,
+			port_type = $7,
+			description = $8,
 			updated_at = now()
 		WHERE id = $1
-	`, endpointID, patch.Hostname, patch.MACAddress, patch.VLAN, patch.Switch, patch.Port, patch.Description, patch.Status, patch.Zone, patch.FWLB)
+	`, endpointID, patch.Hostname, patch.MACAddress, patch.VLAN, patch.Switch, patch.Port, patch.PortType, patch.Description)
 	if err != nil {
 		return model.InventoryEndpointView{}, err
 	}
@@ -665,10 +657,8 @@ func (s *Store) GetInventoryEndpointByID(ctx context.Context, endpointID int64) 
 			ie.vlan,
 			ie.switch_name,
 			ie.port,
+			ie.port_type,
 			ie.description,
-			ie.status,
-			ie.zone,
-			ie.fw_lb,
 			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
 			ie.updated_at
 		FROM inventory_endpoint ie
@@ -676,7 +666,7 @@ func (s *Store) GetInventoryEndpointByID(ctx context.Context, endpointID int64) 
 		LEFT JOIN group_def gd ON gd.id = gm.group_id
 		WHERE ie.id = $1
 		GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.switch_name, ie.port,
-			ie.description, ie.status, ie.zone, ie.fw_lb, ie.updated_at
+			ie.port_type, ie.description, ie.updated_at
 	`, endpointID)
 
 	var item model.InventoryEndpointView
@@ -688,10 +678,8 @@ func (s *Store) GetInventoryEndpointByID(ctx context.Context, endpointID int64) 
 		&item.VLAN,
 		&item.Switch,
 		&item.Port,
+		&item.PortType,
 		&item.Description,
-		&item.Status,
-		&item.Zone,
-		&item.FWLB,
 		&item.Groups,
 		&item.UpdatedAt,
 	); err != nil {

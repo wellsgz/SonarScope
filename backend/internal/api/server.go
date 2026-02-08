@@ -245,10 +245,8 @@ func (s *Server) handleInventoryEndpointUpdate(w http.ResponseWriter, r *http.Re
 	patch.VLAN = strings.TrimSpace(patch.VLAN)
 	patch.Switch = strings.TrimSpace(patch.Switch)
 	patch.Port = strings.TrimSpace(patch.Port)
+	patch.PortType = strings.ToLower(strings.TrimSpace(patch.PortType))
 	patch.Description = strings.TrimSpace(patch.Description)
-	patch.Status = strings.TrimSpace(patch.Status)
-	patch.Zone = strings.TrimSpace(patch.Zone)
-	patch.FWLB = strings.TrimSpace(patch.FWLB)
 
 	item, err := s.store.UpdateInventoryEndpoint(r.Context(), endpointID, patch)
 	if err != nil {

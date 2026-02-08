@@ -161,10 +161,8 @@ export async function updateInventoryEndpoint(
     vlan: string;
     switch: string;
     port: string;
+    port_type: string;
     description: string;
-    status: string;
-    zone: string;
-    fw_lb: string;
   }
 ): Promise<InventoryEndpoint> {
   return request<InventoryEndpoint>(`/api/inventory/endpoints/${endpointID}`, {

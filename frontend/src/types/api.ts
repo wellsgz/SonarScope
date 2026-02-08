@@ -19,6 +19,7 @@ export type MonitorEndpoint = {
   vlan: string;
   switch: string;
   port: string;
+  port_type: string;
   group: string[];
 };
 
@@ -30,10 +31,8 @@ export type InventoryEndpoint = {
   vlan: string;
   switch: string;
   port: string;
+  port_type: string;
   description: string;
-  status: string;
-  zone: string;
-  fw_lb: string;
   group: string[];
   updated_at: string;
 };
@@ -61,12 +60,9 @@ export type ImportCandidate = {
   vlan: string;
   switch: string;
   port: string;
-  description: string;
-  status: string;
-  zone: string;
-  fw_lb: string;
-  sorting: string;
   port_type: string;
+  description: string;
+  sorting: string;
   hostname: string;
   message: string;
   action: "add" | "update" | "unchanged" | "invalid";

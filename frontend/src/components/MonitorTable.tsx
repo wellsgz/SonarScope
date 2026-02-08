@@ -62,6 +62,7 @@ const columns = [
   columnHelper.accessor("vlan", { header: "VLAN" }),
   columnHelper.accessor("switch", { header: "Switch" }),
   columnHelper.accessor("port", { header: "Port" }),
+  columnHelper.accessor("port_type", { header: "Port Type" }),
   columnHelper.accessor("group", {
     header: "Group",
     cell: ({ getValue }) => getValue().join(", ")
