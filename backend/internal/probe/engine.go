@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -74,6 +75,7 @@ func (e *Engine) Start(scope string, groupIDs []int64) error {
 	e.groupIDs = append([]int64{}, groupIDs...)
 	e.running = true
 
+	log.Printf("probe engine start scope=%s group_ids=%v", scope, groupIDs)
 	go e.loop(ctx)
 	return nil
 }
@@ -87,6 +89,7 @@ func (e *Engine) Stop() bool {
 	}
 	e.cancel()
 	e.running = false
+	log.Printf("probe engine stopped")
 	return true
 }
 
@@ -113,9 +116,13 @@ func (e *Engine) loop(ctx context.Context) {
 	ticker := time.NewTicker(time.Duration(settings.PingIntervalSec) * time.Second)
 	defer ticker.Stop()
 
+	log.Printf("probe loop started interval_sec=%d payload_bytes=%d", settings.PingIntervalSec, settings.ICMPPayloadSize)
+	e.runRound(ctx, settings)
+
 	for {
 		select {
 		case <-ctx.Done():
+			log.Printf("probe loop exited")
 			return
 		case <-ticker.C:
 			updatedSettings := e.CurrentSettings()
@@ -139,6 +146,7 @@ func (e *Engine) runRound(ctx context.Context, settings model.Settings) {
 
 	targets, err := e.store.ListProbeTargets(ctx, scope, groupIDs)
 	if err != nil {
+		log.Printf("probe round target lookup failed: %v", err)
 		e.hub.Broadcast(map[string]any{
 			"type":      "probe_error",
 			"message":   fmt.Sprintf("failed to list probe targets: %v", err),
@@ -147,8 +155,10 @@ func (e *Engine) runRound(ctx context.Context, settings model.Settings) {
 		return
 	}
 	if len(targets) == 0 {
+		log.Printf("probe round skipped: no targets (scope=%s)", scope)
 		return
 	}
+	log.Printf("probe round started: targets=%d scope=%s", len(targets), scope)
 
 	workerCount := e.workers
 	if workerCount > len(targets) {
@@ -172,6 +182,7 @@ func (e *Engine) runRound(ctx context.Context, settings model.Settings) {
 				e.sleepJitter(ctx, settings.PingIntervalSec)
 				result := e.probeTarget(ctx, target, settings)
 				if err := e.store.RecordPingResult(ctx, result); err != nil {
+					log.Printf("probe persist failed endpoint_id=%d ip=%s err=%v", target.EndpointID, target.IP, err)
 					e.hub.Broadcast(map[string]any{
 						"type":        "probe_error",
 						"endpoint_id": target.EndpointID,
@@ -185,6 +196,7 @@ func (e *Engine) runRound(ctx context.Context, settings model.Settings) {
 				if result.Success {
 					status = "succeeded"
 				}
+				log.Printf("probe result endpoint_id=%d ip=%s status=%s latency_ms=%v", target.EndpointID, target.IP, status, result.LatencyMs)
 
 				e.hub.Broadcast(map[string]any{
 					"type":        "probe_update",
