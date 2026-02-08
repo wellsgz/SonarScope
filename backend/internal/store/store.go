@@ -345,11 +345,23 @@ func (s *Store) RecordPingResult(ctx context.Context, result model.PingResult) e
 		status = result.ErrorCode
 	}
 
+	var latencyValue any
+	if result.LatencyMs != nil {
+		latencyValue = *result.LatencyMs
+	}
+
+	var ttlValue any
+	if result.TTL != nil {
+		ttlValue = *result.TTL
+	}
+
+	replyIP := derefString(result.ReplyIP)
+
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO ping_raw(ts, endpoint_id, success, latency_ms, reply_ip, ttl, error_code, payload_bytes)
 		VALUES ($1, $2, $3, $4, NULLIF($5, '')::inet, $6, $7, $8)
 		ON CONFLICT (ts, endpoint_id) DO NOTHING
-	`, result.Timestamp, result.EndpointID, result.Success, result.LatencyMs, derefString(result.ReplyIP), result.TTL, result.ErrorCode, result.PayloadBytes); err != nil {
+	`, result.Timestamp, result.EndpointID, result.Success, latencyValue, replyIP, ttlValue, result.ErrorCode, result.PayloadBytes); err != nil {
 		return err
 	}
 
@@ -418,7 +430,7 @@ func (s *Store) RecordPingResult(ctx context.Context, result model.PingResult) e
 			END,
 			reply_ip_address = NULLIF($6, '')::inet,
 			updated_at = now()
-	`, result.EndpointID, result.Success, result.Timestamp, status, result.LatencyMs, derefString(result.ReplyIP)); err != nil {
+	`, result.EndpointID, result.Success, result.Timestamp, status, latencyValue, replyIP); err != nil {
 		return err
 	}
 
