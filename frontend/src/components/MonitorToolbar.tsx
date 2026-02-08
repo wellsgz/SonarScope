@@ -2,7 +2,7 @@ import { useMemo, type ChangeEvent } from "react";
 import type { FilterOptions, Group, Settings } from "../types/api";
 import type { QuickRange } from "../hooks/time";
 
-type FilterState = {
+export type FilterState = {
   vlan: string[];
   switches: string[];
   ports: string[];
@@ -19,6 +19,8 @@ type Props = {
   groups: Group[];
   probeRunning: boolean;
   onFilterChange: (next: FilterState) => void;
+  onClearFilter: (key: keyof FilterState) => void;
+  onClearAllFilters: () => void;
   onQuickRangeChange: (next: QuickRange) => void;
   onCustomStartChange: (value: string) => void;
   onCustomEndChange: (value: string) => void;
@@ -42,6 +44,8 @@ export function MonitorToolbar({
   groups,
   probeRunning,
   onFilterChange,
+  onClearFilter,
+  onClearAllFilters,
   onQuickRangeChange,
   onCustomStartChange,
   onCustomEndChange,
@@ -93,10 +97,20 @@ export function MonitorToolbar({
         </div>
 
         <div className="toolbar-block">
-          <div className="toolbar-title">Filters</div>
+          <div className="toolbar-title toolbar-title-row">
+            <span>Filters</span>
+            <button className="btn btn-small" onClick={onClearAllFilters}>
+              Clear All
+            </button>
+          </div>
           <div className="filter-grid">
             <label>
-              VLAN
+              <span className="filter-label-row">
+                <span>VLAN</span>
+                <button className="btn-link" type="button" onClick={() => onClearFilter("vlan")}>
+                  Clear
+                </button>
+              </span>
               <select
                 multiple
                 value={filters.vlan}
@@ -110,7 +124,12 @@ export function MonitorToolbar({
               </select>
             </label>
             <label>
-              Switch
+              <span className="filter-label-row">
+                <span>Switch</span>
+                <button className="btn-link" type="button" onClick={() => onClearFilter("switches")}>
+                  Clear
+                </button>
+              </span>
               <select
                 multiple
                 value={filters.switches}
@@ -124,7 +143,12 @@ export function MonitorToolbar({
               </select>
             </label>
             <label>
-              Port
+              <span className="filter-label-row">
+                <span>Port</span>
+                <button className="btn-link" type="button" onClick={() => onClearFilter("ports")}>
+                  Clear
+                </button>
+              </span>
               <select
                 multiple
                 value={filters.ports}
@@ -138,7 +162,12 @@ export function MonitorToolbar({
               </select>
             </label>
             <label>
-              Group
+              <span className="filter-label-row">
+                <span>Group</span>
+                <button className="btn-link" type="button" onClick={() => onClearFilter("groups")}>
+                  Clear
+                </button>
+              </span>
               <select
                 multiple
                 value={filters.groups}

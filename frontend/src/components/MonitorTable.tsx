@@ -1,16 +1,11 @@
-import {
-  createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  type RowSelectionState
-} from "@tanstack/react-table";
-import { useMemo, useState } from "react";
+import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
+import { useMemo } from "react";
 import type { MonitorEndpoint } from "../types/api";
 
 type Props = {
   rows: MonitorEndpoint[];
-  onSelectionChange: (ids: number[]) => void;
+  selectedEndpointID: number | null;
+  onSelectionChange: (id: number | null) => void;
 };
 
 function formatDate(value: string | null): string {
@@ -30,19 +25,6 @@ function formatPercent(value: number): string {
 const columnHelper = createColumnHelper<MonitorEndpoint>();
 
 const columns = [
-  columnHelper.display({
-    id: "select",
-    header: "Select",
-    cell: ({ row }) => (
-      <input
-        type="checkbox"
-        checked={row.getIsSelected()}
-        onChange={row.getToggleSelectedHandler()}
-        aria-label={`select endpoint ${row.original.ip_address}`}
-      />
-    ),
-    size: 60
-  }),
   columnHelper.accessor("hostname", { header: "Hostname" }),
   columnHelper.accessor("last_failed_on", {
     header: "Last Failed On",
@@ -86,27 +68,13 @@ const columns = [
   })
 ];
 
-export function MonitorTable({ rows, onSelectionChange }: Props) {
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-
+export function MonitorTable({ rows, selectedEndpointID, onSelectionChange }: Props) {
   const data = useMemo(() => rows, [rows]);
 
   const table = useReactTable({
     data,
     columns,
-    state: { rowSelection },
     getRowId: (row) => row.endpoint_id.toString(),
-    enableRowSelection: true,
-    onRowSelectionChange: (updater) => {
-      setRowSelection((previous) => {
-        const next = typeof updater === "function" ? updater(previous) : updater;
-        const ids = Object.entries(next)
-          .filter(([, selected]) => selected)
-          .map(([id]) => Number(id));
-        onSelectionChange(ids);
-        return next;
-      });
-    },
     getCoreRowModel: getCoreRowModel()
   });
 
@@ -128,13 +96,21 @@ export function MonitorTable({ rows, onSelectionChange }: Props) {
             ))}
           </thead>
           <tbody>
-            {table.getRowModel().rows.map((row) => (
-              <tr key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
-                ))}
-              </tr>
-            ))}
+            {table.getRowModel().rows.map((row) => {
+              const endpointID = row.original.endpoint_id;
+              const selected = selectedEndpointID === endpointID;
+              return (
+                <tr
+                  key={row.id}
+                  className={selected ? "row-selected" : ""}
+                  onClick={() => onSelectionChange(selected ? null : endpointID)}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

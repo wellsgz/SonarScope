@@ -67,6 +67,34 @@ type MonitorEndpoint struct {
 	EndpointID             int64      `json:"endpoint_id"`
 }
 
+type InventoryEndpointView struct {
+	EndpointID  int64     `json:"endpoint_id"`
+	Hostname    string    `json:"hostname"`
+	IPAddress   string    `json:"ip_address"`
+	MACAddress  string    `json:"mac_address"`
+	VLAN        string    `json:"vlan"`
+	Switch      string    `json:"switch"`
+	Port        string    `json:"port"`
+	Description string    `json:"description"`
+	Status      string    `json:"status"`
+	Zone        string    `json:"zone"`
+	FWLB        string    `json:"fw_lb"`
+	Groups      []string  `json:"group"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type InventoryEndpointUpdate struct {
+	Hostname    string `json:"hostname"`
+	MACAddress  string `json:"mac_address"`
+	VLAN        string `json:"vlan"`
+	Switch      string `json:"switch"`
+	Port        string `json:"port"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+	Zone        string `json:"zone"`
+	FWLB        string `json:"fw_lb"`
+}
+
 type Group struct {
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`

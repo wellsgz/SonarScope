@@ -58,6 +58,9 @@ func (s *Server) Routes() http.Handler {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/inventory", func(r chi.Router) {
+			r.Get("/endpoints", s.handleInventoryEndpoints)
+			r.Put("/endpoints/{endpointID}", s.handleInventoryEndpointUpdate)
+			r.Get("/filter-options", s.handleInventoryFilters)
 			r.Post("/import-preview", s.handleInventoryImportPreview)
 			r.Post("/import-apply", s.handleInventoryImportApply)
 		})
@@ -206,6 +209,67 @@ func (s *Server) handleInventoryImportApply(w http.ResponseWriter, r *http.Reque
 		"updated": updated,
 		"errors":  applyErrors,
 	})
+}
+
+func (s *Server) handleInventoryEndpoints(w http.ResponseWriter, r *http.Request) {
+	filters := store.MonitorFilters{
+		VLANs:      parseCSVQuery(r, "vlan"),
+		Switches:   parseCSVQuery(r, "switch"),
+		Ports:      parseCSVQuery(r, "port"),
+		GroupNames: parseCSVQuery(r, "group"),
+	}
+
+	items, err := s.store.ListInventoryEndpoints(r.Context(), filters)
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	util.WriteJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleInventoryEndpointUpdate(w http.ResponseWriter, r *http.Request) {
+	endpointID, err := strconv.ParseInt(chi.URLParam(r, "endpointID"), 10, 64)
+	if err != nil || endpointID < 1 {
+		util.WriteError(w, http.StatusBadRequest, "invalid endpoint id")
+		return
+	}
+
+	var patch model.InventoryEndpointUpdate
+	if err := util.DecodeJSON(r, &patch); err != nil {
+		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
+		return
+	}
+
+	patch.Hostname = strings.TrimSpace(patch.Hostname)
+	patch.MACAddress = strings.TrimSpace(patch.MACAddress)
+	patch.VLAN = strings.TrimSpace(patch.VLAN)
+	patch.Switch = strings.TrimSpace(patch.Switch)
+	patch.Port = strings.TrimSpace(patch.Port)
+	patch.Description = strings.TrimSpace(patch.Description)
+	patch.Status = strings.TrimSpace(patch.Status)
+	patch.Zone = strings.TrimSpace(patch.Zone)
+	patch.FWLB = strings.TrimSpace(patch.FWLB)
+
+	item, err := s.store.UpdateInventoryEndpoint(r.Context(), endpointID, patch)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			util.WriteError(w, http.StatusNotFound, "inventory endpoint not found")
+			return
+		}
+		util.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	util.WriteJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) handleInventoryFilters(w http.ResponseWriter, r *http.Request) {
+	filters, err := s.store.ListDistinctFilters(r.Context())
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	util.WriteJSON(w, http.StatusOK, filters)
 }
 
 func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {

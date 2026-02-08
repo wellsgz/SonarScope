@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listFilterOptions,
@@ -12,7 +12,7 @@ import {
 } from "../api/client";
 import { MonitorTable } from "../components/MonitorTable";
 import { MonitorChart } from "../components/MonitorChart";
-import { MonitorToolbar } from "../components/MonitorToolbar";
+import { MonitorToolbar, type FilterState } from "../components/MonitorToolbar";
 import { rangeToDates, toApiTime, type QuickRange } from "../hooks/time";
 import { useMonitorSocket } from "../hooks/useMonitorSocket";
 import type { Settings } from "../types/api";
@@ -24,19 +24,21 @@ function toDateTimeLocal(value: Date): string {
   )}:${pad(value.getMinutes())}`;
 }
 
+const defaultFilters: FilterState = {
+  vlan: [],
+  switches: [],
+  ports: [],
+  groups: []
+};
+
 export function MonitorPage() {
   const queryClient = useQueryClient();
 
-  const [filters, setFilters] = useState({
-    vlan: [] as string[],
-    switches: [] as string[],
-    ports: [] as string[],
-    groups: [] as string[]
-  });
+  const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [quickRange, setQuickRange] = useState<QuickRange>("30m");
   const [customStart, setCustomStart] = useState(toDateTimeLocal(new Date(Date.now() - 30 * 60 * 1000)));
   const [customEnd, setCustomEnd] = useState(toDateTimeLocal(new Date()));
-  const [selectedEndpointIDs, setSelectedEndpointIDs] = useState<number[]>([]);
+  const [selectedEndpointID, setSelectedEndpointID] = useState<number | null>(null);
   const [probeRunning, setProbeRunning] = useState(false);
 
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: getSettings });
@@ -57,6 +59,15 @@ export function MonitorPage() {
     refetchInterval: autoRefreshMs
   });
 
+  useEffect(() => {
+    if (!monitorQuery.data || selectedEndpointID === null) {
+      return;
+    }
+    if (!monitorQuery.data.some((row) => row.endpoint_id === selectedEndpointID)) {
+      setSelectedEndpointID(null);
+    }
+  }, [monitorQuery.data, selectedEndpointID]);
+
   const { start, end } = useMemo(() => {
     if (quickRange === "custom") {
       const startDate = new Date(customStart);
@@ -73,14 +84,14 @@ export function MonitorPage() {
   }, [quickRange, customStart, customEnd]);
 
   const timeSeriesQuery = useQuery({
-    queryKey: ["timeseries", selectedEndpointIDs, start.toISOString(), end.toISOString()],
+    queryKey: ["timeseries", selectedEndpointID, start.toISOString(), end.toISOString()],
     queryFn: () =>
       listMonitorTimeSeries({
-        endpointIds: selectedEndpointIDs,
+        endpointIds: selectedEndpointID ? [selectedEndpointID] : [],
         start: toApiTime(start),
         end: toApiTime(end)
       }),
-    enabled: selectedEndpointIDs.length > 0,
+    enabled: selectedEndpointID !== null,
     refetchInterval: autoRefreshMs
   });
 
@@ -105,7 +116,7 @@ export function MonitorPage() {
     const event = message as { type?: string; endpoint_id?: number };
     if (event.type === "probe_update") {
       queryClient.invalidateQueries({ queryKey: ["monitor-endpoints"] });
-      if (event.endpoint_id && selectedEndpointIDs.includes(event.endpoint_id)) {
+      if (event.endpoint_id && selectedEndpointID === event.endpoint_id) {
         queryClient.invalidateQueries({ queryKey: ["timeseries"] });
       }
     }
@@ -113,30 +124,39 @@ export function MonitorPage() {
 
   return (
     <div className="monitor-page">
-      <MonitorToolbar
-        filters={filters}
-        options={filterOptionsQuery.data}
-        quickRange={quickRange}
-        customStart={customStart}
-        customEnd={customEnd}
-        settings={settingsQuery.data}
-        groups={groupsQuery.data || []}
-        probeRunning={probeRunning}
-        onFilterChange={setFilters}
-        onQuickRangeChange={setQuickRange}
-        onCustomStartChange={(value) => {
-          setQuickRange("custom");
-          setCustomStart(value);
-        }}
-        onCustomEndChange={(value) => {
-          setQuickRange("custom");
-          setCustomEnd(value);
-        }}
-        onSettingsPatch={(settings) => settingsMutation.mutate(settings)}
-        onStartAll={() => startProbeMutation.mutate({ scope: "all" })}
-        onStartGroups={(groupIDs) => startProbeMutation.mutate({ scope: "groups", group_ids: groupIDs })}
-        onStop={() => stopProbeMutation.mutate()}
-      />
+      <div className="monitor-pane-top">
+        <MonitorToolbar
+          filters={filters}
+          options={filterOptionsQuery.data}
+          quickRange={quickRange}
+          customStart={customStart}
+          customEnd={customEnd}
+          settings={settingsQuery.data}
+          groups={groupsQuery.data || []}
+          probeRunning={probeRunning}
+          onFilterChange={setFilters}
+          onClearFilter={(key) =>
+            setFilters((prev) => ({
+              ...prev,
+              [key]: []
+            }))
+          }
+          onClearAllFilters={() => setFilters({ vlan: [], switches: [], ports: [], groups: [] })}
+          onQuickRangeChange={setQuickRange}
+          onCustomStartChange={(value) => {
+            setQuickRange("custom");
+            setCustomStart(value);
+          }}
+          onCustomEndChange={(value) => {
+            setQuickRange("custom");
+            setCustomEnd(value);
+          }}
+          onSettingsPatch={(settings) => settingsMutation.mutate(settings)}
+          onStartAll={() => startProbeMutation.mutate({ scope: "all" })}
+          onStartGroups={(groupIDs) => startProbeMutation.mutate({ scope: "groups", group_ids: groupIDs })}
+          onStop={() => stopProbeMutation.mutate()}
+        />
+      </div>
 
       {(monitorQuery.error || settingsMutation.error || startProbeMutation.error || stopProbeMutation.error) && (
         <div className="error-banner">
@@ -147,13 +167,20 @@ export function MonitorPage() {
         </div>
       )}
 
-      <div className="pane-stack">
-        <div className="pane-upper">
-          <MonitorTable rows={monitorQuery.data || []} onSelectionChange={setSelectedEndpointIDs} />
-        </div>
-        <div className="pane-lower">
+      <div className="monitor-pane-middle">
+        <MonitorTable
+          rows={monitorQuery.data || []}
+          selectedEndpointID={selectedEndpointID}
+          onSelectionChange={setSelectedEndpointID}
+        />
+      </div>
+
+      <div className="monitor-pane-bottom">
+        {selectedEndpointID === null ? (
+          <div className="panel empty-chart-panel">Select an endpoint row to view loss rate and latency graph.</div>
+        ) : (
           <MonitorChart points={timeSeriesQuery.data?.series || []} />
-        </div>
+        )}
       </div>
     </div>
   );

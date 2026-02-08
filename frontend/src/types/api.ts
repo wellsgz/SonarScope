@@ -22,6 +22,22 @@ export type MonitorEndpoint = {
   group: string[];
 };
 
+export type InventoryEndpoint = {
+  endpoint_id: number;
+  hostname: string;
+  ip_address: string;
+  mac_address: string;
+  vlan: string;
+  switch: string;
+  port: string;
+  description: string;
+  status: string;
+  zone: string;
+  fw_lb: string;
+  group: string[];
+  updated_at: string;
+};
+
 export type Group = {
   id: number;
   name: string;

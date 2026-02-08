@@ -1,6 +1,7 @@
 import type {
   FilterOptions,
   Group,
+  InventoryEndpoint,
   ImportPreview,
   MonitorEndpoint,
   Settings,
@@ -131,6 +132,45 @@ export async function listMonitorTimeSeries(payload: {
 
 export async function listFilterOptions(): Promise<FilterOptions> {
   return request<FilterOptions>("/api/monitor/filter-options");
+}
+
+export async function listInventoryFilterOptions(): Promise<FilterOptions> {
+  return request<FilterOptions>("/api/inventory/filter-options");
+}
+
+export async function listInventoryEndpoints(filters: {
+  vlan?: string[];
+  switches?: string[];
+  ports?: string[];
+  groups?: string[];
+}): Promise<InventoryEndpoint[]> {
+  const path = buildQuery("/api/inventory/endpoints", {
+    vlan: filters.vlan?.join(","),
+    switch: filters.switches?.join(","),
+    port: filters.ports?.join(","),
+    group: filters.groups?.join(",")
+  });
+  return request<InventoryEndpoint[]>(path);
+}
+
+export async function updateInventoryEndpoint(
+  endpointID: number,
+  payload: {
+    hostname: string;
+    mac_address: string;
+    vlan: string;
+    switch: string;
+    port: string;
+    description: string;
+    status: string;
+    zone: string;
+    fw_lb: string;
+  }
+): Promise<InventoryEndpoint> {
+  return request<InventoryEndpoint>(`/api/inventory/endpoints/${endpointID}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function startProbe(payload: {

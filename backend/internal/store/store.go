@@ -545,6 +545,161 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 	return items, rows.Err()
 }
 
+func (s *Store) ListInventoryEndpoints(ctx context.Context, filters MonitorFilters) ([]model.InventoryEndpointView, error) {
+	query := `
+		SELECT
+			ie.id,
+			ie.hostname,
+			host(ie.ip) AS ip_address,
+			ie.mac,
+			ie.vlan,
+			ie.switch_name,
+			ie.port,
+			ie.description,
+			ie.status,
+			ie.zone,
+			ie.fw_lb,
+			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
+			ie.updated_at
+		FROM inventory_endpoint ie
+		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
+		LEFT JOIN group_def gd ON gd.id = gm.group_id
+		WHERE 1=1
+	`
+
+	args := []any{}
+	if len(filters.VLANs) > 0 {
+		query += fmt.Sprintf(" AND ie.vlan = ANY($%d)", len(args)+1)
+		args = append(args, filters.VLANs)
+	}
+	if len(filters.Switches) > 0 {
+		query += fmt.Sprintf(" AND ie.switch_name = ANY($%d)", len(args)+1)
+		args = append(args, filters.Switches)
+	}
+	if len(filters.Ports) > 0 {
+		query += fmt.Sprintf(" AND ie.port = ANY($%d)", len(args)+1)
+		args = append(args, filters.Ports)
+	}
+	if len(filters.GroupNames) > 0 {
+		query += fmt.Sprintf(`
+			AND EXISTS (
+				SELECT 1
+				FROM group_member gm2
+				JOIN group_def gd2 ON gd2.id = gm2.group_id
+				WHERE gm2.endpoint_id = ie.id
+				  AND gd2.name = ANY($%d)
+			)
+		`, len(args)+1)
+		args = append(args, filters.GroupNames)
+	}
+
+	query += `
+		GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.switch_name, ie.port,
+			ie.description, ie.status, ie.zone, ie.fw_lb, ie.updated_at
+		ORDER BY ie.ip
+	`
+
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []model.InventoryEndpointView{}
+	for rows.Next() {
+		var item model.InventoryEndpointView
+		if err := rows.Scan(
+			&item.EndpointID,
+			&item.Hostname,
+			&item.IPAddress,
+			&item.MACAddress,
+			&item.VLAN,
+			&item.Switch,
+			&item.Port,
+			&item.Description,
+			&item.Status,
+			&item.Zone,
+			&item.FWLB,
+			&item.Groups,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Store) UpdateInventoryEndpoint(ctx context.Context, endpointID int64, patch model.InventoryEndpointUpdate) (model.InventoryEndpointView, error) {
+	cmd, err := s.pool.Exec(ctx, `
+		UPDATE inventory_endpoint
+		SET hostname = $2,
+			mac = $3,
+			vlan = $4,
+			switch_name = $5,
+			port = $6,
+			description = $7,
+			status = $8,
+			zone = $9,
+			fw_lb = $10,
+			updated_at = now()
+		WHERE id = $1
+	`, endpointID, patch.Hostname, patch.MACAddress, patch.VLAN, patch.Switch, patch.Port, patch.Description, patch.Status, patch.Zone, patch.FWLB)
+	if err != nil {
+		return model.InventoryEndpointView{}, err
+	}
+	if cmd.RowsAffected() == 0 {
+		return model.InventoryEndpointView{}, pgx.ErrNoRows
+	}
+
+	return s.GetInventoryEndpointByID(ctx, endpointID)
+}
+
+func (s *Store) GetInventoryEndpointByID(ctx context.Context, endpointID int64) (model.InventoryEndpointView, error) {
+	row := s.pool.QueryRow(ctx, `
+		SELECT
+			ie.id,
+			ie.hostname,
+			host(ie.ip) AS ip_address,
+			ie.mac,
+			ie.vlan,
+			ie.switch_name,
+			ie.port,
+			ie.description,
+			ie.status,
+			ie.zone,
+			ie.fw_lb,
+			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
+			ie.updated_at
+		FROM inventory_endpoint ie
+		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
+		LEFT JOIN group_def gd ON gd.id = gm.group_id
+		WHERE ie.id = $1
+		GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.switch_name, ie.port,
+			ie.description, ie.status, ie.zone, ie.fw_lb, ie.updated_at
+	`, endpointID)
+
+	var item model.InventoryEndpointView
+	if err := row.Scan(
+		&item.EndpointID,
+		&item.Hostname,
+		&item.IPAddress,
+		&item.MACAddress,
+		&item.VLAN,
+		&item.Switch,
+		&item.Port,
+		&item.Description,
+		&item.Status,
+		&item.Zone,
+		&item.FWLB,
+		&item.Groups,
+		&item.UpdatedAt,
+	); err != nil {
+		return model.InventoryEndpointView{}, err
+	}
+	return item, nil
+}
+
 func (s *Store) QueryTimeSeries(ctx context.Context, endpointIDs []int64, start time.Time, end time.Time, rollup string) ([]model.TimeSeriesPoint, error) {
 	if len(endpointIDs) == 0 {
 		return []model.TimeSeriesPoint{}, nil
