@@ -1,0 +1,12 @@
+:80 {
+    encode zstd gzip
+
+    route {
+        @api path /api/* /ws/* /healthz
+        reverse_proxy @api sonarscope-api:8080
+
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+}
