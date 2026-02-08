@@ -359,7 +359,7 @@ func (s *Store) RecordPingResult(ctx context.Context, result model.PingResult) e
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO ping_raw(ts, endpoint_id, success, latency_ms, reply_ip, ttl, error_code, payload_bytes)
-		VALUES ($1, $2, $3, $4, NULLIF($5, '')::inet, $6, $7, $8)
+		VALUES ($1::timestamptz, $2::bigint, $3::boolean, $4::double precision, NULLIF($5, '')::inet, $6::int, $7::text, $8::int)
 		ON CONFLICT (ts, endpoint_id) DO NOTHING
 	`, result.Timestamp, result.EndpointID, result.Success, latencyValue, replyIP, ttlValue, result.ErrorCode, result.PayloadBytes); err != nil {
 		return err
@@ -384,47 +384,47 @@ func (s *Store) RecordPingResult(ctx context.Context, result model.PingResult) e
 			updated_at
 		)
 		VALUES (
-			$1,
-			CASE WHEN $2 = FALSE THEN $3 ELSE NULL END,
-			CASE WHEN $2 = TRUE THEN $3 ELSE NULL END,
-			CASE WHEN $2 = TRUE THEN 1 ELSE 0 END,
-			CASE WHEN $2 = FALSE THEN 1 ELSE 0 END,
-			CASE WHEN $2 = FALSE THEN 1 ELSE 0 END,
-			CASE WHEN $2 = FALSE THEN 1 ELSE 0 END,
-			CASE WHEN $2 = FALSE THEN $3 ELSE NULL END,
-			CASE WHEN $2 = FALSE THEN 100 ELSE 0 END,
+			$1::bigint,
+			CASE WHEN $2::boolean = FALSE THEN $3::timestamptz ELSE NULL END,
+			CASE WHEN $2::boolean = TRUE THEN $3::timestamptz ELSE NULL END,
+			CASE WHEN $2::boolean = TRUE THEN 1 ELSE 0 END,
+			CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
+			CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
+			CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
+			CASE WHEN $2::boolean = FALSE THEN $3::timestamptz ELSE NULL END,
+			CASE WHEN $2::boolean = FALSE THEN 100 ELSE 0 END,
 			1,
-			$4,
-			$5,
-			$5,
+			$4::text,
+			$5::double precision,
+			$5::double precision,
 			NULLIF($6, '')::inet,
 			now()
 		)
 		ON CONFLICT (endpoint_id) DO UPDATE SET
-			last_failed_on = CASE WHEN $2 = FALSE THEN $3 ELSE endpoint_stats_current.last_failed_on END,
-			last_success_on = CASE WHEN $2 = TRUE THEN $3 ELSE endpoint_stats_current.last_success_on END,
-			success_count = endpoint_stats_current.success_count + CASE WHEN $2 = TRUE THEN 1 ELSE 0 END,
-			failed_count = endpoint_stats_current.failed_count + CASE WHEN $2 = FALSE THEN 1 ELSE 0 END,
-			consecutive_failed_count = CASE WHEN $2 = FALSE THEN endpoint_stats_current.consecutive_failed_count + 1 ELSE 0 END,
+			last_failed_on = CASE WHEN $2::boolean = FALSE THEN $3::timestamptz ELSE endpoint_stats_current.last_failed_on END,
+			last_success_on = CASE WHEN $2::boolean = TRUE THEN $3::timestamptz ELSE endpoint_stats_current.last_success_on END,
+			success_count = endpoint_stats_current.success_count + CASE WHEN $2::boolean = TRUE THEN 1 ELSE 0 END,
+			failed_count = endpoint_stats_current.failed_count + CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
+			consecutive_failed_count = CASE WHEN $2::boolean = FALSE THEN endpoint_stats_current.consecutive_failed_count + 1 ELSE 0 END,
 			max_consecutive_failed_count = GREATEST(
 				endpoint_stats_current.max_consecutive_failed_count,
-				CASE WHEN $2 = FALSE THEN endpoint_stats_current.consecutive_failed_count + 1 ELSE endpoint_stats_current.max_consecutive_failed_count END
+				CASE WHEN $2::boolean = FALSE THEN endpoint_stats_current.consecutive_failed_count + 1 ELSE endpoint_stats_current.max_consecutive_failed_count END
 			),
 			max_consecutive_failed_count_time = CASE
-				WHEN $2 = FALSE AND endpoint_stats_current.consecutive_failed_count + 1 > endpoint_stats_current.max_consecutive_failed_count THEN $3
+				WHEN $2::boolean = FALSE AND endpoint_stats_current.consecutive_failed_count + 1 > endpoint_stats_current.max_consecutive_failed_count THEN $3::timestamptz
 				ELSE endpoint_stats_current.max_consecutive_failed_count_time
 			END,
 			total_sent_ping = endpoint_stats_current.total_sent_ping + 1,
 			failed_pct = (
-				(endpoint_stats_current.failed_count + CASE WHEN $2 = FALSE THEN 1 ELSE 0 END)::DOUBLE PRECISION /
+				(endpoint_stats_current.failed_count + CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END)::DOUBLE PRECISION /
 				(endpoint_stats_current.total_sent_ping + 1)::DOUBLE PRECISION
 			) * 100,
-			last_ping_status = $4,
-			last_ping_latency = $5,
+			last_ping_status = $4::text,
+			last_ping_latency = $5::double precision,
 			average_latency = CASE
-				WHEN $2 = TRUE AND $5 IS NOT NULL THEN
+				WHEN $2::boolean = TRUE AND $5 IS NOT NULL THEN
 					(
-						(COALESCE(endpoint_stats_current.average_latency, 0) * endpoint_stats_current.success_count) + $5
+						(COALESCE(endpoint_stats_current.average_latency, 0) * endpoint_stats_current.success_count) + $5::double precision
 					) / (endpoint_stats_current.success_count + 1)
 				ELSE endpoint_stats_current.average_latency
 			END,
