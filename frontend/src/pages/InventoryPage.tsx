@@ -41,12 +41,19 @@ function toPatch(row: InventoryEndpoint): InventoryPatch {
     switch: row.switch,
     port: row.port,
     port_type: row.port_type,
-    description: row.description,
+    description: row.description
   };
 }
 
 function multiSelectValue(event: ChangeEvent<HTMLSelectElement>): string[] {
   return Array.from(event.target.selectedOptions).map((option) => option.value);
+}
+
+function badgeClass(action: ImportCandidate["action"]) {
+  if (action === "add") return "badge badge-add";
+  if (action === "update") return "badge badge-update";
+  if (action === "invalid") return "badge badge-invalid";
+  return "badge badge-unchanged";
 }
 
 export function InventoryPage() {
@@ -60,10 +67,22 @@ export function InventoryPage() {
   const [editingEndpointID, setEditingEndpointID] = useState<number | null>(null);
   const [editingPatch, setEditingPatch] = useState<InventoryPatch | null>(null);
 
+  const filterCards: Array<{ key: keyof FilterState; label: string; options: string[] }> = [
+    { key: "vlan", label: "VLAN", options: [] },
+    { key: "switches", label: "Switch", options: [] },
+    { key: "ports", label: "Port", options: [] },
+    { key: "groups", label: "Group", options: [] }
+  ];
+
   const filterOptionsQuery = useQuery({
     queryKey: ["inventory-filter-options"],
     queryFn: listInventoryFilterOptions
   });
+
+  filterCards[0].options = filterOptionsQuery.data?.vlan || [];
+  filterCards[1].options = filterOptionsQuery.data?.switch || [];
+  filterCards[2].options = filterOptionsQuery.data?.port || [];
+  filterCards[3].options = filterOptionsQuery.data?.group || [];
 
   const inventoryQuery = useQuery({
     queryKey: ["inventory-endpoints", filters],
@@ -133,22 +152,21 @@ export function InventoryPage() {
   }, [preview]);
 
   return (
-    <div className="inventory-v11-page">
-      <div className="panel inventory-import-panel">
-        <h2>Inventory Import</h2>
-        <p>Upload CSV/XLSX and apply selected Add/Update changes after preview.</p>
+    <div className="inventory-page-v13">
+      <section className="panel inventory-import-panel">
+        <div className="panel-header" style={{ margin: "-1rem -1rem 0" }}>
+          <h2 className="panel-title">Inventory Import</h2>
+          <p className="panel-subtitle">Upload CSV/XLSX, review diff, and apply selected Add/Update actions.</p>
+        </div>
 
         <div className="inventory-actions">
-          <input
-            type="file"
-            accept=".csv,.xlsx,.xls,.xlsm"
-            onChange={(event) => setFile(event.target.files?.[0] || null)}
-          />
-          <button className="btn btn-primary" onClick={() => file && previewMutation.mutate(file)} disabled={!file}>
+          <input type="file" accept=".csv,.xlsx,.xls,.xlsm" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+          <button className="btn btn-primary" type="button" onClick={() => file && previewMutation.mutate(file)} disabled={!file}>
             Preview
           </button>
           <button
             className="btn"
+            type="button"
             onClick={() => applyMutation.mutate()}
             disabled={!preview || Object.keys(selection).length === 0}
           >
@@ -156,21 +174,28 @@ export function InventoryPage() {
           </button>
         </div>
 
-        {previewMutation.error && <div className="error-banner">{(previewMutation.error as Error).message}</div>}
-        {applyMutation.error && <div className="error-banner">{(applyMutation.error as Error).message}</div>}
+        {previewMutation.error && (
+          <div className="error-banner" role="alert" aria-live="assertive">
+            {(previewMutation.error as Error).message}
+          </div>
+        )}
+        {applyMutation.error && (
+          <div className="error-banner" role="alert" aria-live="assertive">
+            {(applyMutation.error as Error).message}
+          </div>
+        )}
         {applyMutation.data && (
-          <div className="success-banner">
-            Added: {applyMutation.data.added}, Updated: {applyMutation.data.updated}, Errors:
-            {applyMutation.data.errors.length}
+          <div className="success-banner" role="status" aria-live="polite">
+            Added: {applyMutation.data.added}, Updated: {applyMutation.data.updated}, Errors: {applyMutation.data.errors.length}
           </div>
         )}
 
         {summary && (
           <div className="summary-row">
-            <span>Add: {summary.add}</span>
-            <span>Update: {summary.update}</span>
-            <span>Unchanged: {summary.unchanged}</span>
-            <span>Invalid: {summary.invalid}</span>
+            <span className="status-chip">Add: {summary.add}</span>
+            <span className="status-chip">Update: {summary.update}</span>
+            <span className="status-chip">Unchanged: {summary.unchanged}</span>
+            <span className="status-chip">Invalid: {summary.invalid}</span>
           </div>
         )}
 
@@ -216,19 +241,22 @@ export function InventoryPage() {
                         />
                       </td>
                       <td>
-                        <select
-                          value={selected || candidate.action}
-                          disabled={!eligible || !selected}
-                          onChange={(event) =>
-                            setSelection((prev) => ({
-                              ...prev,
-                              [candidate.row_id]: event.target.value as "add" | "update"
-                            }))
-                          }
-                        >
-                          <option value="add">add</option>
-                          <option value="update">update</option>
-                        </select>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span className={badgeClass(candidate.action)}>{candidate.action}</span>
+                          <select
+                            value={selected || candidate.action}
+                            disabled={!eligible || !selected}
+                            onChange={(event) =>
+                              setSelection((prev) => ({
+                                ...prev,
+                                [candidate.row_id]: event.target.value as "add" | "update"
+                              }))
+                            }
+                          >
+                            <option value="add">add</option>
+                            <option value="update">update</option>
+                          </select>
+                        </div>
                       </td>
                       <td>{candidate.source_row}</td>
                       <td>{candidate.ip}</td>
@@ -236,7 +264,7 @@ export function InventoryPage() {
                       <td>{candidate.vlan}</td>
                       <td>{candidate.switch}</td>
                       <td>{candidate.port}</td>
-                      <td>{candidate.port_type}</td>
+                      <td>{candidate.port_type || "-"}</td>
                       <td>{candidate.message}</td>
                     </tr>
                   );
@@ -245,256 +273,232 @@ export function InventoryPage() {
             </table>
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="panel inventory-list-panel">
-        <div className="inventory-title-row">
-          <h2>Current Inventory</h2>
-          <button className="btn btn-small" onClick={() => setFilters({ vlan: [], switches: [], ports: [], groups: [] })}>
-            Clear All Filters
-          </button>
+      <section className="panel inventory-list-panel">
+        <div className="panel-header" style={{ margin: "-1rem -1rem 0" }}>
+          <div className="inventory-title-row">
+            <h2 className="panel-title">Current Inventory</h2>
+            <button className="btn btn-small" type="button" onClick={() => setFilters(defaultFilters)}>
+              Clear All Filters
+            </button>
+          </div>
+          <p className="panel-subtitle">Filter and maintain endpoint metadata (IP is immutable).</p>
         </div>
 
-        <div className="inventory-filter-grid">
-          <label>
-            <span className="filter-label-row">
-              <span>VLAN</span>
-              <button className="btn-link" type="button" onClick={() => setFilters((prev) => ({ ...prev, vlan: [] }))}>
-                Clear
-              </button>
-            </span>
-            <select
-              multiple
-              value={filters.vlan}
-              onChange={(event) => setFilters((prev) => ({ ...prev, vlan: multiSelectValue(event) }))}
-            >
-              {(filterOptionsQuery.data?.vlan || []).map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span className="filter-label-row">
-              <span>Switch</span>
-              <button
-                className="btn-link"
-                type="button"
-                onClick={() => setFilters((prev) => ({ ...prev, switches: [] }))}
-              >
-                Clear
-              </button>
-            </span>
-            <select
-              multiple
-              value={filters.switches}
-              onChange={(event) => setFilters((prev) => ({ ...prev, switches: multiSelectValue(event) }))}
-            >
-              {(filterOptionsQuery.data?.switch || []).map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span className="filter-label-row">
-              <span>Port</span>
-              <button className="btn-link" type="button" onClick={() => setFilters((prev) => ({ ...prev, ports: [] }))}>
-                Clear
-              </button>
-            </span>
-            <select
-              multiple
-              value={filters.ports}
-              onChange={(event) => setFilters((prev) => ({ ...prev, ports: multiSelectValue(event) }))}
-            >
-              {(filterOptionsQuery.data?.port || []).map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span className="filter-label-row">
-              <span>Group</span>
-              <button
-                className="btn-link"
-                type="button"
-                onClick={() => setFilters((prev) => ({ ...prev, groups: [] }))}
-              >
-                Clear
-              </button>
-            </span>
-            <select
-              multiple
-              value={filters.groups}
-              onChange={(event) => setFilters((prev) => ({ ...prev, groups: multiSelectValue(event) }))}
-            >
-              {(filterOptionsQuery.data?.group || []).map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="inventory-filter-section">
+          <div className="inventory-filter-grid">
+            {filterCards.map((filterCard) => {
+              const selectedValues = filters[filterCard.key];
+              return (
+                <details key={filterCard.key} className="filter-card" open={selectedValues.length > 0}>
+                  <summary className="filter-card-summary">
+                    <span>{filterCard.label}</span>
+                    <span className="count-badge">{selectedValues.length}</span>
+                  </summary>
+                  <div className="filter-card-body">
+                    <div className="filter-card-actions">
+                      <span>{selectedValues.length} selected</span>
+                      <button className="btn-link" type="button" onClick={() => setFilters((prev) => ({ ...prev, [filterCard.key]: [] }))}>
+                        Clear
+                      </button>
+                    </div>
+                    <select
+                      multiple
+                      value={selectedValues}
+                      onChange={(event) =>
+                        setFilters((prev) => ({
+                          ...prev,
+                          [filterCard.key]: multiSelectValue(event)
+                        }))
+                      }
+                      aria-label={`${filterCard.label} filter`}
+                    >
+                      {filterCard.options.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </details>
+              );
+            })}
+          </div>
         </div>
 
         {(inventoryQuery.error || updateMutation.error) && (
-          <div className="error-banner">
+          <div className="error-banner" role="alert" aria-live="assertive">
             {(inventoryQuery.error as Error | undefined)?.message || (updateMutation.error as Error | undefined)?.message}
           </div>
         )}
-        {updateMutation.isSuccess && <div className="success-banner">Inventory endpoint updated.</div>}
+        {updateMutation.isSuccess && (
+          <div className="success-banner" role="status" aria-live="polite">
+            Inventory endpoint updated.
+          </div>
+        )}
 
-        <div className="table-scroll inventory-table-scroll">
-          <table className="monitor-table">
-            <thead>
-              <tr>
-                <th>Hostname</th>
-                <th>IP Address</th>
-                <th>MAC</th>
-                <th>VLAN</th>
-                <th>Switch</th>
-                <th>Port</th>
-                <th>Port Type</th>
-                <th>Description</th>
-                <th>Group</th>
-                <th>Updated At</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(inventoryQuery.data || []).map((row) => {
-                const isEditing = editingEndpointID === row.endpoint_id && editingPatch !== null;
-                return (
-                  <tr key={row.endpoint_id}>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editingPatch.hostname}
-                          onChange={(event) =>
-                            setEditingPatch((prev) => (prev ? { ...prev, hostname: event.target.value } : prev))
-                          }
-                        />
-                      ) : (
-                        row.hostname || "-"
-                      )}
-                    </td>
-                    <td>{row.ip_address}</td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editingPatch.mac_address}
-                          onChange={(event) =>
-                            setEditingPatch((prev) => (prev ? { ...prev, mac_address: event.target.value } : prev))
-                          }
-                        />
-                      ) : (
-                        row.mac_address || "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editingPatch.vlan}
-                          onChange={(event) =>
-                            setEditingPatch((prev) => (prev ? { ...prev, vlan: event.target.value } : prev))
-                          }
-                        />
-                      ) : (
-                        row.vlan || "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editingPatch.switch}
-                          onChange={(event) =>
-                            setEditingPatch((prev) => (prev ? { ...prev, switch: event.target.value } : prev))
-                          }
-                        />
-                      ) : (
-                        row.switch || "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editingPatch.port}
-                          onChange={(event) =>
-                            setEditingPatch((prev) => (prev ? { ...prev, port: event.target.value } : prev))
-                          }
-                        />
-                      ) : (
-                        row.port || "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editingPatch.port_type}
-                          onChange={(event) =>
-                            setEditingPatch((prev) => (prev ? { ...prev, port_type: event.target.value } : prev))
-                          }
-                        />
-                      ) : (
-                        row.port_type || "-"
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          value={editingPatch.description}
-                          onChange={(event) =>
-                            setEditingPatch((prev) => (prev ? { ...prev, description: event.target.value } : prev))
-                          }
-                        />
-                      ) : (
-                        row.description || "-"
-                      )}
-                    </td>
-                    <td>{row.group.join(", ") || "-"}</td>
-                    <td>{new Date(row.updated_at).toLocaleString()}</td>
-                    <td>
-                      <div className="button-row">
+        {inventoryQuery.isLoading ? (
+          <div className="panel state-panel" style={{ minHeight: 220 }}>
+            <div>
+              <span className="skeleton-bar" style={{ width: 220 }} />
+              <p style={{ marginTop: 10 }}>Loading inventory records…</p>
+            </div>
+          </div>
+        ) : (inventoryQuery.data || []).length === 0 ? (
+          <div className="panel state-panel" style={{ minHeight: 220 }}>
+            No inventory rows match the active filters.
+          </div>
+        ) : (
+          <div className="table-scroll inventory-table-scroll">
+            <table className="monitor-table">
+              <thead>
+                <tr>
+                  <th>Hostname</th>
+                  <th>IP Address</th>
+                  <th>MAC</th>
+                  <th>VLAN</th>
+                  <th>Switch</th>
+                  <th>Port</th>
+                  <th>Port Type</th>
+                  <th>Description</th>
+                  <th>Group</th>
+                  <th>Updated At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(inventoryQuery.data || []).map((row) => {
+                  const isEditing = editingEndpointID === row.endpoint_id && editingPatch !== null;
+                  return (
+                    <tr key={row.endpoint_id} className={isEditing ? "row-selected" : ""}>
+                      <td>
                         {isEditing ? (
-                          <>
-                            <button className="btn btn-primary" onClick={() => updateMutation.mutate()}>
-                              Save
-                            </button>
+                          <input
+                            value={editingPatch.hostname}
+                            onChange={(event) =>
+                              setEditingPatch((prev) => (prev ? { ...prev, hostname: event.target.value } : prev))
+                            }
+                          />
+                        ) : (
+                          row.hostname || "-"
+                        )}
+                      </td>
+                      <td>{row.ip_address}</td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            value={editingPatch.mac_address}
+                            onChange={(event) =>
+                              setEditingPatch((prev) => (prev ? { ...prev, mac_address: event.target.value } : prev))
+                            }
+                          />
+                        ) : (
+                          row.mac_address || "-"
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            value={editingPatch.vlan}
+                            onChange={(event) =>
+                              setEditingPatch((prev) => (prev ? { ...prev, vlan: event.target.value } : prev))
+                            }
+                          />
+                        ) : (
+                          row.vlan || "-"
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            value={editingPatch.switch}
+                            onChange={(event) =>
+                              setEditingPatch((prev) => (prev ? { ...prev, switch: event.target.value } : prev))
+                            }
+                          />
+                        ) : (
+                          row.switch || "-"
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            value={editingPatch.port}
+                            onChange={(event) =>
+                              setEditingPatch((prev) => (prev ? { ...prev, port: event.target.value } : prev))
+                            }
+                          />
+                        ) : (
+                          row.port || "-"
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            value={editingPatch.port_type}
+                            onChange={(event) =>
+                              setEditingPatch((prev) => (prev ? { ...prev, port_type: event.target.value } : prev))
+                            }
+                          />
+                        ) : (
+                          row.port_type || "-"
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            value={editingPatch.description}
+                            onChange={(event) =>
+                              setEditingPatch((prev) => (prev ? { ...prev, description: event.target.value } : prev))
+                            }
+                          />
+                        ) : (
+                          row.description || "-"
+                        )}
+                      </td>
+                      <td>{row.group.join(", ") || "-"}</td>
+                      <td>{new Date(row.updated_at).toLocaleString()}</td>
+                      <td>
+                        <div className="button-row">
+                          {isEditing ? (
+                            <>
+                              <button className="btn btn-primary" type="button" onClick={() => updateMutation.mutate()}>
+                                Save
+                              </button>
+                              <button
+                                className="btn"
+                                type="button"
+                                onClick={() => {
+                                  setEditingEndpointID(null);
+                                  setEditingPatch(null);
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
                             <button
                               className="btn"
+                              type="button"
                               onClick={() => {
-                                setEditingEndpointID(null);
-                                setEditingPatch(null);
+                                setEditingEndpointID(row.endpoint_id);
+                                setEditingPatch(toPatch(row));
                               }}
                             >
-                              Cancel
+                              Edit
                             </button>
-                          </>
-                        ) : (
-                          <button
-                            className="btn"
-                            onClick={() => {
-                              setEditingEndpointID(row.endpoint_id);
-                              setEditingPatch(toPatch(row));
-                            }}
-                          >
-                            Edit
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

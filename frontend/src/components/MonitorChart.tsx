@@ -4,6 +4,7 @@ import type { TimeSeriesPoint } from "../types/api";
 
 type Props = {
   points: TimeSeriesPoint[];
+  endpointLabel: string;
 };
 
 function buildLineSeries(points: TimeSeriesPoint[], metric: "loss_rate" | "avg_latency_ms") {
@@ -27,7 +28,23 @@ function buildLineSeries(points: TimeSeriesPoint[], metric: "loss_rate" | "avg_l
   });
 }
 
-export function MonitorChart({ points }: Props) {
+function readToken(name: string, fallback: string): string {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+export function MonitorChart({ points, endpointLabel }: Props) {
+  const palette = {
+    textMuted: readToken("--color-text-muted", "#b4c3db"),
+    textSubtle: readToken("--color-text-subtle", "#94a7c4"),
+    border: readToken("--color-border", "#21324d"),
+    accent: readToken("--color-accent", "#818cf8"),
+    success: readToken("--color-success", "#10b981")
+  };
+
   const option = useMemo(() => {
     const lossSeries = buildLineSeries(points, "loss_rate");
     const latencySeries = buildLineSeries(points, "avg_latency_ms");
@@ -38,7 +55,7 @@ export function MonitorChart({ points }: Props) {
         trigger: "axis"
       },
       legend: {
-        textStyle: { color: "#dbe8f7" }
+        textStyle: { color: palette.textMuted, fontSize: 11 }
       },
       grid: {
         left: 48,
@@ -48,30 +65,42 @@ export function MonitorChart({ points }: Props) {
       },
       xAxis: {
         type: "time",
-        axisLabel: { color: "#b8d4ee" },
-        axisLine: { lineStyle: { color: "#5d8fc5" } }
+        axisLabel: { color: palette.textSubtle },
+        axisLine: { lineStyle: { color: palette.border } },
+        splitLine: { lineStyle: { color: palette.border } }
       },
       yAxis: [
         {
           type: "value",
           name: "Loss Rate (%)",
-          axisLabel: { color: "#b8d4ee" },
-          splitLine: { lineStyle: { color: "rgba(184, 212, 238, 0.15)" } }
+          axisLabel: { color: palette.textSubtle },
+          nameTextStyle: { color: palette.textMuted },
+          splitLine: { lineStyle: { color: palette.border } }
         },
         {
           type: "value",
           name: "Latency (ms)",
-          axisLabel: { color: "#b8d4ee" },
+          axisLabel: { color: palette.textSubtle },
+          nameTextStyle: { color: palette.textMuted },
           splitLine: { show: false }
         }
       ],
-      series: [...lossSeries, ...latencySeries]
+      series: [
+        ...lossSeries.map((series) => ({ ...series, lineStyle: { color: palette.accent } })),
+        ...latencySeries.map((series) => ({ ...series, lineStyle: { color: palette.success } }))
+      ]
     };
-  }, [points]);
+  }, [palette.accent, palette.border, palette.success, palette.textMuted, palette.textSubtle, points]);
 
   return (
     <div className="panel chart-panel">
-      <ReactECharts option={option} style={{ height: "100%", minHeight: 280 }} />
+      <div className="chart-header">
+        <div>
+          <div className="chart-title">Loss & Latency Timeline</div>
+          <div className="chart-subtitle">Selected endpoint: {endpointLabel}</div>
+        </div>
+      </div>
+      <ReactECharts option={option} className="chart-canvas" />
     </div>
   );
 }

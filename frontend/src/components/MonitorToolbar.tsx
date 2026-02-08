@@ -59,10 +59,17 @@ export function MonitorToolbar({
     [groups, filters.groups]
   );
 
+  const filterCards: Array<{ key: keyof FilterState; label: string; options: string[] }> = [
+    { key: "vlan", label: "VLAN", options: options?.vlan || [] },
+    { key: "switches", label: "Switch", options: options?.switch || [] },
+    { key: "ports", label: "Port", options: options?.port || [] },
+    { key: "groups", label: "Group", options: options?.group || [] }
+  ];
+
   return (
     <div className="panel toolbar-panel">
       <div className="toolbar-grid">
-        <div className="toolbar-block">
+        <section className="toolbar-block" aria-label="Time range controls">
           <div className="toolbar-title">Time Range</div>
           <div className="quick-range-row">
             {[
@@ -75,6 +82,7 @@ export function MonitorToolbar({
             ].map((item) => (
               <button
                 key={item.id}
+                type="button"
                 className={`chip ${quickRange === item.id ? "chip-active" : ""}`}
                 onClick={() => onQuickRangeChange(item.id as QuickRange)}
               >
@@ -87,175 +95,136 @@ export function MonitorToolbar({
               type="datetime-local"
               value={customStart}
               onChange={(event) => onCustomStartChange(event.target.value)}
+              aria-label="Custom start time"
             />
             <input
               type="datetime-local"
               value={customEnd}
               onChange={(event) => onCustomEndChange(event.target.value)}
+              aria-label="Custom end time"
             />
           </div>
-        </div>
+        </section>
 
-        <div className="toolbar-block">
+        <section className="toolbar-block" aria-label="Endpoint filters">
           <div className="toolbar-title toolbar-title-row">
             <span>Filters</span>
-            <button className="btn btn-small" onClick={onClearAllFilters}>
+            <button className="btn btn-small" type="button" onClick={onClearAllFilters}>
               Clear All
             </button>
           </div>
-          <div className="filter-grid">
-            <label>
-              <span className="filter-label-row">
-                <span>VLAN</span>
-                <button className="btn-link" type="button" onClick={() => onClearFilter("vlan")}>
-                  Clear
-                </button>
-              </span>
-              <select
-                multiple
-                value={filters.vlan}
-                onChange={(event) => onFilterChange({ ...filters, vlan: multiSelectValue(event) })}
-              >
-                {(options?.vlan || []).map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="filter-label-row">
-                <span>Switch</span>
-                <button className="btn-link" type="button" onClick={() => onClearFilter("switches")}>
-                  Clear
-                </button>
-              </span>
-              <select
-                multiple
-                value={filters.switches}
-                onChange={(event) => onFilterChange({ ...filters, switches: multiSelectValue(event) })}
-              >
-                {(options?.switch || []).map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="filter-label-row">
-                <span>Port</span>
-                <button className="btn-link" type="button" onClick={() => onClearFilter("ports")}>
-                  Clear
-                </button>
-              </span>
-              <select
-                multiple
-                value={filters.ports}
-                onChange={(event) => onFilterChange({ ...filters, ports: multiSelectValue(event) })}
-              >
-                {(options?.port || []).map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="filter-label-row">
-                <span>Group</span>
-                <button className="btn-link" type="button" onClick={() => onClearFilter("groups")}>
-                  Clear
-                </button>
-              </span>
-              <select
-                multiple
-                value={filters.groups}
-                onChange={(event) => onFilterChange({ ...filters, groups: multiSelectValue(event) })}
-              >
-                {(options?.group || []).map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className="filter-stack">
+            {filterCards.map((filterCard) => {
+              const selectedValues = filters[filterCard.key];
+              return (
+                <details key={filterCard.key} className="filter-card" open={selectedValues.length > 0}>
+                  <summary className="filter-card-summary">
+                    <span>{filterCard.label}</span>
+                    <span className="count-badge">{selectedValues.length}</span>
+                  </summary>
+                  <div className="filter-card-body">
+                    <div className="filter-card-actions">
+                      <span>{selectedValues.length} selected</span>
+                      <button className="btn-link" type="button" onClick={() => onClearFilter(filterCard.key)}>
+                        Clear
+                      </button>
+                    </div>
+                    <select
+                      multiple
+                      value={selectedValues}
+                      onChange={(event) =>
+                        onFilterChange({
+                          ...filters,
+                          [filterCard.key]: multiSelectValue(event)
+                        })
+                      }
+                      aria-label={`${filterCard.label} filter`}
+                    >
+                      {filterCard.options.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </details>
+              );
+            })}
           </div>
-        </div>
+        </section>
 
-        <div className="toolbar-block">
+        <section className="toolbar-block" aria-label="Probe control">
           <div className="toolbar-title">Probe Control</div>
           <div className="button-row">
-            <button className="btn btn-primary" onClick={onStartAll}>
+            <button className="btn btn-primary" type="button" onClick={onStartAll}>
               Start All
             </button>
             <button
               className="btn"
+              type="button"
               onClick={() => onStartGroups(selectedGroupIDs)}
               disabled={selectedGroupIDs.length === 0}
             >
               Start Groups
             </button>
-            <button className="btn btn-danger" onClick={onStop}>
+            <button className="btn btn-danger" type="button" onClick={onStop}>
               Stop
             </button>
           </div>
-          <div className="status-row">Probe status: {probeRunning ? "Running" : "Stopped"}</div>
-        </div>
+          <div className="info-banner">Probe status: {probeRunning ? "Running" : "Stopped"}</div>
+        </section>
 
-        <div className="toolbar-block">
+        <section className="toolbar-block" aria-label="Global settings controls">
           <div className="toolbar-title">Global Settings</div>
-          <div className="setting-row">
-            <label>
-              Ping Interval (1-30s)
-              <input
-                type="number"
-                min={1}
-                max={30}
-                value={settings?.ping_interval_sec ?? 1}
-                onChange={(event) =>
-                  settings &&
-                  onSettingsPatch({
-                    ...settings,
-                    ping_interval_sec: Number(event.target.value)
-                  })
-                }
-              />
-            </label>
-            <label>
-              ICMP Payload (bytes)
-              <input
-                type="number"
-                min={8}
-                max={1400}
-                value={settings?.icmp_payload_bytes ?? 56}
-                onChange={(event) =>
-                  settings &&
-                  onSettingsPatch({
-                    ...settings,
-                    icmp_payload_bytes: Number(event.target.value)
-                  })
-                }
-              />
-            </label>
-            <label>
-              Auto Refresh (1-60s)
-              <input
-                type="number"
-                min={1}
-                max={60}
-                value={settings?.auto_refresh_sec ?? 10}
-                onChange={(event) =>
-                  settings &&
-                  onSettingsPatch({
-                    ...settings,
-                    auto_refresh_sec: Number(event.target.value)
-                  })
-                }
-              />
-            </label>
-          </div>
-        </div>
+          <label>
+            Ping Interval (1-30s)
+            <input
+              type="number"
+              min={1}
+              max={30}
+              value={settings?.ping_interval_sec ?? 1}
+              onChange={(event) =>
+                settings &&
+                onSettingsPatch({
+                  ...settings,
+                  ping_interval_sec: Number(event.target.value)
+                })
+              }
+            />
+          </label>
+          <label>
+            ICMP Payload (8-1400 bytes)
+            <input
+              type="number"
+              min={8}
+              max={1400}
+              value={settings?.icmp_payload_bytes ?? 56}
+              onChange={(event) =>
+                settings &&
+                onSettingsPatch({
+                  ...settings,
+                  icmp_payload_bytes: Number(event.target.value)
+                })
+              }
+            />
+          </label>
+          <label>
+            Auto Refresh (1-60s)
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={settings?.auto_refresh_sec ?? 10}
+              onChange={(event) =>
+                settings &&
+                onSettingsPatch({
+                  ...settings,
+                  auto_refresh_sec: Number(event.target.value)
+                })
+              }
+            />
+          </label>
+        </section>
       </div>
     </div>
   );

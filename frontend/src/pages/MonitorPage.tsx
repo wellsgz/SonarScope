@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  getSettings,
   listFilterOptions,
   listGroups,
   listMonitorEndpoints,
   listMonitorTimeSeries,
-  getSettings,
   startProbe,
   stopProbe,
   updateSettings
 } from "../api/client";
-import { MonitorTable } from "../components/MonitorTable";
 import { MonitorChart } from "../components/MonitorChart";
+import { MonitorTable } from "../components/MonitorTable";
 import { MonitorToolbar, type FilterState } from "../components/MonitorToolbar";
 import { rangeToDates, toApiTime, type QuickRange } from "../hooks/time";
 import { useMonitorSocket } from "../hooks/useMonitorSocket";
@@ -59,14 +59,17 @@ export function MonitorPage() {
     refetchInterval: autoRefreshMs
   });
 
+  const monitorRows = monitorQuery.data || [];
+  const selectedEndpoint = monitorRows.find((row) => row.endpoint_id === selectedEndpointID) || null;
+
   useEffect(() => {
-    if (!monitorQuery.data || selectedEndpointID === null) {
+    if (!monitorRows.length || selectedEndpointID === null) {
       return;
     }
-    if (!monitorQuery.data.some((row) => row.endpoint_id === selectedEndpointID)) {
+    if (!monitorRows.some((row) => row.endpoint_id === selectedEndpointID)) {
       setSelectedEndpointID(null);
     }
-  }, [monitorQuery.data, selectedEndpointID]);
+  }, [monitorRows, selectedEndpointID]);
 
   const { start, end } = useMemo(() => {
     if (quickRange === "custom") {
@@ -159,7 +162,7 @@ export function MonitorPage() {
       </div>
 
       {(monitorQuery.error || settingsMutation.error || startProbeMutation.error || stopProbeMutation.error) && (
-        <div className="error-banner">
+        <div className="error-banner" role="alert" aria-live="assertive">
           {(monitorQuery.error as Error | undefined)?.message ||
             (settingsMutation.error as Error | undefined)?.message ||
             (startProbeMutation.error as Error | undefined)?.message ||
@@ -168,18 +171,32 @@ export function MonitorPage() {
       )}
 
       <div className="monitor-pane-middle">
-        <MonitorTable
-          rows={monitorQuery.data || []}
-          selectedEndpointID={selectedEndpointID}
-          onSelectionChange={setSelectedEndpointID}
-        />
+        {monitorQuery.isLoading ? (
+          <div className="panel state-panel">
+            <div>
+              <span className="skeleton-bar" style={{ width: 240 }} />
+              <p style={{ marginTop: 10 }}>Loading endpoint telemetry…</p>
+            </div>
+          </div>
+        ) : monitorRows.length === 0 ? (
+          <div className="panel state-panel">No endpoints match the active filters.</div>
+        ) : (
+          <MonitorTable rows={monitorRows} selectedEndpointID={selectedEndpointID} onSelectionChange={setSelectedEndpointID} />
+        )}
       </div>
 
       <div className="monitor-pane-bottom">
         {selectedEndpointID === null ? (
-          <div className="panel empty-chart-panel">Select an endpoint row to view loss rate and latency graph.</div>
+          <div className="panel state-panel empty-chart-panel">Select an endpoint row to visualize loss rate and latency.</div>
+        ) : timeSeriesQuery.isLoading ? (
+          <div className="panel state-panel">Loading timeseries data…</div>
+        ) : (timeSeriesQuery.data?.series || []).length === 0 ? (
+          <div className="panel state-panel">No timeseries data found for the selected range.</div>
         ) : (
-          <MonitorChart points={timeSeriesQuery.data?.series || []} />
+          <MonitorChart
+            points={timeSeriesQuery.data?.series || []}
+            endpointLabel={selectedEndpoint ? `${selectedEndpoint.hostname || selectedEndpoint.ip_address} (${selectedEndpoint.ip_address})` : `ID ${selectedEndpointID}`}
+          />
         )}
       </div>
     </div>

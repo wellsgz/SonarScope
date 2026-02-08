@@ -1,0 +1,362 @@
+.panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  box-shadow: var(--shadow-soft);
+}
+
+.panel-header {
+  padding: var(--space-4) var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.panel-title {
+  font-family: var(--font-heading);
+  font-size: 0.96rem;
+  color: var(--color-text);
+}
+
+.panel-subtitle {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}
+
+.btn {
+  border: 1px solid var(--color-border-strong);
+  background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  min-height: 2.1rem;
+  padding: 0.35rem 0.72rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.btn:hover {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent-soft) 75%, var(--color-surface-elevated));
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 22%, var(--color-surface-elevated));
+}
+
+.btn-danger {
+  border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 16%, var(--color-surface-elevated));
+}
+
+.btn-small {
+  min-height: 1.8rem;
+  padding: 0.2rem 0.54rem;
+  font-size: 0.76rem;
+}
+
+.btn-link {
+  border: none;
+  background: transparent;
+  color: var(--color-accent);
+  min-height: unset;
+  padding: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.btn-link:hover {
+  color: var(--color-accent-strong);
+  text-decoration: underline;
+}
+
+.theme-toggle {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
+  height: 2.2rem;
+  padding: 0 var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.theme-toggle-icon {
+  width: 1rem;
+  height: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-toggle-label {
+  line-height: 1;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.36rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 0.25rem 0.56rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: color-mix(in srgb, var(--color-surface-elevated) 80%, transparent);
+}
+
+.status-chip-live {
+  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success) 12%, var(--color-surface-elevated));
+}
+
+.status-dot {
+  display: inline-block;
+  width: 0.44rem;
+  height: 0.44rem;
+  border-radius: 50%;
+}
+
+.status-dot-live {
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-success) 18%, transparent);
+}
+
+input,
+select,
+textarea {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
+  color: var(--color-text);
+  padding: 0.34rem 0.52rem;
+  font-size: 0.82rem;
+}
+
+select[multiple] {
+  min-height: 6rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.77rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.field-help {
+  font-size: 0.72rem;
+  color: var(--color-text-subtle);
+  font-weight: 500;
+}
+
+.toolbar-title-row,
+.filter-label-row,
+.inventory-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.quick-range-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.chip {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-surface-elevated) 86%, transparent);
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.24rem 0.56rem;
+}
+
+.chip-active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent-soft) 90%, transparent);
+  color: var(--color-text);
+}
+
+.table-panel,
+.chart-panel {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+}
+
+.table-scroll {
+  overflow: auto;
+  max-height: 100%;
+}
+
+.monitor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--table-font-size);
+}
+
+.monitor-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--color-surface) 96%, var(--color-bg) 4%);
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.monitor-table th,
+.monitor-table td {
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  white-space: nowrap;
+  padding: 0.26rem 0.42rem;
+  min-height: var(--table-row-height);
+}
+
+.monitor-table tbody tr {
+  transition: background-color var(--motion-fast) ease;
+}
+
+.monitor-table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-accent-soft) 80%, transparent);
+}
+
+.monitor-table tbody tr.row-selected {
+  background: color-mix(in srgb, var(--color-accent-soft) 96%, transparent);
+}
+
+.monitor-pane-middle .monitor-table tbody tr {
+  cursor: pointer;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  font-size: 0.68rem;
+  line-height: 1;
+  font-weight: 700;
+  padding: 0.25rem 0.48rem;
+  letter-spacing: 0.02em;
+}
+
+.badge-add {
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+
+.badge-update {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-accent);
+}
+
+.badge-unchanged {
+  background: color-mix(in srgb, var(--color-text-subtle) 18%, transparent);
+  color: var(--color-text-muted);
+}
+
+.badge-invalid {
+  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
+  color: var(--color-danger);
+}
+
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent-soft) 88%, transparent);
+  color: var(--color-accent-strong);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.error-banner,
+.success-banner,
+.info-banner {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.48rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.error-banner {
+  border-color: color-mix(in srgb, var(--color-danger) 40%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
+}
+
+.success-banner {
+  border-color: color-mix(in srgb, var(--color-success) 42%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  color: var(--color-success);
+}
+
+.info-banner {
+  border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent-soft) 82%, transparent);
+  color: var(--color-text-muted);
+}
+
+.state-panel {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--color-text-subtle);
+  font-size: 0.86rem;
+  padding: var(--space-5);
+}
+
+.skeleton-bar {
+  display: block;
+  height: 0.8rem;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-border) 80%, transparent),
+    color-mix(in srgb, var(--color-surface-elevated) 92%, transparent),
+    color-mix(in srgb, var(--color-border) 80%, transparent)
+  );
+  background-size: 240% 100%;
+  animation: skeleton 1.5s ease infinite;
+}
+
+@keyframes skeleton {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}

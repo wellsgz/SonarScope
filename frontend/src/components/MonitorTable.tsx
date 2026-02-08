@@ -105,6 +105,14 @@ export function MonitorTable({ rows, selectedEndpointID, onSelectionChange }: Pr
                   key={row.id}
                   className={selected ? "row-selected" : ""}
                   onClick={() => onSelectionChange(selected ? null : endpointID)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onSelectionChange(selected ? null : endpointID);
+                    }
+                  }}
+                  tabIndex={0}
+                  aria-selected={selected}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>

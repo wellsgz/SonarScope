@@ -1,49 +1,68 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { AppShell } from "./components/layout/AppShell";
+import { useTheme } from "./hooks/useTheme";
+import { GroupsPage } from "./pages/GroupsPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { MonitorPage } from "./pages/MonitorPage";
-import { GroupsPage } from "./pages/GroupsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import type { AppViewKey, AppViewMeta } from "./types/ui";
 
-type ViewKey = "monitor" | "inventory" | "groups" | "settings";
+const viewMeta: AppViewMeta[] = [
+  {
+    key: "monitor",
+    label: "Monitor",
+    title: "Operations Monitor",
+    subtitle: "Real-time endpoint reachability and latency analytics.",
+    icon: "monitor"
+  },
+  {
+    key: "inventory",
+    label: "Inventory",
+    title: "Endpoint Inventory",
+    subtitle: "Import, filter, and maintain monitored infrastructure targets.",
+    icon: "inventory"
+  },
+  {
+    key: "groups",
+    label: "Groups",
+    title: "Group Management",
+    subtitle: "Organize endpoints for targeted monitoring and control.",
+    icon: "groups"
+  },
+  {
+    key: "settings",
+    label: "Settings",
+    title: "Platform Settings",
+    subtitle: "Global probe and refresh behavior for SonarScope.",
+    icon: "settings"
+  }
+];
 
 export default function App() {
-  const [view, setView] = useState<ViewKey>("monitor");
+  const [view, setView] = useState<AppViewKey>("monitor");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { mode, followSystem, toggleMode } = useTheme();
+
+  const page = useMemo(() => {
+    if (view === "inventory") return <InventoryPage />;
+    if (view === "groups") return <GroupsPage />;
+    if (view === "settings") return <SettingsPage />;
+    return <MonitorPage />;
+  }, [view]);
 
   return (
-    <div className="app-shell">
-      <header className="top-header">
-        <div>
-          <h1>SonarScope</h1>
-          <p>Endpoint reachability analytics for NOC troubleshooting.</p>
-        </div>
-        <nav className="nav-row">
-          <button className={`nav-button ${view === "monitor" ? "active" : ""}`} onClick={() => setView("monitor")}>
-            Monitor
-          </button>
-          <button
-            className={`nav-button ${view === "inventory" ? "active" : ""}`}
-            onClick={() => setView("inventory")}
-          >
-            Inventory
-          </button>
-          <button className={`nav-button ${view === "groups" ? "active" : ""}`} onClick={() => setView("groups")}>
-            Groups
-          </button>
-          <button
-            className={`nav-button ${view === "settings" ? "active" : ""}`}
-            onClick={() => setView("settings")}
-          >
-            Settings
-          </button>
-        </nav>
-      </header>
-
-      <main className="content-area">
-        {view === "monitor" && <MonitorPage />}
-        {view === "inventory" && <InventoryPage />}
-        {view === "groups" && <GroupsPage />}
-        {view === "settings" && <SettingsPage />}
-      </main>
-    </div>
+    <AppShell
+      activeView={view}
+      views={viewMeta}
+      mode={mode}
+      followSystem={followSystem}
+      sidebarOpen={sidebarOpen}
+      onOpenSidebar={() => setSidebarOpen(true)}
+      onCloseSidebar={() => setSidebarOpen(false)}
+      onToggleTheme={toggleMode}
+      onViewChange={setView}
+    >
+      {page}
+    </AppShell>
   );
 }

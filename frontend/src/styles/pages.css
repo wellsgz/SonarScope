@@ -1,0 +1,232 @@
+.monitor-page {
+  display: grid;
+  grid-template-rows: auto minmax(320px, 1fr) minmax(300px, 0.9fr);
+  gap: var(--space-4);
+  min-height: calc(100vh - var(--topbar-height) - var(--space-6));
+}
+
+.monitor-pane-top,
+.monitor-pane-middle,
+.monitor-pane-bottom {
+  min-height: 0;
+}
+
+.toolbar-panel {
+  padding: var(--space-4);
+}
+
+.toolbar-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1.4fr 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.toolbar-block {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.toolbar-title {
+  font-family: var(--font-heading);
+  font-size: 0.86rem;
+  color: var(--color-text);
+}
+
+.custom-time-row {
+  margin-top: var(--space-1);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.filter-stack {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.filter-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  overflow: hidden;
+}
+
+.filter-card summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.filter-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.filter-card-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.44rem 0.58rem;
+  border-bottom: 1px solid transparent;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.filter-card[open] .filter-card-summary {
+  border-bottom-color: var(--color-border);
+}
+
+.filter-card-body {
+  padding: 0.5rem 0.58rem 0.58rem;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.filter-card-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.7rem;
+  color: var(--color-text-subtle);
+}
+
+.filter-card select[multiple] {
+  min-height: 5.2rem;
+}
+
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.chart-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.chart-subtitle {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}
+
+.chart-canvas {
+  height: calc(100% - 52px);
+  min-height: 248px;
+}
+
+.inventory-page-v13 {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.inventory-import-panel,
+.inventory-list-panel,
+.groups-layout .panel,
+.settings-layout .panel {
+  padding: var(--space-4);
+}
+
+.inventory-actions,
+.summary-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.import-preview-table td,
+.import-preview-table th {
+  font-size: 0.74rem;
+}
+
+.inventory-filter-section {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.inventory-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.inventory-table-scroll {
+  max-height: 560px;
+}
+
+.groups-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.4fr);
+  gap: var(--space-4);
+}
+
+.group-form,
+.setting-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.settings-inline-help {
+  font-size: 0.78rem;
+  color: var(--color-text-subtle);
+}
+
+.empty-chart-panel {
+  min-height: 280px;
+}
+
+@media (max-width: 1440px) {
+  .toolbar-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1024px) {
+  .monitor-page {
+    grid-template-rows: auto minmax(320px, 1fr) minmax(260px, 0.8fr);
+  }
+
+  .groups-layout,
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .monitor-page {
+    grid-template-rows: auto minmax(300px, 1fr) minmax(240px, 0.8fr);
+  }
+
+  .toolbar-grid,
+  .filter-stack,
+  .inventory-filter-grid,
+  .custom-time-row {
+    grid-template-columns: 1fr;
+  }
+
+  .monitor-table {
+    font-size: 0.74rem;
+  }
+}
