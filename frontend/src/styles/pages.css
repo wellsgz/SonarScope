@@ -42,6 +42,13 @@
   gap: var(--space-2);
 }
 
+.toolbar-block-filters {
+  max-height: min(25.5rem, 42vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
 .toolbar-title {
   font-family: var(--font-heading);
   font-size: 0.86rem;
@@ -53,11 +60,25 @@
   gap: var(--space-2);
 }
 
+.monitor-search-grid-compact {
+  gap: var(--space-2);
+}
+
+.search-dual-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
 .search-input-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+}
+
+.search-input-row-compact {
+  align-items: center;
 }
 
 .custom-time-row {
@@ -71,6 +92,14 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
+}
+
+.filter-ip-details textarea {
+  min-height: 3.4rem;
+}
+
+.advanced-filter-details > .filter-card-body {
+  padding-top: var(--space-2);
 }
 
 .monitor-pane-middle .table-panel {
@@ -259,6 +288,7 @@
   }
 
   .toolbar-grid,
+  .search-dual-row,
   .filter-stack,
   .inventory-filter-grid,
   .custom-time-row {
