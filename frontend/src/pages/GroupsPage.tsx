@@ -2,12 +2,29 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createGroup, deleteGroup, listGroups, listMonitorEndpoints, updateGroup } from "../api/client";
 
+function parseManualIPList(raw: string): string[] {
+  const seen = new Set<string>();
+  return raw
+    .split(/[,\n\r\t ]+/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .filter((value) => {
+      if (seen.has(value)) {
+        return false;
+      }
+      seen.add(value);
+      return true;
+    });
+}
+
 export function GroupsPage() {
   const queryClient = useQueryClient();
   const [editingID, setEditingID] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [endpointIDs, setEndpointIDs] = useState<number[]>([]);
+  const [manualIPList, setManualIPList] = useState("");
+  const [groupUpdateNotice, setGroupUpdateNotice] = useState<string | null>(null);
 
   const groupsQuery = useQuery({ queryKey: ["groups"], queryFn: listGroups });
   const endpointsQuery = useQuery({
@@ -16,18 +33,30 @@ export function GroupsPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: () => {
-      const payload = { name, description, endpoint_ids: endpointIDs };
-      if (editingID) {
-        return updateGroup(editingID, payload);
+    mutationFn: (payload: {
+      groupID: number | null;
+      name: string;
+      description: string;
+      endpointIDs: number[];
+      notice: string | null;
+    }) => {
+      const body = {
+        name: payload.name,
+        description: payload.description,
+        endpoint_ids: payload.endpointIDs
+      };
+      if (payload.groupID) {
+        return updateGroup(payload.groupID, body);
       }
-      return createGroup(payload);
+      return createGroup(body);
     },
-    onSuccess: () => {
+    onSuccess: (_group, variables) => {
       setEditingID(null);
       setName("");
       setDescription("");
       setEndpointIDs([]);
+      setManualIPList("");
+      setGroupUpdateNotice(variables.notice);
       queryClient.invalidateQueries({ queryKey: ["groups"] });
     }
   });
@@ -41,10 +70,69 @@ export function GroupsPage() {
     () =>
       (endpointsQuery.data || []).map((endpoint) => ({
         id: endpoint.endpoint_id,
+        ip: endpoint.ip_address,
         label: `${endpoint.ip_address} (${endpoint.switch}/${endpoint.port})`
       })),
     [endpointsQuery.data]
   );
+
+  const endpointIDByIP = useMemo(() => {
+    const map = new Map<string, number>();
+    endpointOptions.forEach((option) => map.set(option.ip, option.id));
+    return map;
+  }, [endpointOptions]);
+
+  const endpointIPByID = useMemo(() => {
+    const map = new Map<number, string>();
+    endpointOptions.forEach((option) => map.set(option.id, option.ip));
+    return map;
+  }, [endpointOptions]);
+
+  const manualIPs = useMemo(() => parseManualIPList(manualIPList), [manualIPList]);
+
+  const resolveSaveRequest = () => {
+    const groupID = editingID;
+    let resolvedEndpointIDs = endpointIDs;
+    const noticeParts: string[] = [];
+
+    if (manualIPs.length > 0) {
+      const unknownIPs: string[] = [];
+      const resolved: number[] = [];
+      manualIPs.forEach((ip) => {
+        const endpointID = endpointIDByIP.get(ip);
+        if (endpointID === undefined) {
+          unknownIPs.push(ip);
+          return;
+        }
+        resolved.push(endpointID);
+      });
+
+      resolvedEndpointIDs = resolved;
+
+      if (unknownIPs.length > 0) {
+        noticeParts.push(`Unknown IPs ignored: ${unknownIPs.join(", ")}`);
+      }
+
+      if (groupID !== null) {
+        const currentGroup = (groupsQuery.data || []).find((group) => group.id === groupID);
+        const currentEndpointIDs = currentGroup?.endpoint_ids || [];
+        const nextEndpointSet = new Set(resolvedEndpointIDs);
+        const removedEndpointIDs = currentEndpointIDs.filter((id) => !nextEndpointSet.has(id));
+        if (removedEndpointIDs.length > 0) {
+          const removedMembers = removedEndpointIDs.map((id) => endpointIPByID.get(id) || `endpoint_id:${id}`);
+          noticeParts.push(`Removed from group (not in provided IP list): ${removedMembers.join(", ")}`);
+        }
+      }
+    }
+
+    return {
+      groupID,
+      name: name.trim(),
+      description,
+      endpointIDs: resolvedEndpointIDs,
+      notice: noticeParts.length > 0 ? noticeParts.join(" | ") : null
+    };
+  };
 
   return (
     <div className="groups-layout">
@@ -57,21 +145,47 @@ export function GroupsPage() {
         <div className="group-form">
           <label>
             Group Name
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="DB Core" />
+            <input
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+                setGroupUpdateNotice(null);
+              }}
+              placeholder="DB Core"
+            />
           </label>
           <label>
             Description
             <input
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
+              onChange={(event) => {
+                setDescription(event.target.value);
+                setGroupUpdateNotice(null);
+              }}
               placeholder="Critical database nodes"
             />
+          </label>
+          <label>
+            Endpoint IP List (Manual Update)
+            <textarea
+              rows={3}
+              value={manualIPList}
+              onChange={(event) => {
+                setManualIPList(event.target.value);
+                setGroupUpdateNotice(null);
+              }}
+              placeholder="10.0.0.1,10.0.0.2 or newline separated"
+            />
+            <span className="field-help">
+              If provided, this list overrides endpoint multi-select for create/update.
+            </span>
           </label>
           <label>
             Endpoints
             <select
               multiple
               value={endpointIDs.map(String)}
+              disabled={manualIPs.length > 0}
               onChange={(event) =>
                 setEndpointIDs(Array.from(event.target.selectedOptions).map((option) => Number(option.value)))
               }
@@ -82,11 +196,29 @@ export function GroupsPage() {
                 </option>
               ))}
             </select>
-            <span className="field-help">Hold Ctrl/Cmd to multi-select endpoints.</span>
+            <span className="field-help">
+              {manualIPs.length > 0
+                ? "Manual IP list override is active."
+                : "Hold Ctrl/Cmd to multi-select endpoints."}
+            </span>
           </label>
 
+          {groupUpdateNotice && (
+            <div className="info-banner" role="status" aria-live="polite">
+              {groupUpdateNotice}
+            </div>
+          )}
+
           <div className="button-row">
-            <button className="btn btn-primary" type="button" onClick={() => saveMutation.mutate()} disabled={!name.trim()}>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => {
+                const payload = resolveSaveRequest();
+                saveMutation.mutate(payload);
+              }}
+              disabled={!name.trim()}
+            >
               {editingID ? "Update Group" : "Create Group"}
             </button>
             {editingID && (
@@ -98,6 +230,8 @@ export function GroupsPage() {
                   setName("");
                   setDescription("");
                   setEndpointIDs([]);
+                  setManualIPList("");
+                  setGroupUpdateNotice(null);
                 }}
               >
                 Cancel
@@ -159,6 +293,8 @@ export function GroupsPage() {
                             setName(group.name);
                             setDescription(group.description);
                             setEndpointIDs(group.endpoint_ids || []);
+                            setManualIPList("");
+                            setGroupUpdateNotice(null);
                           }}
                         >
                           Edit
