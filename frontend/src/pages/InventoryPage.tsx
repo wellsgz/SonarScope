@@ -475,7 +475,7 @@ export function InventoryPage() {
                   onChange={(event) =>
                     setSingleEndpoint((prev) => ({
                       ...prev,
-                      mac_address: event.target.value
+                      mac_address: event.target.value.toUpperCase()
                     }))
                   }
                   placeholder="AA:BB:CC:DD:EE:FF"
@@ -522,7 +522,7 @@ export function InventoryPage() {
               </label>
               <label>
                 Port Type
-                <input
+                <select
                   value={singleEndpoint.port_type || ""}
                   onChange={(event) =>
                     setSingleEndpoint((prev) => ({
@@ -530,8 +530,11 @@ export function InventoryPage() {
                       port_type: event.target.value
                     }))
                   }
-                  placeholder="access or trunk"
-                />
+                >
+                  <option value="">Select port type</option>
+                  <option value="access">access</option>
+                  <option value="trunk">trunk</option>
+                </select>
               </label>
               <label>
                 Description
