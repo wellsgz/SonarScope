@@ -234,3 +234,43 @@ type DeleteAllInventoryResponse struct {
 	Deleted      bool  `json:"deleted"`
 	DeletedCount int64 `json:"deleted_count"`
 }
+
+type InventoryDeleteJobMode string
+
+const (
+	InventoryDeleteJobModeByGroup InventoryDeleteJobMode = "by_group"
+	InventoryDeleteJobModeAll     InventoryDeleteJobMode = "all"
+)
+
+type InventoryDeleteJobState string
+
+const (
+	InventoryDeleteJobStateRunning   InventoryDeleteJobState = "running"
+	InventoryDeleteJobStateCompleted InventoryDeleteJobState = "completed"
+	InventoryDeleteJobStateFailed    InventoryDeleteJobState = "failed"
+)
+
+type InventoryDeleteJobAllRequest struct {
+	ConfirmPhrase string `json:"confirm_phrase"`
+}
+
+type InventoryDeleteJobStatusResponse struct {
+	Active             bool                    `json:"active"`
+	JobID              string                  `json:"job_id,omitempty"`
+	Mode               InventoryDeleteJobMode  `json:"mode,omitempty"`
+	GroupID            *int64                  `json:"group_id,omitempty"`
+	State              InventoryDeleteJobState `json:"state,omitempty"`
+	MatchedEndpoints   int64                   `json:"matched_endpoints,omitempty"`
+	ProcessedEndpoints int64                   `json:"processed_endpoints,omitempty"`
+	DeletedEndpoints   int64                   `json:"deleted_endpoints,omitempty"`
+	ProgressPct        float64                 `json:"progress_pct,omitempty"`
+	Phase              string                  `json:"phase,omitempty"`
+	Error              string                  `json:"error,omitempty"`
+	StartedAt          *time.Time              `json:"started_at,omitempty"`
+	UpdatedAt          *time.Time              `json:"updated_at,omitempty"`
+	CompletedAt        *time.Time              `json:"completed_at,omitempty"`
+}
+
+type InventoryDeleteJobStartResponse struct {
+	InventoryDeleteJobStatusResponse
+}

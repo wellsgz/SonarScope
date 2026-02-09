@@ -9,6 +9,7 @@ import type {
   InventoryEndpointCreateRequest,
   MonitorDataScope,
   ImportPreview,
+  InventoryDeleteJobStatus,
   MonitorEndpoint,
   MonitorEndpointPageResponse,
   MonitorSortField,
@@ -233,6 +234,23 @@ export async function deleteAllInventoryEndpoints(confirmPhrase: string): Promis
     method: "POST",
     body: JSON.stringify({ confirm_phrase: confirmPhrase })
   });
+}
+
+export async function startDeleteByGroupJob(groupID: number): Promise<InventoryDeleteJobStatus> {
+  return request<InventoryDeleteJobStatus>(`/api/inventory/delete-jobs/by-group/${groupID}`, {
+    method: "POST"
+  });
+}
+
+export async function startDeleteAllJob(confirmPhrase: string): Promise<InventoryDeleteJobStatus> {
+  return request<InventoryDeleteJobStatus>("/api/inventory/delete-jobs/all", {
+    method: "POST",
+    body: JSON.stringify({ confirm_phrase: confirmPhrase })
+  });
+}
+
+export async function getCurrentDeleteJobStatus(): Promise<InventoryDeleteJobStatus> {
+  return request<InventoryDeleteJobStatus>("/api/inventory/delete-jobs/current");
 }
 
 export async function getProbeStatus(): Promise<ProbeStatus> {

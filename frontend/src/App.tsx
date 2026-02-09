@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getProbeStatus, listGroups, startProbe, stopProbe } from "./api/client";
+import { getCurrentDeleteJobStatus, getProbeStatus, listGroups, startProbe, stopProbe } from "./api/client";
 import { AppShell } from "./components/layout/AppShell";
 import { useTheme } from "./hooks/useTheme";
 import { GroupsPage } from "./pages/GroupsPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { MonitorPage } from "./pages/MonitorPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import type { ProbeStatus } from "./types/api";
+import type { InventoryDeleteJobStatus, ProbeStatus } from "./types/api";
 import type { AppViewKey, AppViewMeta } from "./types/ui";
 
 const viewMeta: AppViewMeta[] = [
@@ -47,6 +47,10 @@ const defaultProbeStatus: ProbeStatus = {
   group_ids: []
 };
 
+const defaultDeleteJobStatus: InventoryDeleteJobStatus = {
+  active: false
+};
+
 export default function App() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<AppViewKey>("monitor");
@@ -63,6 +67,12 @@ export default function App() {
     queryKey: ["probe-status"],
     queryFn: getProbeStatus,
     refetchInterval: 4000
+  });
+
+  const deleteJobStatusQuery = useQuery({
+    queryKey: ["inventory-delete-job-current"],
+    queryFn: getCurrentDeleteJobStatus,
+    refetchInterval: 1000
   });
 
   useEffect(() => {
@@ -96,6 +106,8 @@ export default function App() {
   });
 
   const probeStatus = probeStatusQuery.data ?? defaultProbeStatus;
+  const deleteJobStatus = deleteJobStatusQuery.data ?? defaultDeleteJobStatus;
+  const deleteInProgress = Boolean(deleteJobStatus.active);
   const probeBusy = startProbeMutation.isPending || stopProbeMutation.isPending;
 
   const page = useMemo(() => {
@@ -128,6 +140,7 @@ export default function App() {
       }}
       onStopProbe={() => stopProbeMutation.mutate()}
       probeBusy={probeBusy}
+      deleteInProgress={deleteInProgress}
     >
       {page}
     </AppShell>

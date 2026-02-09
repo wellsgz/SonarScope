@@ -1,17 +1,24 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
   createInventoryEndpoint,
-  deleteAllInventoryEndpoints,
-  deleteInventoryEndpointsByGroup,
+  getCurrentDeleteJobStatus,
   importInventoryPreview,
   listGroups,
   listInventoryEndpoints,
   listInventoryFilterOptions,
+  startDeleteAllJob,
+  startDeleteByGroupJob,
   updateInventoryEndpoint
 } from "../api/client";
-import type { ImportCandidate, ImportPreview, InventoryEndpoint, InventoryEndpointCreateRequest } from "../types/api";
+import type {
+  ImportCandidate,
+  ImportPreview,
+  InventoryDeleteJobStatus,
+  InventoryEndpoint,
+  InventoryEndpointCreateRequest
+} from "../types/api";
 
 type FilterState = {
   vlan: string[];
@@ -90,6 +97,11 @@ export function InventoryPage() {
   const [deleteGroupID, setDeleteGroupID] = useState("");
   const [deleteAllArmed, setDeleteAllArmed] = useState(false);
   const [deleteAllPhrase, setDeleteAllPhrase] = useState("");
+  const [deleteJobNotice, setDeleteJobNotice] = useState<{
+    type: "success" | "error" | "info";
+    message: string;
+  } | null>(null);
+  const lastHandledDeleteJobRef = useRef<string>("");
 
   const filterCards: Array<{ key: keyof FilterState; label: string; options: string[] }> = [
     { key: "vlan", label: "VLAN", options: [] },
@@ -105,6 +117,11 @@ export function InventoryPage() {
   const groupsQuery = useQuery({
     queryKey: ["groups"],
     queryFn: listGroups
+  });
+  const deleteJobStatusQuery = useQuery({
+    queryKey: ["inventory-delete-job-current"],
+    queryFn: getCurrentDeleteJobStatus,
+    refetchInterval: 1000
   });
 
   filterCards[0].options = filterOptionsQuery.data?.vlan || [];
@@ -187,25 +204,65 @@ export function InventoryPage() {
     }
   });
 
-  const deleteByGroupMutation = useMutation({
-    mutationFn: (groupID: number) => deleteInventoryEndpointsByGroup(groupID),
+  const startDeleteByGroupJobMutation = useMutation({
+    mutationFn: (groupID: number) => startDeleteByGroupJob(groupID),
     onSuccess: () => {
       setEditingEndpointID(null);
       setEditingPatch(null);
-      invalidateInventoryAndMonitorQueries();
+      setDeleteJobNotice(null);
+      queryClient.invalidateQueries({ queryKey: ["inventory-delete-job-current"] });
     }
   });
 
-  const deleteAllMutation = useMutation({
-    mutationFn: (confirmPhrase: string) => deleteAllInventoryEndpoints(confirmPhrase),
+  const startDeleteAllJobMutation = useMutation({
+    mutationFn: (confirmPhrase: string) => startDeleteAllJob(confirmPhrase),
     onSuccess: () => {
       setEditingEndpointID(null);
       setEditingPatch(null);
       setDeleteAllArmed(false);
       setDeleteAllPhrase("");
-      invalidateInventoryAndMonitorQueries();
+      setDeleteJobNotice(null);
+      queryClient.invalidateQueries({ queryKey: ["inventory-delete-job-current"] });
     }
   });
+
+  const deleteJobStatus: InventoryDeleteJobStatus | undefined = deleteJobStatusQuery.data;
+  const deleteInProgress = Boolean(deleteJobStatus?.active);
+
+  useEffect(() => {
+    const status = deleteJobStatus;
+    if (!status || !status.job_id || status.active) {
+      return;
+    }
+    const completionKey = `${status.job_id}:${status.state}:${status.deleted_endpoints ?? 0}:${status.matched_endpoints ?? 0}`;
+    if (lastHandledDeleteJobRef.current === completionKey) {
+      return;
+    }
+    lastHandledDeleteJobRef.current = completionKey;
+
+    if (status.state === "completed") {
+      const matched = status.matched_endpoints ?? 0;
+      const deleted = status.deleted_endpoints ?? 0;
+      if (matched === 0) {
+        setDeleteJobNotice({
+          type: "info",
+          message: "Selected target has no endpoints to delete."
+        });
+      } else {
+        setDeleteJobNotice({
+          type: "success",
+          message: `Deletion completed: deleted ${deleted} endpoint(s) out of ${matched} matched endpoint(s).`
+        });
+      }
+    } else if (status.state === "failed") {
+      setDeleteJobNotice({
+        type: "error",
+        message: status.error || "Inventory deletion job failed."
+      });
+    }
+
+    invalidateInventoryAndMonitorQueries();
+  }, [deleteJobStatus]);
 
   const summary = useMemo(() => {
     if (!preview) {
@@ -219,6 +276,17 @@ export function InventoryPage() {
       { add: 0, update: 0, unchanged: 0, invalid: 0 } as Record<ImportCandidate["action"], number>
     );
   }, [preview]);
+
+  const deleteJobTargetLabel = useMemo(() => {
+    if (!deleteJobStatus || !deleteJobStatus.mode) {
+      return "Target: —";
+    }
+    if (deleteJobStatus.mode === "all") {
+      return "Target: All endpoints";
+    }
+    const targetGroup = (groupsQuery.data || []).find((group) => group.id === deleteJobStatus.group_id);
+    return `Target: ${targetGroup?.name || `Group ${deleteJobStatus.group_id}`}`;
+  }, [deleteJobStatus, groupsQuery.data]);
 
   const groupAssignmentInvalid =
     assignToGroup &&
@@ -643,12 +711,17 @@ export function InventoryPage() {
             </div>
           </div>
 
-          {(inventoryQuery.error || updateMutation.error || deleteByGroupMutation.error || deleteAllMutation.error) && (
+          {(inventoryQuery.error ||
+            updateMutation.error ||
+            startDeleteByGroupJobMutation.error ||
+            startDeleteAllJobMutation.error ||
+            deleteJobStatusQuery.error) && (
             <div className="error-banner" role="alert" aria-live="assertive">
               {(inventoryQuery.error as Error | undefined)?.message ||
                 (updateMutation.error as Error | undefined)?.message ||
-                (deleteByGroupMutation.error as Error | undefined)?.message ||
-                (deleteAllMutation.error as Error | undefined)?.message}
+                (startDeleteByGroupJobMutation.error as Error | undefined)?.message ||
+                (startDeleteAllJobMutation.error as Error | undefined)?.message ||
+                (deleteJobStatusQuery.error as Error | undefined)?.message}
             </div>
           )}
           {updateMutation.isSuccess && (
@@ -656,30 +729,19 @@ export function InventoryPage() {
               Inventory endpoint updated.
             </div>
           )}
-          {deleteByGroupMutation.data?.matched_count === 0 && (
-            <div className="info-banner" role="status" aria-live="polite">
-              Selected group currently has no endpoints to delete.
+          {deleteJobNotice?.type === "success" && (
+            <div className="success-banner" role="status" aria-live="polite">
+              {deleteJobNotice.message}
             </div>
           )}
-          {deleteByGroupMutation.data &&
-            deleteByGroupMutation.data.matched_count > 0 &&
-            deleteByGroupMutation.data.deleted_count > 0 && (
-              <div className="success-banner" role="status" aria-live="polite">
-                Deleted {deleteByGroupMutation.data.deleted_count} endpoint(s) out of{" "}
-                {deleteByGroupMutation.data.matched_count} matched endpoint(s) in selected group.
-              </div>
-            )}
-          {deleteByGroupMutation.data &&
-            deleteByGroupMutation.data.matched_count > 0 &&
-            deleteByGroupMutation.data.deleted_count === 0 && (
-              <div className="error-banner" role="alert" aria-live="assertive">
-                Matched {deleteByGroupMutation.data.matched_count} endpoint(s), but none were deleted. Please retry
-                and check backend logs.
-              </div>
-            )}
-          {deleteAllMutation.data && (
-            <div className="success-banner" role="status" aria-live="polite">
-              Deleted {deleteAllMutation.data.deleted_count} endpoint(s) from inventory.
+          {deleteJobNotice?.type === "info" && (
+            <div className="info-banner" role="status" aria-live="polite">
+              {deleteJobNotice.message}
+            </div>
+          )}
+          {deleteJobNotice?.type === "error" && (
+            <div className="error-banner" role="alert" aria-live="assertive">
+              {deleteJobNotice.message}
             </div>
           )}
 
@@ -847,6 +909,24 @@ export function InventoryPage() {
             <p className="field-help">
               Deleting endpoints permanently removes inventory membership and probe history records.
             </p>
+            {deleteInProgress ? (
+              <div className="inventory-delete-progress" role="status" aria-live="polite">
+                <div className="inventory-delete-progress-head">
+                  <strong>Deletion in progress</strong>
+                  <span>{Math.round(deleteJobStatus?.progress_pct || 0)}%</span>
+                </div>
+                <div className="inventory-delete-progress-track">
+                  <div
+                    className="inventory-delete-progress-fill"
+                    style={{ width: `${Math.max(2, Math.min(100, deleteJobStatus?.progress_pct || 0))}%` }}
+                  />
+                </div>
+                <div className="field-help">
+                  {deleteJobTargetLabel} · {(deleteJobStatus?.phase || "processing")} · {deleteJobStatus?.processed_endpoints || 0}/
+                  {deleteJobStatus?.matched_endpoints || 0} processed · {deleteJobStatus?.deleted_endpoints || 0} deleted
+                </div>
+              </div>
+            ) : null}
             <div className="inventory-danger-grid">
               <div className="inventory-danger-card">
                 <h4>Delete Endpoints By Group</h4>
@@ -865,7 +945,7 @@ export function InventoryPage() {
                   <button
                     className="btn btn-danger"
                     type="button"
-                    disabled={!deleteGroupID || deleteByGroupMutation.isPending}
+                    disabled={!deleteGroupID || startDeleteByGroupJobMutation.isPending || deleteInProgress}
                     onClick={() => {
                       const groupID = Number(deleteGroupID);
                       const groupName = (groupsQuery.data || []).find((group) => group.id === groupID)?.name || "selected group";
@@ -877,7 +957,8 @@ export function InventoryPage() {
                       if (!confirmed) {
                         return;
                       }
-                      deleteByGroupMutation.mutate(groupID);
+                      setDeleteJobNotice(null);
+                      startDeleteByGroupJobMutation.mutate(groupID);
                     }}
                   >
                     Delete Group Endpoints
@@ -894,6 +975,7 @@ export function InventoryPage() {
                   <button
                     className="btn btn-danger"
                     type="button"
+                    disabled={deleteInProgress}
                     onClick={() => {
                       setDeleteAllArmed(true);
                       setDeleteAllPhrase("");
@@ -925,7 +1007,11 @@ export function InventoryPage() {
                       <button
                         className="btn btn-danger"
                         type="button"
-                        disabled={deleteAllPhrase.trim() !== "DELETE ALL ENDPOINTS" || deleteAllMutation.isPending}
+                        disabled={
+                          deleteAllPhrase.trim() !== "DELETE ALL ENDPOINTS" ||
+                          startDeleteAllJobMutation.isPending ||
+                          deleteInProgress
+                        }
                         onClick={() => {
                           const finalConfirm = window.confirm(
                             "Final confirmation: delete ALL endpoints and related data?"
@@ -933,7 +1019,8 @@ export function InventoryPage() {
                           if (!finalConfirm) {
                             return;
                           }
-                          deleteAllMutation.mutate(deleteAllPhrase.trim());
+                          setDeleteJobNotice(null);
+                          startDeleteAllJobMutation.mutate(deleteAllPhrase.trim());
                         }}
                       >
                         Delete All Endpoints

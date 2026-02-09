@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -34,6 +36,9 @@ type Server struct {
 
 	previewMu sync.RWMutex
 	previews  map[string]model.ImportPreview
+
+	deleteJobMu sync.RWMutex
+	deleteJob   *inventoryDeleteJobState
 }
 
 func NewServer(cfg config.Config, st *store.Store, p *probe.Engine, hub *telemetry.Hub) *Server {
@@ -44,6 +49,210 @@ func NewServer(cfg config.Config, st *store.Store, p *probe.Engine, hub *telemet
 		hub:      hub,
 		previews: map[string]model.ImportPreview{},
 	}
+}
+
+const deleteJobBatchSize = 1000
+
+type inventoryDeleteJobState struct {
+	Active             bool
+	JobID              string
+	Mode               model.InventoryDeleteJobMode
+	GroupID            *int64
+	State              model.InventoryDeleteJobState
+	MatchedEndpoints   int64
+	ProcessedEndpoints int64
+	DeletedEndpoints   int64
+	ProgressPct        float64
+	Phase              string
+	Error              string
+	StartedAt          *time.Time
+	UpdatedAt          *time.Time
+	CompletedAt        *time.Time
+}
+
+func cloneInt64Ptr(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func (s *Server) deleteJobSnapshot() model.InventoryDeleteJobStatusResponse {
+	s.deleteJobMu.RLock()
+	defer s.deleteJobMu.RUnlock()
+
+	if s.deleteJob == nil {
+		return model.InventoryDeleteJobStatusResponse{Active: false}
+	}
+
+	job := s.deleteJob
+	return model.InventoryDeleteJobStatusResponse{
+		Active:             job.Active,
+		JobID:              job.JobID,
+		Mode:               job.Mode,
+		GroupID:            cloneInt64Ptr(job.GroupID),
+		State:              job.State,
+		MatchedEndpoints:   job.MatchedEndpoints,
+		ProcessedEndpoints: job.ProcessedEndpoints,
+		DeletedEndpoints:   job.DeletedEndpoints,
+		ProgressPct:        job.ProgressPct,
+		Phase:              job.Phase,
+		Error:              job.Error,
+		StartedAt:          cloneTimePtr(job.StartedAt),
+		UpdatedAt:          cloneTimePtr(job.UpdatedAt),
+		CompletedAt:        cloneTimePtr(job.CompletedAt),
+	}
+}
+
+func (s *Server) isDeleteJobRunning() bool {
+	s.deleteJobMu.RLock()
+	defer s.deleteJobMu.RUnlock()
+	return s.deleteJob != nil && s.deleteJob.Active && s.deleteJob.State == model.InventoryDeleteJobStateRunning
+}
+
+func (s *Server) beginDeleteJob(mode model.InventoryDeleteJobMode, groupID *int64) (*inventoryDeleteJobState, error) {
+	s.deleteJobMu.Lock()
+	defer s.deleteJobMu.Unlock()
+
+	if s.deleteJob != nil && s.deleteJob.Active && s.deleteJob.State == model.InventoryDeleteJobStateRunning {
+		return nil, errors.New("inventory deletion already in progress")
+	}
+
+	now := time.Now().UTC()
+	job := &inventoryDeleteJobState{
+		Active:             true,
+		JobID:              newPreviewID(),
+		Mode:               mode,
+		GroupID:            cloneInt64Ptr(groupID),
+		State:              model.InventoryDeleteJobStateRunning,
+		MatchedEndpoints:   0,
+		ProcessedEndpoints: 0,
+		DeletedEndpoints:   0,
+		ProgressPct:        0,
+		Phase:              "initializing",
+		StartedAt:          cloneTimePtr(&now),
+		UpdatedAt:          cloneTimePtr(&now),
+	}
+	s.deleteJob = job
+	return job, nil
+}
+
+func (s *Server) updateDeleteJob(jobID string, updateFn func(job *inventoryDeleteJobState)) {
+	s.deleteJobMu.Lock()
+	defer s.deleteJobMu.Unlock()
+
+	if s.deleteJob == nil || s.deleteJob.JobID != jobID {
+		return
+	}
+	if updateFn != nil {
+		updateFn(s.deleteJob)
+	}
+	now := time.Now().UTC()
+	s.deleteJob.UpdatedAt = cloneTimePtr(&now)
+}
+
+func (s *Server) completeDeleteJob(jobID string, state model.InventoryDeleteJobState, errMsg string) {
+	s.updateDeleteJob(jobID, func(job *inventoryDeleteJobState) {
+		job.Active = false
+		job.State = state
+		job.Error = strings.TrimSpace(errMsg)
+		if job.MatchedEndpoints > 0 && job.ProgressPct < 100 {
+			job.ProgressPct = 100
+		}
+		now := time.Now().UTC()
+		job.CompletedAt = cloneTimePtr(&now)
+	})
+}
+
+func (s *Server) runDeleteJob(job *inventoryDeleteJobState, endpointIDs []int64) {
+	jobID := job.JobID
+	s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
+		current.Phase = "stopping probe"
+		current.MatchedEndpoints = int64(len(endpointIDs))
+		if len(endpointIDs) == 0 {
+			current.ProgressPct = 100
+		}
+	})
+
+	s.probe.Stop()
+
+	s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
+		current.Phase = "pausing maintenance jobs"
+	})
+
+	pausedJobs, err := s.store.PauseContinuousAggregateRefreshJobs(context.Background())
+	if err != nil {
+		log.Printf("delete job %s: failed to pause continuous aggregate refresh jobs: %v", jobID, err)
+		pausedJobs = nil
+	}
+
+	if len(endpointIDs) == 0 {
+		s.completeDeleteJob(jobID, model.InventoryDeleteJobStateCompleted, "")
+		if len(pausedJobs) > 0 {
+			if err := s.store.ResumeJobs(context.Background(), pausedJobs); err != nil {
+				log.Printf("delete job %s: failed to resume maintenance jobs: %v", jobID, err)
+			}
+		}
+		return
+	}
+
+	s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
+		current.Phase = "deleting endpoints"
+	})
+
+	deletedCount, err := s.store.DeleteInventoryEndpointsByIDs(
+		context.Background(),
+		endpointIDs,
+		deleteJobBatchSize,
+		func(processed int64, deleted int64) {
+			s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
+				current.ProcessedEndpoints = processed
+				current.DeletedEndpoints = deleted
+				if current.MatchedEndpoints > 0 {
+					current.ProgressPct = float64(processed) * 100 / float64(current.MatchedEndpoints)
+					if current.ProgressPct > 100 {
+						current.ProgressPct = 100
+					}
+				}
+				current.Phase = "deleting endpoints"
+			})
+		},
+	)
+	if err != nil {
+		if len(pausedJobs) > 0 {
+			if resumeErr := s.store.ResumeJobs(context.Background(), pausedJobs); resumeErr != nil {
+				log.Printf("delete job %s: failed to resume maintenance jobs after delete failure: %v", jobID, resumeErr)
+			}
+		}
+		s.completeDeleteJob(jobID, model.InventoryDeleteJobStateFailed, err.Error())
+		return
+	}
+
+	if len(pausedJobs) > 0 {
+		s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
+			current.Phase = "resuming maintenance jobs"
+		})
+		if err := s.store.ResumeJobs(context.Background(), pausedJobs); err != nil {
+			log.Printf("delete job %s: failed to resume maintenance jobs: %v", jobID, err)
+		}
+	}
+
+	s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
+		current.DeletedEndpoints = deletedCount
+		current.ProcessedEndpoints = current.MatchedEndpoints
+		current.ProgressPct = 100
+		current.Phase = "completed"
+	})
+	s.completeDeleteJob(jobID, model.InventoryDeleteJobStateCompleted, "")
 }
 
 func (s *Server) Routes() http.Handler {
@@ -64,6 +273,9 @@ func (s *Server) Routes() http.Handler {
 			r.Put("/endpoints/{endpointID}", s.handleInventoryEndpointUpdate)
 			r.Delete("/endpoints/by-group/{groupID}", s.handleInventoryDeleteByGroup)
 			r.Post("/endpoints/delete-all", s.handleInventoryDeleteAll)
+			r.Post("/delete-jobs/by-group/{groupID}", s.handleInventoryDeleteJobByGroup)
+			r.Post("/delete-jobs/all", s.handleInventoryDeleteJobAll)
+			r.Get("/delete-jobs/current", s.handleInventoryDeleteJobCurrent)
 			r.Get("/filter-options", s.handleInventoryFilters)
 			r.Post("/import-preview", s.handleInventoryImportPreview)
 			r.Post("/import-apply", s.handleInventoryImportApply)
@@ -415,6 +627,11 @@ func (s *Server) handleInventoryEndpointUpdate(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) handleInventoryDeleteByGroup(w http.ResponseWriter, r *http.Request) {
+	if s.isDeleteJobRunning() {
+		util.WriteError(w, http.StatusConflict, "inventory deletion already in progress")
+		return
+	}
+
 	groupID, err := strconv.ParseInt(chi.URLParam(r, "groupID"), 10, 64)
 	if err != nil || groupID < 1 {
 		util.WriteError(w, http.StatusBadRequest, "invalid group id")
@@ -440,6 +657,11 @@ func (s *Server) handleInventoryDeleteByGroup(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) handleInventoryDeleteAll(w http.ResponseWriter, r *http.Request) {
+	if s.isDeleteJobRunning() {
+		util.WriteError(w, http.StatusConflict, "inventory deletion already in progress")
+		return
+	}
+
 	var req model.DeleteAllInventoryRequest
 	if err := util.DecodeJSON(r, &req); err != nil {
 		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
@@ -461,6 +683,69 @@ func (s *Server) handleInventoryDeleteAll(w http.ResponseWriter, r *http.Request
 		Deleted:      true,
 		DeletedCount: deletedCount,
 	})
+}
+
+func (s *Server) handleInventoryDeleteJobByGroup(w http.ResponseWriter, r *http.Request) {
+	groupID, err := strconv.ParseInt(chi.URLParam(r, "groupID"), 10, 64)
+	if err != nil || groupID < 1 {
+		util.WriteError(w, http.StatusBadRequest, "invalid group id")
+		return
+	}
+
+	endpointIDs, err := s.store.ListEndpointIDsByGroup(r.Context(), groupID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			util.WriteError(w, http.StatusNotFound, "group not found")
+			return
+		}
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	groupIDCopy := groupID
+	job, err := s.beginDeleteJob(model.InventoryDeleteJobModeByGroup, &groupIDCopy)
+	if err != nil {
+		util.WriteError(w, http.StatusConflict, err.Error())
+		return
+	}
+
+	go s.runDeleteJob(job, endpointIDs)
+	util.WriteJSON(w, http.StatusAccepted, model.InventoryDeleteJobStartResponse{
+		InventoryDeleteJobStatusResponse: s.deleteJobSnapshot(),
+	})
+}
+
+func (s *Server) handleInventoryDeleteJobAll(w http.ResponseWriter, r *http.Request) {
+	var req model.InventoryDeleteJobAllRequest
+	if err := util.DecodeJSON(r, &req); err != nil {
+		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
+		return
+	}
+	if strings.TrimSpace(req.ConfirmPhrase) != "DELETE ALL ENDPOINTS" {
+		util.WriteError(w, http.StatusBadRequest, "confirm_phrase must be DELETE ALL ENDPOINTS")
+		return
+	}
+
+	endpointIDs, err := s.store.ListAllEndpointIDs(r.Context())
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	job, err := s.beginDeleteJob(model.InventoryDeleteJobModeAll, nil)
+	if err != nil {
+		util.WriteError(w, http.StatusConflict, err.Error())
+		return
+	}
+
+	go s.runDeleteJob(job, endpointIDs)
+	util.WriteJSON(w, http.StatusAccepted, model.InventoryDeleteJobStartResponse{
+		InventoryDeleteJobStatusResponse: s.deleteJobSnapshot(),
+	})
+}
+
+func (s *Server) handleInventoryDeleteJobCurrent(w http.ResponseWriter, _ *http.Request) {
+	util.WriteJSON(w, http.StatusOK, s.deleteJobSnapshot())
 }
 
 func (s *Server) handleInventoryFilters(w http.ResponseWriter, r *http.Request) {
@@ -587,6 +872,10 @@ func (s *Server) handleProbeStart(w http.ResponseWriter, r *http.Request) {
 	req.Scope = strings.ToLower(strings.TrimSpace(req.Scope))
 	if req.Scope == "" {
 		req.Scope = "all"
+	}
+	if s.isDeleteJobRunning() {
+		util.WriteError(w, http.StatusConflict, "inventory deletion in progress; probing is temporarily disabled")
+		return
 	}
 	if err := s.probe.Start(req.Scope, req.GroupIDs); err != nil {
 		util.WriteError(w, http.StatusBadRequest, err.Error())

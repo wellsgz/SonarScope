@@ -1174,108 +1174,206 @@ func (s *Store) CreateInventoryEndpoint(ctx context.Context, payload model.Inven
 	return s.GetInventoryEndpointByID(ctx, endpointID)
 }
 
-func (s *Store) DeleteInventoryEndpointsByGroup(ctx context.Context, groupID int64) (int64, int64, error) {
-	const (
-		defaultEndpointBatchSize = 25
-		largeEndpointBatchSize   = 5
-	)
-
+func (s *Store) ListEndpointIDsByGroup(ctx context.Context, groupID int64) ([]int64, error) {
 	var exists bool
 	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM group_def WHERE id = $1)`, groupID).Scan(&exists); err != nil {
-		return 0, 0, err
+		return nil, err
 	}
 	if !exists {
-		return 0, 0, pgx.ErrNoRows
+		return nil, pgx.ErrNoRows
 	}
 
-	var matchedCount int64
-	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM group_member WHERE group_id = $1`, groupID).Scan(&matchedCount); err != nil {
+	rows, err := s.pool.Query(ctx, `
+		SELECT endpoint_id
+		FROM group_member
+		WHERE group_id = $1
+		ORDER BY endpoint_id
+	`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var endpointID int64
+		if err := rows.Scan(&endpointID); err != nil {
+			return nil, err
+		}
+		ids = append(ids, endpointID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (s *Store) ListAllEndpointIDs(ctx context.Context) ([]int64, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id
+		FROM inventory_endpoint
+		ORDER BY id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var endpointID int64
+		if err := rows.Scan(&endpointID); err != nil {
+			return nil, err
+		}
+		ids = append(ids, endpointID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (s *Store) DeleteInventoryEndpointsByIDs(
+	ctx context.Context,
+	endpointIDs []int64,
+	batchSize int,
+	onBatch func(processed int64, deleted int64),
+) (int64, error) {
+	endpointIDs = uniqueInt64(endpointIDs)
+	if len(endpointIDs) == 0 {
+		return 0, nil
+	}
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+
+	var processedCount int64
+	var deletedCount int64
+
+	for start := 0; start < len(endpointIDs); start += batchSize {
+		end := start + batchSize
+		if end > len(endpointIDs) {
+			end = len(endpointIDs)
+		}
+		batchIDs := endpointIDs[start:end]
+
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			return deletedCount, err
+		}
+
+		if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, err
+		}
+		if _, err := tx.Exec(ctx, `SET LOCAL synchronous_commit = OFF`); err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, err
+		}
+
+		if _, err := tx.Exec(ctx, `DELETE FROM ping_raw WHERE endpoint_id = ANY($1)`, batchIDs); err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM endpoint_stats_current WHERE endpoint_id = ANY($1)`, batchIDs); err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM group_member WHERE endpoint_id = ANY($1)`, batchIDs); err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, err
+		}
+		cmd, err := tx.Exec(ctx, `DELETE FROM inventory_endpoint WHERE id = ANY($1)`, batchIDs)
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, err
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return deletedCount, err
+		}
+
+		processedCount += int64(len(batchIDs))
+		deletedCount += cmd.RowsAffected()
+		if onBatch != nil {
+			onBatch(processedCount, deletedCount)
+		}
+	}
+
+	return deletedCount, nil
+}
+
+func (s *Store) PauseContinuousAggregateRefreshJobs(ctx context.Context) ([]int64, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT job_id
+		FROM timescaledb_information.jobs
+		WHERE scheduled = true
+		  AND proc_name = 'policy_refresh_continuous_aggregate'
+		ORDER BY job_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	jobIDs := make([]int64, 0, 4)
+	for rows.Next() {
+		var jobID int64
+		if err := rows.Scan(&jobID); err != nil {
+			return nil, err
+		}
+		jobIDs = append(jobIDs, jobID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, jobID := range jobIDs {
+		if _, err := s.pool.Exec(ctx, `SELECT alter_job($1, scheduled => false)`, jobID); err != nil {
+			return nil, err
+		}
+	}
+
+	return jobIDs, nil
+}
+
+func (s *Store) ResumeJobs(ctx context.Context, jobIDs []int64) error {
+	jobIDs = uniqueInt64(jobIDs)
+	for _, jobID := range jobIDs {
+		if _, err := s.pool.Exec(ctx, `SELECT alter_job($1, scheduled => true)`, jobID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) DeleteInventoryEndpointsByGroup(ctx context.Context, groupID int64) (int64, int64, error) {
+	endpointIDs, err := s.ListEndpointIDsByGroup(ctx, groupID)
+	if err != nil {
 		return 0, 0, err
 	}
+
+	matchedCount := int64(len(endpointIDs))
 	if matchedCount == 0 {
 		return 0, 0, nil
 	}
 
-	endpointBatchSize := defaultEndpointBatchSize
-	if matchedCount > 1000 {
-		endpointBatchSize = largeEndpointBatchSize
+	deletedCount, err := s.DeleteInventoryEndpointsByIDs(ctx, endpointIDs, 500, nil)
+	if err != nil {
+		return matchedCount, deletedCount, err
 	}
-
-	var deletedCount int64
-	for {
-		rows, err := s.pool.Query(ctx, `
-			SELECT endpoint_id
-			FROM group_member
-			WHERE group_id = $1
-			ORDER BY endpoint_id
-			LIMIT $2
-		`, groupID, endpointBatchSize)
-		if err != nil {
-			return matchedCount, deletedCount, err
-		}
-
-		batchIDs := make([]int64, 0, endpointBatchSize)
-		for rows.Next() {
-			var endpointID int64
-			if err := rows.Scan(&endpointID); err != nil {
-				rows.Close()
-				return matchedCount, deletedCount, err
-			}
-			batchIDs = append(batchIDs, endpointID)
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return matchedCount, deletedCount, err
-		}
-		rows.Close()
-
-		if len(batchIDs) == 0 {
-			break
-		}
-
-		for _, endpointID := range batchIDs {
-			removed, err := s.deleteSingleInventoryEndpoint(ctx, endpointID)
-			if err != nil {
-				return matchedCount, deletedCount, err
-			}
-			deletedCount += removed
-		}
-	}
-
 	return matchedCount, deletedCount, nil
 }
 
-func (s *Store) deleteSingleInventoryEndpoint(ctx context.Context, endpointID int64) (int64, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
-		return 0, err
-	}
-
-	cmd, err := tx.Exec(ctx, `
-		DELETE FROM inventory_endpoint
-		WHERE id = $1
-	`, endpointID)
-	if err != nil {
-		return 0, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return 0, err
-	}
-	return cmd.RowsAffected(), nil
-}
-
 func (s *Store) DeleteAllInventoryEndpoints(ctx context.Context) (int64, error) {
-	cmd, err := s.pool.Exec(ctx, `DELETE FROM inventory_endpoint`)
+	endpointIDs, err := s.ListAllEndpointIDs(ctx)
 	if err != nil {
 		return 0, err
 	}
-	return cmd.RowsAffected(), nil
+	if len(endpointIDs) == 0 {
+		return 0, nil
+	}
+	return s.DeleteInventoryEndpointsByIDs(ctx, endpointIDs, 500, nil)
 }
 
 func (s *Store) QueryTimeSeries(ctx context.Context, endpointIDs []int64, start time.Time, end time.Time, rollup string) ([]model.TimeSeriesPoint, error) {

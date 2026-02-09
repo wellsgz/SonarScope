@@ -21,6 +21,7 @@ type Props = {
   onStartProbeGroups: () => void;
   onStopProbe: () => void;
   probeBusy: boolean;
+  deleteInProgress: boolean;
   children: ReactNode;
 };
 
@@ -41,6 +42,7 @@ export function AppShell({
   onStartProbeGroups,
   onStopProbe,
   probeBusy,
+  deleteInProgress,
   children
 }: Props) {
   const activeMeta =
@@ -84,6 +86,7 @@ export function AppShell({
         onStartProbeGroups={onStartProbeGroups}
         onStopProbe={onStopProbe}
         probeBusy={probeBusy}
+        deleteInProgress={deleteInProgress}
       />
 
       {sidebarOpen && <button className="shell-backdrop" onClick={onCloseSidebar} aria-label="Close navigation" />}

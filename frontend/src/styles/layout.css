@@ -105,6 +105,11 @@
   color: var(--color-text-subtle);
 }
 
+.sidebar-probe-lock-hint {
+  font-size: 0.72rem;
+  color: var(--color-warning);
+}
+
 .sidebar-nav-item {
   height: 2.4rem;
   border: 1px solid transparent;

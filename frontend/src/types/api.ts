@@ -157,6 +157,26 @@ export type DeleteAllInventoryResponse = {
   deleted_count: number;
 };
 
+export type InventoryDeleteJobMode = "by_group" | "all";
+export type InventoryDeleteJobState = "running" | "completed" | "failed";
+
+export type InventoryDeleteJobStatus = {
+  active: boolean;
+  job_id?: string;
+  mode?: InventoryDeleteJobMode;
+  group_id?: number;
+  state?: InventoryDeleteJobState;
+  matched_endpoints?: number;
+  processed_endpoints?: number;
+  deleted_endpoints?: number;
+  progress_pct?: number;
+  phase?: string;
+  error?: string;
+  started_at?: string;
+  updated_at?: string;
+  completed_at?: string;
+};
+
 export type TimeSeriesPoint = {
   endpoint_id: number;
   bucket: string;

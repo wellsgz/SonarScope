@@ -19,6 +19,7 @@ type Props = {
   onStartProbeGroups: () => void;
   onStopProbe: () => void;
   probeBusy: boolean;
+  deleteInProgress: boolean;
 };
 
 export function SidebarNav({
@@ -36,7 +37,8 @@ export function SidebarNav({
   onStartProbeAll,
   onStartProbeGroups,
   onStopProbe,
-  probeBusy
+  probeBusy,
+  deleteInProgress
 }: Props) {
   const [groupPickerOpen, setGroupPickerOpen] = useState(false);
   const [groupSearch, setGroupSearch] = useState("");
@@ -138,13 +140,18 @@ export function SidebarNav({
         <section className="sidebar-probe-actions-module" aria-label="Probe actions">
           <div className="sidebar-probe-actions-title">Probe Actions</div>
           <div className="sidebar-probe-primary-row">
-            <button className="btn btn-small btn-primary" type="button" disabled={probeBusy} onClick={onStartProbeAll}>
+            <button
+              className="btn btn-small btn-primary"
+              type="button"
+              disabled={probeBusy || deleteInProgress}
+              onClick={onStartProbeAll}
+            >
               Start All
             </button>
             <button
               className="btn btn-small btn-danger"
               type="button"
-              disabled={probeBusy || !probeStatus.running}
+              disabled={probeBusy || !probeStatus.running || deleteInProgress}
               onClick={onStopProbe}
             >
               Stop
@@ -207,11 +214,14 @@ export function SidebarNav({
           <button
             className="btn btn-small sidebar-probe-start-groups"
             type="button"
-            disabled={probeBusy || selectedProbeGroupIDs.length === 0}
+            disabled={probeBusy || selectedProbeGroupIDs.length === 0 || deleteInProgress}
             onClick={onStartProbeGroups}
           >
             Start Groups
           </button>
+          {deleteInProgress ? (
+            <div className="sidebar-probe-lock-hint">Probing is disabled while inventory deletion is running.</div>
+          ) : null}
           <div className="sidebar-probe-target">{targetSummary}</div>
         </section>
 
