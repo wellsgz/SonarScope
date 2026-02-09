@@ -1177,8 +1177,7 @@ func (s *Store) CreateInventoryEndpoint(ctx context.Context, payload model.Inven
 func (s *Store) DeleteInventoryEndpointsByGroup(ctx context.Context, groupID int64) (int64, int64, error) {
 	const (
 		defaultEndpointBatchSize = 25
-		largeEndpointBatchSize   = 10
-		pingRawDeleteChunkSize   = 20000
+		largeEndpointBatchSize   = 5
 	)
 
 	var exists bool
@@ -1234,77 +1233,38 @@ func (s *Store) DeleteInventoryEndpointsByGroup(ctx context.Context, groupID int
 			break
 		}
 
-		if err := s.deletePingRawByEndpointBatch(ctx, batchIDs, pingRawDeleteChunkSize); err != nil {
-			return matchedCount, deletedCount, err
+		for _, endpointID := range batchIDs {
+			removed, err := s.deleteSingleInventoryEndpoint(ctx, endpointID)
+			if err != nil {
+				return matchedCount, deletedCount, err
+			}
+			deletedCount += removed
 		}
-
-		tx, err := s.pool.Begin(ctx)
-		if err != nil {
-			return matchedCount, deletedCount, err
-		}
-
-		batchDeleted, err := s.deleteInventoryBatch(ctx, tx, groupID, batchIDs)
-		if err != nil {
-			_ = tx.Rollback(ctx)
-			return matchedCount, deletedCount, err
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return matchedCount, deletedCount, err
-		}
-		deletedCount += batchDeleted
 	}
 
 	return matchedCount, deletedCount, nil
 }
 
-func (s *Store) deletePingRawByEndpointBatch(ctx context.Context, endpointIDs []int64, rowChunkSize int) error {
-	for {
-		cmd, err := s.pool.Exec(ctx, `
-			WITH doomed AS (
-				SELECT ts, endpoint_id
-				FROM ping_raw
-				WHERE endpoint_id = ANY($1::BIGINT[])
-				LIMIT $2
-			)
-			DELETE FROM ping_raw pr
-			USING doomed d
-			WHERE pr.ts = d.ts
-				AND pr.endpoint_id = d.endpoint_id
-		`, endpointIDs, rowChunkSize)
-		if err != nil {
-			return err
-		}
-		if cmd.RowsAffected() == 0 {
-			return nil
-		}
+func (s *Store) deleteSingleInventoryEndpoint(ctx context.Context, endpointID int64) (int64, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
 	}
-}
+	defer func() { _ = tx.Rollback(ctx) }()
 
-func (s *Store) deleteInventoryBatch(ctx context.Context, tx pgx.Tx, groupID int64, endpointIDs []int64) (int64, error) {
 	if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
-		return 0, err
-	}
-
-	if _, err := tx.Exec(ctx, `
-		DELETE FROM endpoint_stats_current
-		WHERE endpoint_id = ANY($1::BIGINT[])
-	`, endpointIDs); err != nil {
-		return 0, err
-	}
-
-	if _, err := tx.Exec(ctx, `
-		DELETE FROM group_member
-		WHERE group_id = $2
-			AND endpoint_id = ANY($1::BIGINT[])
-	`, endpointIDs, groupID); err != nil {
 		return 0, err
 	}
 
 	cmd, err := tx.Exec(ctx, `
 		DELETE FROM inventory_endpoint
-		WHERE id = ANY($1::BIGINT[])
-	`, endpointIDs)
+		WHERE id = $1
+	`, endpointID)
 	if err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
 	return cmd.RowsAffected(), nil
