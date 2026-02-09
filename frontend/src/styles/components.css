@@ -245,8 +245,8 @@ label {
 }
 
 .sidebar-group-picker {
-  position: relative;
-  flex: 1 1 100%;
+  position: static;
+  width: 100%;
 }
 
 .sidebar-group-picker > .btn {
@@ -254,11 +254,9 @@ label {
 }
 
 .sidebar-group-picker-popover {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  left: 0;
-  right: 0;
-  z-index: 30;
+  position: relative;
+  margin-top: var(--space-2);
+  width: 100%;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
@@ -324,6 +322,12 @@ label {
 
 .sidebar-group-picker-actions .btn {
   min-width: 6.2rem;
+}
+
+@media (max-width: 1024px) {
+  .sidebar-probe-action-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .chip {

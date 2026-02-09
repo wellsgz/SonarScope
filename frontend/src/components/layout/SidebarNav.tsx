@@ -125,6 +125,24 @@ export function SidebarNav({
           <button className="btn btn-small btn-primary" type="button" disabled={probeBusy} onClick={onStartProbeAll}>
             Start All
           </button>
+          <button
+            className="btn btn-small"
+            type="button"
+            disabled={probeBusy || selectedProbeGroupIDs.length === 0}
+            onClick={onStartProbeGroups}
+          >
+            Start Groups
+          </button>
+          <button
+            className="btn btn-small btn-danger"
+            type="button"
+            disabled={probeBusy || !probeStatus.running}
+            onClick={onStopProbe}
+          >
+            Stop
+          </button>
+        </div>
+        <div className="sidebar-probe-picker-row">
           <div className={`sidebar-group-picker ${groupPickerOpen ? "sidebar-group-picker-open" : ""}`}>
             <button
               className="btn btn-small"
@@ -174,22 +192,6 @@ export function SidebarNav({
               </div>
             ) : null}
           </div>
-          <button
-            className="btn btn-small"
-            type="button"
-            disabled={probeBusy || selectedProbeGroupIDs.length === 0}
-            onClick={onStartProbeGroups}
-          >
-            Start Groups
-          </button>
-          <button
-            className="btn btn-small btn-danger"
-            type="button"
-            disabled={probeBusy || !probeStatus.running}
-            onClick={onStopProbe}
-          >
-            Stop
-          </button>
         </div>
         <div className="sidebar-probe-target">{targetSummary}</div>
       </section>

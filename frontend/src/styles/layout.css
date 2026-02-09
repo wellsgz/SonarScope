@@ -59,6 +59,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .sidebar-probe-actions-module {
@@ -69,6 +71,7 @@
   display: grid;
   gap: var(--space-2);
   box-shadow: none;
+  margin-top: auto;
 }
 
 .sidebar-probe-actions-title {
@@ -79,14 +82,13 @@
 }
 
 .sidebar-probe-action-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
-.sidebar-probe-action-row > .btn {
-  flex: 1 1 auto;
+.sidebar-probe-picker-row {
+  display: block;
 }
 
 .sidebar-probe-target {
@@ -129,7 +131,7 @@
 }
 
 .sidebar-footer {
-  margin-top: auto;
+  margin-top: var(--space-3);
   border-top: 1px solid var(--color-border);
   padding-top: var(--space-4);
   display: grid;
