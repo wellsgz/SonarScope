@@ -290,6 +290,106 @@ func (s *Store) UpdateGroup(ctx context.Context, id int64, name string, descript
 	return group, nil
 }
 
+func (s *Store) GetGroupByID(ctx context.Context, id int64) (model.Group, error) {
+	group := model.Group{}
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, name, description, created_at, updated_at
+		FROM group_def
+		WHERE id = $1
+	`, id).Scan(&group.ID, &group.Name, &group.Description, &group.CreatedAt, &group.UpdatedAt)
+	if err != nil {
+		return model.Group{}, err
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT endpoint_id
+		FROM group_member
+		WHERE group_id = $1
+		ORDER BY endpoint_id
+	`, id)
+	if err != nil {
+		return model.Group{}, err
+	}
+	defer rows.Close()
+
+	endpointIDs := make([]int64, 0)
+	for rows.Next() {
+		var endpointID int64
+		if err := rows.Scan(&endpointID); err != nil {
+			return model.Group{}, err
+		}
+		endpointIDs = append(endpointIDs, endpointID)
+	}
+	if err := rows.Err(); err != nil {
+		return model.Group{}, err
+	}
+	group.EndpointIDs = endpointIDs
+	return group, nil
+}
+
+func (s *Store) GetGroupByNameCI(ctx context.Context, name string) (model.Group, error) {
+	group := model.Group{}
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, name, description, created_at, updated_at
+		FROM group_def
+		WHERE lower(name) = lower($1)
+		ORDER BY id
+		LIMIT 1
+	`, strings.TrimSpace(name)).Scan(&group.ID, &group.Name, &group.Description, &group.CreatedAt, &group.UpdatedAt)
+	if err != nil {
+		return model.Group{}, err
+	}
+	return s.GetGroupByID(ctx, group.ID)
+}
+
+func (s *Store) ResolveEndpointIDsByIPs(ctx context.Context, ips []string) ([]int64, error) {
+	ips = uniqueStrings(ips)
+	if len(ips) == 0 {
+		return []int64{}, nil
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT id
+		FROM inventory_endpoint
+		WHERE host(ip) = ANY($1)
+		ORDER BY id
+	`, ips)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	endpointIDs := make([]int64, 0, len(ips))
+	for rows.Next() {
+		var endpointID int64
+		if err := rows.Scan(&endpointID); err != nil {
+			return nil, err
+		}
+		endpointIDs = append(endpointIDs, endpointID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return uniqueInt64(endpointIDs), nil
+}
+
+func (s *Store) AddEndpointsToGroup(ctx context.Context, groupID int64, endpointIDs []int64) (int64, error) {
+	endpointIDs = uniqueInt64(endpointIDs)
+	if len(endpointIDs) == 0 {
+		return 0, nil
+	}
+
+	cmd, err := s.pool.Exec(ctx, `
+		INSERT INTO group_member(group_id, endpoint_id)
+		SELECT $1, unnest($2::bigint[])
+		ON CONFLICT DO NOTHING
+	`, groupID, endpointIDs)
+	if err != nil {
+		return 0, err
+	}
+	return cmd.RowsAffected(), nil
+}
+
 func (s *Store) DeleteGroup(ctx context.Context, id int64) error {
 	cmd, err := s.pool.Exec(ctx, `DELETE FROM group_def WHERE id = $1`, id)
 	if err != nil {
@@ -1042,6 +1142,23 @@ func uniqueInt64(values []int64) []int64 {
 		}
 		seen[value] = struct{}{}
 		out = append(out, value)
+	}
+	return out
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
 	}
 	return out
 }

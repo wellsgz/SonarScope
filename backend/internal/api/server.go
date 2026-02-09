@@ -149,16 +149,7 @@ func (s *Server) handleInventoryImportPreview(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) handleInventoryImportApply(w http.ResponseWriter, r *http.Request) {
-	type selection struct {
-		RowID  string                     `json:"row_id"`
-		Action model.ImportClassification `json:"action"`
-	}
-	type request struct {
-		PreviewID  string      `json:"preview_id"`
-		Selections []selection `json:"selections"`
-	}
-
-	var req request
+	var req model.ImportApplyRequest
 	if err := util.DecodeJSON(r, &req); err != nil {
 		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
 		return
@@ -201,16 +192,127 @@ func (s *Server) handleInventoryImportApply(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	var assignmentRequested bool
+	var assignmentMode model.ImportGroupAssignmentMode
+	var assignmentGroupID int64
+	var assignmentGroupName string
+	var usedExistingByName bool
+
+	if req.GroupAssignment != nil {
+		assignmentMode = model.ImportGroupAssignmentMode(strings.ToLower(strings.TrimSpace(string(req.GroupAssignment.Mode))))
+		assignmentGroupID = req.GroupAssignment.GroupID
+		assignmentGroupName = strings.TrimSpace(req.GroupAssignment.GroupName)
+
+		switch assignmentMode {
+		case model.ImportGroupAssignmentNone:
+			if assignmentGroupID > 0 || assignmentGroupName != "" {
+				util.WriteError(w, http.StatusBadRequest, "invalid group_assignment for none mode")
+				return
+			}
+		case model.ImportGroupAssignmentExisting:
+			if assignmentGroupID < 1 || assignmentGroupName != "" {
+				util.WriteError(w, http.StatusBadRequest, "invalid group_assignment for existing mode")
+				return
+			}
+			group, err := s.store.GetGroupByID(r.Context(), assignmentGroupID)
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					util.WriteError(w, http.StatusNotFound, "group not found")
+					return
+				}
+				util.WriteError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			assignmentGroupName = group.Name
+			assignmentRequested = true
+		case model.ImportGroupAssignmentCreate:
+			if assignmentGroupName == "" || assignmentGroupID > 0 {
+				util.WriteError(w, http.StatusBadRequest, "invalid group_assignment for create mode")
+				return
+			}
+			group, err := s.store.GetGroupByNameCI(r.Context(), assignmentGroupName)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				util.WriteError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if err == nil {
+				assignmentGroupID = group.ID
+				assignmentGroupName = group.Name
+				usedExistingByName = true
+			}
+			assignmentRequested = true
+		default:
+			util.WriteError(w, http.StatusBadRequest, "invalid group_assignment mode")
+			return
+		}
+	}
+
 	added, updated, applyErrors := s.store.ApplyImport(r.Context(), rowsToApply)
+
+	var assignmentResult *model.ImportGroupAssignmentResult
+	if assignmentRequested {
+		validUploadIPs := make([]string, 0, len(preview.Candidates))
+		for _, candidate := range preview.Candidates {
+			if candidate.Action == model.ImportInvalid {
+				continue
+			}
+			validUploadIPs = append(validUploadIPs, candidate.IP)
+		}
+		validUploadIPs = uniqueStrings(validUploadIPs)
+
+		if assignmentMode == model.ImportGroupAssignmentCreate && assignmentGroupID == 0 {
+			created, err := s.store.CreateGroup(r.Context(), assignmentGroupName, "", []int64{})
+			if err != nil {
+				existing, lookupErr := s.store.GetGroupByNameCI(r.Context(), assignmentGroupName)
+				if lookupErr != nil {
+					util.WriteError(w, http.StatusBadRequest, err.Error())
+					return
+				}
+				assignmentGroupID = existing.ID
+				assignmentGroupName = existing.Name
+				usedExistingByName = true
+			} else {
+				assignmentGroupID = created.ID
+				assignmentGroupName = created.Name
+			}
+		}
+
+		resolvedEndpointIDs, err := s.store.ResolveEndpointIDsByIPs(r.Context(), validUploadIPs)
+		if err != nil {
+			util.WriteError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		assignedAdded, err := s.store.AddEndpointsToGroup(r.Context(), assignmentGroupID, resolvedEndpointIDs)
+		if err != nil {
+			util.WriteError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		unresolved := len(validUploadIPs) - len(resolvedEndpointIDs)
+		if unresolved < 0 {
+			unresolved = 0
+		}
+		assignmentResult = &model.ImportGroupAssignmentResult{
+			Applied:            true,
+			GroupID:            assignmentGroupID,
+			GroupName:          assignmentGroupName,
+			ValidUploadIPs:     len(validUploadIPs),
+			ResolvedEndpoints:  len(resolvedEndpointIDs),
+			AssignedAdded:      int(assignedAdded),
+			UnresolvedIPs:      unresolved,
+			UsedExistingByName: usedExistingByName,
+		}
+	}
 
 	s.previewMu.Lock()
 	delete(s.previews, req.PreviewID)
 	s.previewMu.Unlock()
 
-	util.WriteJSON(w, http.StatusOK, map[string]any{
-		"added":   added,
-		"updated": updated,
-		"errors":  applyErrors,
+	util.WriteJSON(w, http.StatusOK, model.ImportApplyResponse{
+		Added:           added,
+		Updated:         updated,
+		Errors:          applyErrors,
+		GroupAssignment: assignmentResult,
 	})
 }
 
@@ -702,6 +804,23 @@ func parseCSVQuery(r *http.Request, key string) []string {
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	return out
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
 	}
 	return out
 }

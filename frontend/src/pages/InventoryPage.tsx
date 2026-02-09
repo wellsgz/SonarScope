@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
   importInventoryPreview,
+  listGroups,
   listInventoryEndpoints,
   listInventoryFilterOptions,
   updateInventoryEndpoint
@@ -62,6 +63,10 @@ export function InventoryPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [selection, setSelection] = useState<Record<string, "add" | "update">>({});
+  const [assignToGroup, setAssignToGroup] = useState(false);
+  const [groupAssignmentMode, setGroupAssignmentMode] = useState<"existing" | "create">("existing");
+  const [selectedGroupID, setSelectedGroupID] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [editingEndpointID, setEditingEndpointID] = useState<number | null>(null);
@@ -77,6 +82,10 @@ export function InventoryPage() {
   const filterOptionsQuery = useQuery({
     queryKey: ["inventory-filter-options"],
     queryFn: listInventoryFilterOptions
+  });
+  const groupsQuery = useQuery({
+    queryKey: ["groups"],
+    queryFn: listGroups
   });
 
   filterCards[0].options = filterOptionsQuery.data?.vlan || [];
@@ -114,12 +123,18 @@ export function InventoryPage() {
       preview
         ? applyInventoryPreview({
             preview_id: preview.preview_id,
-            selections: Object.entries(selection).map(([row_id, action]) => ({ row_id, action }))
+            selections: Object.entries(selection).map(([row_id, action]) => ({ row_id, action })),
+            group_assignment: assignToGroup
+              ? groupAssignmentMode === "existing"
+                ? { mode: "existing", group_id: Number(selectedGroupID) }
+                : { mode: "create", group_name: newGroupName.trim() }
+              : undefined
           })
         : Promise.reject(new Error("No preview available")),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory-endpoints"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-filter-options"] });
+      queryClient.invalidateQueries({ queryKey: ["groups"] });
     }
   });
 
@@ -151,6 +166,11 @@ export function InventoryPage() {
     );
   }, [preview]);
 
+  const groupAssignmentInvalid =
+    assignToGroup &&
+    ((groupAssignmentMode === "existing" && !selectedGroupID) ||
+      (groupAssignmentMode === "create" && newGroupName.trim() === ""));
+
   return (
     <div className="inventory-page-v13">
       <section className="panel inventory-import-panel">
@@ -168,10 +188,66 @@ export function InventoryPage() {
             className="btn"
             type="button"
             onClick={() => applyMutation.mutate()}
-            disabled={!preview || Object.keys(selection).length === 0}
+            disabled={!preview || Object.keys(selection).length === 0 || groupAssignmentInvalid}
           >
             Apply Selected
           </button>
+        </div>
+
+        <div className="inventory-import-assignment">
+          <label className="inventory-import-assignment-toggle">
+            <input
+              type="checkbox"
+              checked={assignToGroup}
+              onChange={(event) => setAssignToGroup(event.target.checked)}
+            />
+            Assign uploaded endpoints to a group
+          </label>
+          {assignToGroup ? (
+            <div className="inventory-import-assignment-controls">
+              <label>
+                Assignment Mode
+                <select
+                  value={groupAssignmentMode}
+                  onChange={(event) => setGroupAssignmentMode(event.target.value as "existing" | "create")}
+                >
+                  <option value="existing">Existing Group</option>
+                  <option value="create">Create Group</option>
+                </select>
+              </label>
+
+              {groupAssignmentMode === "existing" ? (
+                <label>
+                  Select Group
+                  <select
+                    value={selectedGroupID}
+                    onChange={(event) => setSelectedGroupID(event.target.value)}
+                    disabled={groupsQuery.isLoading}
+                  >
+                    <option value="">Select a group</option>
+                    {(groupsQuery.data || []).map((group) => (
+                      <option key={group.id} value={String(group.id)}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label>
+                  New Group Name
+                  <input
+                    value={newGroupName}
+                    onChange={(event) => setNewGroupName(event.target.value)}
+                    placeholder="NOC-Upload-2026-02-09"
+                  />
+                </label>
+              )}
+            </div>
+          ) : null}
+          <div className="field-help">
+            All valid rows in this upload (add/update/unchanged) will be added to the selected group. Existing group
+            members are kept.
+          </div>
         </div>
 
         {previewMutation.error && (
@@ -187,6 +263,24 @@ export function InventoryPage() {
         {applyMutation.data && (
           <div className="success-banner" role="status" aria-live="polite">
             Added: {applyMutation.data.added}, Updated: {applyMutation.data.updated}, Errors: {applyMutation.data.errors.length}
+            {applyMutation.data.group_assignment ? (
+              <div>
+                Group "{applyMutation.data.group_assignment.group_name}": added {applyMutation.data.group_assignment.assigned_added}{" "}
+                member links ({applyMutation.data.group_assignment.resolved_endpoints}/
+                {applyMutation.data.group_assignment.valid_upload_ips} resolved).
+              </div>
+            ) : null}
+          </div>
+        )}
+        {applyMutation.data?.group_assignment?.used_existing_by_name && (
+          <div className="info-banner" role="status" aria-live="polite">
+            Group "{applyMutation.data.group_assignment.group_name}" already exists; using existing group.
+          </div>
+        )}
+        {applyMutation.data?.group_assignment && applyMutation.data.group_assignment.unresolved_ips > 0 && (
+          <div className="info-banner" role="status" aria-live="polite">
+            {applyMutation.data.group_assignment.unresolved_ips} valid uploaded IP(s) were not found in inventory at apply
+            time, so they could not be assigned to the group.
           </div>
         )}
 

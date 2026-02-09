@@ -107,6 +107,32 @@ export type ImportPreview = {
   candidates: ImportCandidate[];
 };
 
+export type ImportGroupAssignmentMode = "none" | "existing" | "create";
+
+export type ImportGroupAssignmentRequest = {
+  mode: ImportGroupAssignmentMode;
+  group_id?: number;
+  group_name?: string;
+};
+
+export type ImportGroupAssignmentResult = {
+  applied: boolean;
+  group_id: number;
+  group_name: string;
+  valid_upload_ips: number;
+  resolved_endpoints: number;
+  assigned_added: number;
+  unresolved_ips: number;
+  used_existing_by_name?: boolean;
+};
+
+export type ImportApplyResponse = {
+  added: number;
+  updated: number;
+  errors: string[];
+  group_assignment?: ImportGroupAssignmentResult;
+};
+
 export type TimeSeriesPoint = {
   endpoint_id: number;
   bucket: string;

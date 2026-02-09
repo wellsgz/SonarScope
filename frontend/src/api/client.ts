@@ -1,6 +1,8 @@
 import type {
   FilterOptions,
   Group,
+  ImportApplyResponse,
+  ImportGroupAssignmentRequest,
   InventoryEndpoint,
   MonitorDataScope,
   ImportPreview,
@@ -256,8 +258,9 @@ export async function importInventoryPreview(file: File): Promise<ImportPreview>
 export async function applyInventoryPreview(payload: {
   preview_id: string;
   selections?: { row_id: string; action: "add" | "update" }[];
-}): Promise<{ added: number; updated: number; errors: string[] }> {
-  return request<{ added: number; updated: number; errors: string[] }>("/api/inventory/import-apply", {
+  group_assignment?: ImportGroupAssignmentRequest;
+}): Promise<ImportApplyResponse> {
+  return request<ImportApplyResponse>("/api/inventory/import-apply", {
     method: "POST",
     body: JSON.stringify(payload)
   });

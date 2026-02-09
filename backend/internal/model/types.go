@@ -163,3 +163,46 @@ type ImportPreview struct {
 	CreatedAt  time.Time         `json:"created_at"`
 	Candidates []ImportCandidate `json:"candidates"`
 }
+
+type ImportApplySelection struct {
+	RowID  string               `json:"row_id"`
+	Action ImportClassification `json:"action"`
+}
+
+type ImportGroupAssignmentMode string
+
+const (
+	ImportGroupAssignmentNone     ImportGroupAssignmentMode = "none"
+	ImportGroupAssignmentExisting ImportGroupAssignmentMode = "existing"
+	ImportGroupAssignmentCreate   ImportGroupAssignmentMode = "create"
+)
+
+type ImportGroupAssignmentRequest struct {
+	Mode      ImportGroupAssignmentMode `json:"mode"`
+	GroupID   int64                     `json:"group_id,omitempty"`
+	GroupName string                    `json:"group_name,omitempty"`
+}
+
+type ImportApplyRequest struct {
+	PreviewID       string                        `json:"preview_id"`
+	Selections      []ImportApplySelection        `json:"selections"`
+	GroupAssignment *ImportGroupAssignmentRequest `json:"group_assignment,omitempty"`
+}
+
+type ImportGroupAssignmentResult struct {
+	Applied            bool   `json:"applied"`
+	GroupID            int64  `json:"group_id"`
+	GroupName          string `json:"group_name"`
+	ValidUploadIPs     int    `json:"valid_upload_ips"`
+	ResolvedEndpoints  int    `json:"resolved_endpoints"`
+	AssignedAdded      int    `json:"assigned_added"`
+	UnresolvedIPs      int    `json:"unresolved_ips"`
+	UsedExistingByName bool   `json:"used_existing_by_name,omitempty"`
+}
+
+type ImportApplyResponse struct {
+	Added           int                          `json:"added"`
+	Updated         int                          `json:"updated"`
+	Errors          []string                     `json:"errors"`
+	GroupAssignment *ImportGroupAssignmentResult `json:"group_assignment,omitempty"`
+}
