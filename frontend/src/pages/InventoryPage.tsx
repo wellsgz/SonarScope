@@ -2,6 +2,7 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
+  createInventoryEndpoint,
   deleteAllInventoryEndpoints,
   deleteInventoryEndpointsByGroup,
   importInventoryPreview,
@@ -10,7 +11,7 @@ import {
   listInventoryFilterOptions,
   updateInventoryEndpoint
 } from "../api/client";
-import type { ImportCandidate, ImportPreview, InventoryEndpoint } from "../types/api";
+import type { ImportCandidate, ImportPreview, InventoryEndpoint, InventoryEndpointCreateRequest } from "../types/api";
 
 type FilterState = {
   vlan: string[];
@@ -62,6 +63,17 @@ function badgeClass(action: ImportCandidate["action"]) {
 export function InventoryPage() {
   const queryClient = useQueryClient();
 
+  const initialSingleEndpoint: InventoryEndpointCreateRequest = {
+    ip_address: "",
+    hostname: "",
+    mac_address: "",
+    vlan: "",
+    switch: "",
+    port: "",
+    port_type: "",
+    description: ""
+  };
+
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [selection, setSelection] = useState<Record<string, "add" | "update">>({});
@@ -73,6 +85,8 @@ export function InventoryPage() {
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [editingEndpointID, setEditingEndpointID] = useState<number | null>(null);
   const [editingPatch, setEditingPatch] = useState<InventoryPatch | null>(null);
+  const [singleEndpoint, setSingleEndpoint] = useState<InventoryEndpointCreateRequest>(initialSingleEndpoint);
+  const [singleEndpointAdvancedOpen, setSingleEndpointAdvancedOpen] = useState(false);
   const [deleteGroupID, setDeleteGroupID] = useState("");
   const [deleteAllArmed, setDeleteAllArmed] = useState(false);
   const [deleteAllPhrase, setDeleteAllPhrase] = useState("");
@@ -160,6 +174,15 @@ export function InventoryPage() {
     onSuccess: () => {
       setEditingEndpointID(null);
       setEditingPatch(null);
+      invalidateInventoryAndMonitorQueries();
+    }
+  });
+
+  const createSingleEndpointMutation = useMutation({
+    mutationFn: (payload: InventoryEndpointCreateRequest) => createInventoryEndpoint(payload),
+    onSuccess: () => {
+      setSingleEndpoint(initialSingleEndpoint);
+      setSingleEndpointAdvancedOpen(false);
       invalidateInventoryAndMonitorQueries();
     }
   });
@@ -399,6 +422,168 @@ export function InventoryPage() {
               </table>
             </div>
           )}
+        </div>
+      </section>
+
+      <section className="panel inventory-single-add-panel">
+        <div className="panel-header">
+          <h2 className="panel-title">Add Single Endpoint</h2>
+          <p className="panel-subtitle">Quickly add one endpoint. If hostname is blank, IP will be used.</p>
+        </div>
+
+        <div className="inventory-panel-body">
+          <div className="inventory-single-grid">
+            <label>
+              IP Address (required)
+              <input
+                value={singleEndpoint.ip_address || ""}
+                onChange={(event) =>
+                  setSingleEndpoint((prev) => ({
+                    ...prev,
+                    ip_address: event.target.value
+                  }))
+                }
+                placeholder="10.20.30.40"
+              />
+            </label>
+            <label>
+              Hostname (optional)
+              <input
+                value={singleEndpoint.hostname || ""}
+                onChange={(event) =>
+                  setSingleEndpoint((prev) => ({
+                    ...prev,
+                    hostname: event.target.value
+                  }))
+                }
+                placeholder="server-a-01"
+              />
+            </label>
+          </div>
+
+          <details
+            className="inventory-single-advanced"
+            open={singleEndpointAdvancedOpen}
+            onToggle={(event) => setSingleEndpointAdvancedOpen((event.currentTarget as HTMLDetailsElement).open)}
+          >
+            <summary>Advanced Fields</summary>
+            <div className="inventory-single-advanced-grid">
+              <label>
+                MAC Address
+                <input
+                  value={singleEndpoint.mac_address || ""}
+                  onChange={(event) =>
+                    setSingleEndpoint((prev) => ({
+                      ...prev,
+                      mac_address: event.target.value
+                    }))
+                  }
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                />
+              </label>
+              <label>
+                VLAN
+                <input
+                  value={singleEndpoint.vlan || ""}
+                  onChange={(event) =>
+                    setSingleEndpoint((prev) => ({
+                      ...prev,
+                      vlan: event.target.value
+                    }))
+                  }
+                  placeholder="100"
+                />
+              </label>
+              <label>
+                Switch
+                <input
+                  value={singleEndpoint.switch || ""}
+                  onChange={(event) =>
+                    setSingleEndpoint((prev) => ({
+                      ...prev,
+                      switch: event.target.value
+                    }))
+                  }
+                  placeholder="sw1"
+                />
+              </label>
+              <label>
+                Port
+                <input
+                  value={singleEndpoint.port || ""}
+                  onChange={(event) =>
+                    setSingleEndpoint((prev) => ({
+                      ...prev,
+                      port: event.target.value
+                    }))
+                  }
+                  placeholder="1/10"
+                />
+              </label>
+              <label>
+                Port Type
+                <input
+                  value={singleEndpoint.port_type || ""}
+                  onChange={(event) =>
+                    setSingleEndpoint((prev) => ({
+                      ...prev,
+                      port_type: event.target.value
+                    }))
+                  }
+                  placeholder="access or trunk"
+                />
+              </label>
+              <label>
+                Description
+                <input
+                  value={singleEndpoint.description || ""}
+                  onChange={(event) =>
+                    setSingleEndpoint((prev) => ({
+                      ...prev,
+                      description: event.target.value
+                    }))
+                  }
+                  placeholder="Core uplink"
+                />
+              </label>
+            </div>
+          </details>
+
+          <div className="field-help">If hostname is blank, the IP address will be used as hostname.</div>
+
+          {createSingleEndpointMutation.error && (
+            <div className="error-banner" role="alert" aria-live="assertive">
+              {(createSingleEndpointMutation.error as Error).message}
+            </div>
+          )}
+          {createSingleEndpointMutation.data && (
+            <div className="success-banner" role="status" aria-live="polite">
+              Added endpoint {createSingleEndpointMutation.data.ip_address} (
+              {createSingleEndpointMutation.data.hostname}).
+            </div>
+          )}
+
+          <div className="inventory-actions">
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={!singleEndpoint.ip_address?.trim() || createSingleEndpointMutation.isPending}
+              onClick={() =>
+                createSingleEndpointMutation.mutate({
+                  ip_address: singleEndpoint.ip_address?.trim() || "",
+                  hostname: singleEndpoint.hostname?.trim() || "",
+                  mac_address: singleEndpoint.mac_address?.trim() || "",
+                  vlan: singleEndpoint.vlan?.trim() || "",
+                  switch: singleEndpoint.switch?.trim() || "",
+                  port: singleEndpoint.port?.trim() || "",
+                  port_type: singleEndpoint.port_type?.trim() || "",
+                  description: singleEndpoint.description?.trim() || ""
+                })
+              }
+            >
+              Add Endpoint
+            </button>
+          </div>
         </div>
       </section>
 

@@ -6,6 +6,7 @@ import type {
   ImportApplyResponse,
   ImportGroupAssignmentRequest,
   InventoryEndpoint,
+  InventoryEndpointCreateRequest,
   MonitorDataScope,
   ImportPreview,
   MonitorEndpoint,
@@ -194,6 +195,13 @@ export async function listInventoryEndpoints(filters: {
     group: filters.groups?.join(",")
   });
   return request<InventoryEndpoint[]>(path);
+}
+
+export async function createInventoryEndpoint(payload: InventoryEndpointCreateRequest): Promise<InventoryEndpoint> {
+  return request<InventoryEndpoint>("/api/inventory/endpoints", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function updateInventoryEndpoint(

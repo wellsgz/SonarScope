@@ -22,6 +22,7 @@ const noGroupName = "no group"
 var (
 	ErrReservedGroupName  = errors.New(`group name "no group" is reserved`)
 	ErrSystemGroupMutable = errors.New("system group cannot be modified")
+	ErrEndpointIPExists   = errors.New("inventory endpoint with this IP already exists")
 )
 
 type MonitorFilters struct {
@@ -1144,6 +1145,33 @@ func (s *Store) GetInventoryEndpointByID(ctx context.Context, endpointID int64) 
 		return model.InventoryEndpointView{}, err
 	}
 	return item, nil
+}
+
+func (s *Store) CreateInventoryEndpoint(ctx context.Context, payload model.InventoryEndpointCreate) (model.InventoryEndpointView, error) {
+	var endpointID int64
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO inventory_endpoint(ip, hostname, mac, vlan, switch_name, port, port_type, description, updated_at)
+		VALUES ($1::inet, $2, $3, $4, $5, $6, $7, $8, now())
+		ON CONFLICT (ip) DO NOTHING
+		RETURNING id
+	`,
+		payload.IPAddress,
+		payload.Hostname,
+		payload.MACAddress,
+		payload.VLAN,
+		payload.Switch,
+		payload.Port,
+		payload.PortType,
+		payload.Description,
+	).Scan(&endpointID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.InventoryEndpointView{}, ErrEndpointIPExists
+		}
+		return model.InventoryEndpointView{}, err
+	}
+
+	return s.GetInventoryEndpointByID(ctx, endpointID)
 }
 
 func (s *Store) DeleteInventoryEndpointsByGroup(ctx context.Context, groupID int64) (int64, error) {

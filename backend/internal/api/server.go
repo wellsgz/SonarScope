@@ -59,6 +59,7 @@ func (s *Server) Routes() http.Handler {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/inventory", func(r chi.Router) {
+			r.Post("/endpoints", s.handleInventoryEndpointCreate)
 			r.Get("/endpoints", s.handleInventoryEndpoints)
 			r.Put("/endpoints/{endpointID}", s.handleInventoryEndpointUpdate)
 			r.Delete("/endpoints/by-group/{groupID}", s.handleInventoryDeleteByGroup)
@@ -316,6 +317,51 @@ func (s *Server) handleInventoryImportApply(w http.ResponseWriter, r *http.Reque
 		Errors:          applyErrors,
 		GroupAssignment: assignmentResult,
 	})
+}
+
+func (s *Server) handleInventoryEndpointCreate(w http.ResponseWriter, r *http.Request) {
+	var req model.InventoryEndpointCreate
+	if err := util.DecodeJSON(r, &req); err != nil {
+		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
+		return
+	}
+
+	req.IPAddress = strings.TrimSpace(req.IPAddress)
+	req.Hostname = strings.TrimSpace(req.Hostname)
+	req.MACAddress = strings.TrimSpace(req.MACAddress)
+	req.VLAN = strings.TrimSpace(req.VLAN)
+	req.Switch = strings.TrimSpace(req.Switch)
+	req.Port = strings.TrimSpace(req.Port)
+	req.PortType = strings.ToLower(strings.TrimSpace(req.PortType))
+	req.Description = strings.TrimSpace(req.Description)
+
+	if req.IPAddress == "" {
+		util.WriteError(w, http.StatusBadRequest, "ip_address is required")
+		return
+	}
+	if net.ParseIP(req.IPAddress) == nil {
+		util.WriteError(w, http.StatusBadRequest, "ip_address must be a valid IPv4 or IPv6 address")
+		return
+	}
+	if req.Hostname == "" {
+		req.Hostname = req.IPAddress
+	}
+	if req.PortType != "" && req.PortType != "access" && req.PortType != "trunk" {
+		util.WriteError(w, http.StatusBadRequest, "port_type must be access, trunk, or empty")
+		return
+	}
+
+	item, err := s.store.CreateInventoryEndpoint(r.Context(), req)
+	if err != nil {
+		if errors.Is(err, store.ErrEndpointIPExists) {
+			util.WriteError(w, http.StatusConflict, "inventory endpoint with this IP already exists")
+			return
+		}
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	util.WriteJSON(w, http.StatusCreated, item)
 }
 
 func (s *Server) handleInventoryEndpoints(w http.ResponseWriter, r *http.Request) {

@@ -62,6 +62,17 @@ export type InventoryEndpoint = {
   updated_at: string;
 };
 
+export type InventoryEndpointCreateRequest = {
+  ip_address: string;
+  hostname?: string;
+  mac_address?: string;
+  vlan?: string;
+  switch?: string;
+  port?: string;
+  port_type?: string;
+  description?: string;
+};
+
 export type Group = {
   id: number;
   name: string;

@@ -102,6 +102,17 @@ type InventoryEndpointUpdate struct {
 	Description string `json:"description"`
 }
 
+type InventoryEndpointCreate struct {
+	IPAddress   string `json:"ip_address"`
+	Hostname    string `json:"hostname"`
+	MACAddress  string `json:"mac_address"`
+	VLAN        string `json:"vlan"`
+	Switch      string `json:"switch"`
+	Port        string `json:"port"`
+	PortType    string `json:"port_type"`
+	Description string `json:"description"`
+}
+
 type Group struct {
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`
