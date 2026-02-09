@@ -1092,7 +1092,7 @@ func buildMonitorWhereClause(filters MonitorFilters, hostname string, mac string
 			args = append(args, "%"+hostname+"%")
 		}
 		if mac != "" {
-			query.WriteString(fmt.Sprintf(" AND translate(upper(ie.mac), ':- ', '') ILIKE '%%' || translate(upper($%d), ':- ', '') || '%%'", len(args)+1))
+			query.WriteString(fmt.Sprintf(" AND translate(lower(ie.mac), ':- ', '') LIKE '%%' || translate(lower($%d::text), ':- ', '') || '%%'", len(args)+1))
 			args = append(args, mac)
 		}
 	}
