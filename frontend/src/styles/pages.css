@@ -70,6 +70,10 @@
   gap: var(--space-2);
 }
 
+.search-dual-row > label {
+  min-width: 0;
+}
+
 .search-input-row {
   display: flex;
   align-items: center;
@@ -79,6 +83,16 @@
 
 .search-input-row-compact {
   align-items: center;
+  justify-content: flex-start;
+}
+
+.search-input-row-compact input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.search-input-row-compact .btn-icon {
+  flex: 0 0 auto;
 }
 
 .custom-time-row {
