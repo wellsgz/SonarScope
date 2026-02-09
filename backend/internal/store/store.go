@@ -1174,35 +1174,68 @@ func (s *Store) CreateInventoryEndpoint(ctx context.Context, payload model.Inven
 	return s.GetInventoryEndpointByID(ctx, endpointID)
 }
 
-func (s *Store) DeleteInventoryEndpointsByGroup(ctx context.Context, groupID int64) (int64, error) {
+func (s *Store) DeleteInventoryEndpointsByGroup(ctx context.Context, groupID int64) (int64, int64, error) {
+	const deleteBatchSize = 200
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var exists bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM group_def WHERE id = $1)`, groupID).Scan(&exists); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if !exists {
-		return 0, pgx.ErrNoRows
+		return 0, 0, pgx.ErrNoRows
 	}
 
-	cmd, err := tx.Exec(ctx, `
-		DELETE FROM inventory_endpoint ie
-		USING group_member gm
-		WHERE gm.group_id = $1
-		  AND gm.endpoint_id = ie.id
+	rows, err := tx.Query(ctx, `
+		SELECT endpoint_id
+		FROM group_member
+		WHERE group_id = $1
+		ORDER BY endpoint_id
 	`, groupID)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
+	}
+	defer rows.Close()
+
+	endpointIDs := make([]int64, 0)
+	for rows.Next() {
+		var endpointID int64
+		if err := rows.Scan(&endpointID); err != nil {
+			return 0, 0, err
+		}
+		endpointIDs = append(endpointIDs, endpointID)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, err
+	}
+
+	matchedCount := int64(len(endpointIDs))
+	var deletedCount int64
+	for start := 0; start < len(endpointIDs); start += deleteBatchSize {
+		end := start + deleteBatchSize
+		if end > len(endpointIDs) {
+			end = len(endpointIDs)
+		}
+
+		cmd, err := tx.Exec(ctx, `
+			DELETE FROM inventory_endpoint
+			WHERE id = ANY($1::BIGINT[])
+		`, endpointIDs[start:end])
+		if err != nil {
+			return matchedCount, deletedCount, err
+		}
+		deletedCount += cmd.RowsAffected()
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return 0, err
+		return matchedCount, deletedCount, err
 	}
-	return cmd.RowsAffected(), nil
+	return matchedCount, deletedCount, nil
 }
 
 func (s *Store) DeleteAllInventoryEndpoints(ctx context.Context) (int64, error) {

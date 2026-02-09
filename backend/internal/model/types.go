@@ -221,6 +221,7 @@ type ImportApplyResponse struct {
 
 type DeleteInventoryByGroupResponse struct {
 	Deleted      bool  `json:"deleted"`
+	MatchedCount int64 `json:"matched_count"`
 	DeletedCount int64 `json:"deleted_count"`
 	GroupID      int64 `json:"group_id"`
 }

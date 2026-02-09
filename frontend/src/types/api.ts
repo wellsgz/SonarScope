@@ -147,6 +147,7 @@ export type ImportApplyResponse = {
 
 export type DeleteInventoryByGroupResponse = {
   deleted: boolean;
+  matched_count: number;
   deleted_count: number;
   group_id: number;
 };

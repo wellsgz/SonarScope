@@ -421,7 +421,7 @@ func (s *Server) handleInventoryDeleteByGroup(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	deletedCount, err := s.store.DeleteInventoryEndpointsByGroup(r.Context(), groupID)
+	matchedCount, deletedCount, err := s.store.DeleteInventoryEndpointsByGroup(r.Context(), groupID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			util.WriteError(w, http.StatusNotFound, "group not found")
@@ -433,6 +433,7 @@ func (s *Server) handleInventoryDeleteByGroup(w http.ResponseWriter, r *http.Req
 
 	util.WriteJSON(w, http.StatusOK, model.DeleteInventoryByGroupResponse{
 		Deleted:      true,
+		MatchedCount: matchedCount,
 		DeletedCount: deletedCount,
 		GroupID:      groupID,
 	})

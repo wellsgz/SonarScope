@@ -656,11 +656,27 @@ export function InventoryPage() {
               Inventory endpoint updated.
             </div>
           )}
-          {deleteByGroupMutation.data && (
-            <div className="success-banner" role="status" aria-live="polite">
-              Deleted {deleteByGroupMutation.data.deleted_count} endpoint(s) from selected group.
+          {deleteByGroupMutation.data?.matched_count === 0 && (
+            <div className="info-banner" role="status" aria-live="polite">
+              Selected group currently has no endpoints to delete.
             </div>
           )}
+          {deleteByGroupMutation.data &&
+            deleteByGroupMutation.data.matched_count > 0 &&
+            deleteByGroupMutation.data.deleted_count > 0 && (
+              <div className="success-banner" role="status" aria-live="polite">
+                Deleted {deleteByGroupMutation.data.deleted_count} endpoint(s) out of{" "}
+                {deleteByGroupMutation.data.matched_count} matched endpoint(s) in selected group.
+              </div>
+            )}
+          {deleteByGroupMutation.data &&
+            deleteByGroupMutation.data.matched_count > 0 &&
+            deleteByGroupMutation.data.deleted_count === 0 && (
+              <div className="error-banner" role="alert" aria-live="assertive">
+                Matched {deleteByGroupMutation.data.matched_count} endpoint(s), but none were deleted. Please retry
+                and check backend logs.
+              </div>
+            )}
           {deleteAllMutation.data && (
             <div className="success-banner" role="status" aria-live="polite">
               Deleted {deleteAllMutation.data.deleted_count} endpoint(s) from inventory.
@@ -853,9 +869,11 @@ export function InventoryPage() {
                     onClick={() => {
                       const groupID = Number(deleteGroupID);
                       const groupName = (groupsQuery.data || []).find((group) => group.id === groupID)?.name || "selected group";
-                      const confirmed = window.confirm(
-                        `Delete all endpoints assigned to "${groupName}"? This cannot be undone.`
-                      );
+                      const isNoGroup = groupName.trim().toLowerCase() === "no group";
+                      const confirmMessage = isNoGroup
+                        ? `Delete all endpoints assigned to "${groupName}"? This may delete a large number of endpoints and historical probe data. Continue?`
+                        : `Delete all endpoints assigned to "${groupName}"? This cannot be undone.`;
+                      const confirmed = window.confirm(confirmMessage);
                       if (!confirmed) {
                         return;
                       }
