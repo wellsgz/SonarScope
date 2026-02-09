@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -84,6 +85,7 @@ func (s *Server) Routes() http.Handler {
 
 		r.Route("/monitor", func(r chi.Router) {
 			r.Get("/endpoints", s.handleMonitorEndpoints)
+			r.Get("/endpoints-page", s.handleMonitorEndpointsPage)
 			r.Get("/timeseries", s.handleMonitorTimeSeries)
 			r.Get("/filter-options", s.handleMonitorFilters)
 		})
@@ -463,6 +465,92 @@ func (s *Server) handleMonitorEndpoints(w http.ResponseWriter, r *http.Request) 
 	util.WriteJSON(w, http.StatusOK, items)
 }
 
+func (s *Server) handleMonitorEndpointsPage(w http.ResponseWriter, r *http.Request) {
+	filters := store.MonitorFilters{
+		VLANs:      parseCSVQuery(r, "vlan"),
+		Switches:   parseCSVQuery(r, "switch"),
+		Ports:      parseCSVQuery(r, "port"),
+		GroupNames: parseCSVQuery(r, "group"),
+	}
+
+	page, err := parsePositiveIntQuery(r, "page", 1)
+	if err != nil {
+		util.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	pageSize, err := parsePositiveIntQuery(r, "page_size", 100)
+	if err != nil {
+		util.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if pageSize != 50 && pageSize != 100 && pageSize != 200 {
+		util.WriteError(w, http.StatusBadRequest, "page_size must be one of 50, 100, 200")
+		return
+	}
+
+	sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
+	sortDir := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_dir")))
+	if sortBy != "" {
+		if _, err := storeMonitorSortExpression(sortBy); err != nil {
+			util.WriteError(w, http.StatusBadRequest, "invalid sort_by")
+			return
+		}
+		if sortDir == "" {
+			sortDir = "desc"
+		}
+		if sortDir != "asc" && sortDir != "desc" {
+			util.WriteError(w, http.StatusBadRequest, "sort_dir must be asc or desc")
+			return
+		}
+	} else {
+		if sortDir != "" {
+			util.WriteError(w, http.StatusBadRequest, "sort_dir requires sort_by")
+			return
+		}
+	}
+
+	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
+	ipList, err := parseIPListQuery(r, "ip_list")
+	if err != nil {
+		util.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	items, totalItems, err := s.store.ListMonitorEndpointsPage(r.Context(), store.MonitorPageQuery{
+		Filters:  filters,
+		Hostname: hostname,
+		IPList:   ipList,
+		Page:     page,
+		PageSize: pageSize,
+		SortBy:   sortBy,
+		SortDir:  sortDir,
+	})
+	if err != nil {
+		if err.Error() == "invalid sort_by" {
+			util.WriteError(w, http.StatusBadRequest, "invalid sort_by")
+			return
+		}
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	totalPages := int((totalItems + int64(pageSize) - 1) / int64(pageSize))
+	if totalItems == 0 {
+		totalPages = 0
+	}
+
+	util.WriteJSON(w, http.StatusOK, model.MonitorEndpointsPageResponse{
+		Items:      items,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalItems: totalItems,
+		TotalPages: totalPages,
+		SortBy:     sortBy,
+		SortDir:    sortDir,
+	})
+}
+
 func (s *Server) handleMonitorTimeSeries(w http.ResponseWriter, r *http.Request) {
 	endpointIDs := parseInt64CSVQuery(r, "endpoint_ids")
 	if len(endpointIDs) == 0 {
@@ -546,6 +634,69 @@ func parseCSVQuery(r *http.Request, key string) []string {
 		return nil
 	}
 	return out
+}
+
+func parsePositiveIntQuery(r *http.Request, key string, fallback int) (int, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 1 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
+	}
+	return value, nil
+}
+
+func parseIPListQuery(r *http.Request, key string) ([]string, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get(key))
+	if raw == "" {
+		return nil, nil
+	}
+
+	parts := strings.FieldsFunc(raw, func(ch rune) bool {
+		return ch == ',' || ch == '\n' || ch == '\r' || ch == '\t' || ch == ' '
+	})
+
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		ip := strings.TrimSpace(part)
+		if ip == "" {
+			continue
+		}
+		if net.ParseIP(ip) == nil {
+			return nil, fmt.Errorf("invalid ip in ip_list: %s", ip)
+		}
+		if _, ok := seen[ip]; ok {
+			continue
+		}
+		seen[ip] = struct{}{}
+		out = append(out, ip)
+	}
+
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+func storeMonitorSortExpression(sortBy string) (string, error) {
+	switch sortBy {
+	case "",
+		"last_success_on",
+		"success_count",
+		"failed_count",
+		"consecutive_failed_count",
+		"max_consecutive_failed_count",
+		"max_consecutive_failed_count_time",
+		"failed_pct",
+		"last_ping_latency",
+		"average_latency":
+		return sortBy, nil
+	default:
+		return "", fmt.Errorf("invalid sort_by")
+	}
 }
 
 func parseInt64CSVQuery(r *http.Request, key string) []int64 {

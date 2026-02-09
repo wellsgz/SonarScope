@@ -66,6 +66,16 @@ type MonitorEndpoint struct {
 	EndpointID             int64      `json:"endpoint_id"`
 }
 
+type MonitorEndpointsPageResponse struct {
+	Items      []MonitorEndpoint `json:"items"`
+	Page       int               `json:"page"`
+	PageSize   int               `json:"page_size"`
+	TotalItems int64             `json:"total_items"`
+	TotalPages int               `json:"total_pages"`
+	SortBy     string            `json:"sort_by,omitempty"`
+	SortDir    string            `json:"sort_dir,omitempty"`
+}
+
 type InventoryEndpointView struct {
 	EndpointID  int64     `json:"endpoint_id"`
 	Hostname    string    `json:"hostname"`

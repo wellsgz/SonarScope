@@ -4,6 +4,8 @@ import type {
   InventoryEndpoint,
   ImportPreview,
   MonitorEndpoint,
+  MonitorEndpointPageResponse,
+  MonitorSortField,
   Settings,
   TimeSeriesResponse
 } from "../types/api";
@@ -115,6 +117,33 @@ export async function listMonitorEndpoints(filters: {
     group: filters.groups?.join(",")
   });
   return request<MonitorEndpoint[]>(path);
+}
+
+export async function listMonitorEndpointsPage(filters: {
+  vlan?: string[];
+  switches?: string[];
+  ports?: string[];
+  groups?: string[];
+  hostname?: string;
+  ipList?: string[];
+  page: number;
+  pageSize: 50 | 100 | 200;
+  sortBy?: MonitorSortField;
+  sortDir?: "asc" | "desc";
+}): Promise<MonitorEndpointPageResponse> {
+  const path = buildQuery("/api/monitor/endpoints-page", {
+    vlan: filters.vlan?.join(","),
+    switch: filters.switches?.join(","),
+    port: filters.ports?.join(","),
+    group: filters.groups?.join(","),
+    hostname: filters.hostname?.trim() || undefined,
+    ip_list: filters.ipList?.join(","),
+    page: String(filters.page),
+    page_size: String(filters.pageSize),
+    sort_by: filters.sortBy,
+    sort_dir: filters.sortDir
+  });
+  return request<MonitorEndpointPageResponse>(path);
 }
 
 export async function listMonitorTimeSeries(payload: {

@@ -23,6 +23,27 @@ export type MonitorEndpoint = {
   group: string[];
 };
 
+export type MonitorSortField =
+  | "last_success_on"
+  | "success_count"
+  | "failed_count"
+  | "consecutive_failed_count"
+  | "max_consecutive_failed_count"
+  | "max_consecutive_failed_count_time"
+  | "failed_pct"
+  | "last_ping_latency"
+  | "average_latency";
+
+export type MonitorEndpointPageResponse = {
+  items: MonitorEndpoint[];
+  page: number;
+  page_size: number;
+  total_items: number;
+  total_pages: number;
+  sort_by?: string;
+  sort_dir?: "asc" | "desc";
+};
+
 export type InventoryEndpoint = {
   endpoint_id: number;
   hostname: string;

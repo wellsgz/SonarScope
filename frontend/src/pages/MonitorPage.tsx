@@ -4,7 +4,7 @@ import {
   getSettings,
   listFilterOptions,
   listGroups,
-  listMonitorEndpoints,
+  listMonitorEndpointsPage,
   listMonitorTimeSeries,
   startProbe,
   stopProbe,
@@ -15,7 +15,7 @@ import { MonitorTable } from "../components/MonitorTable";
 import { MonitorToolbar, type FilterState } from "../components/MonitorToolbar";
 import { rangeToDates, toApiTime, type QuickRange } from "../hooks/time";
 import { useMonitorSocket } from "../hooks/useMonitorSocket";
-import type { Settings } from "../types/api";
+import type { MonitorSortField, Settings } from "../types/api";
 
 function toDateTimeLocal(value: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -31,6 +31,21 @@ const defaultFilters: FilterState = {
   groups: []
 };
 
+function normalizeIPList(raw: string): string[] {
+  const seen = new Set<string>();
+  return raw
+    .split(/[,\n\r\t ]+/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .filter((value) => {
+      if (seen.has(value)) {
+        return false;
+      }
+      seen.add(value);
+      return true;
+    });
+}
+
 export function MonitorPage() {
   const queryClient = useQueryClient();
 
@@ -39,6 +54,12 @@ export function MonitorPage() {
   const [customStart, setCustomStart] = useState(toDateTimeLocal(new Date(Date.now() - 30 * 60 * 1000)));
   const [customEnd, setCustomEnd] = useState(toDateTimeLocal(new Date()));
   const [selectedEndpointID, setSelectedEndpointID] = useState<number | null>(null);
+  const [hostnameSearch, setHostnameSearch] = useState("");
+  const [ipListSearch, setIPListSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<50 | 100 | 200>(100);
+  const [sortBy, setSortBy] = useState<MonitorSortField | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
   const [probeRunning, setProbeRunning] = useState(false);
   const lastRealtimeRefreshRef = useRef(0);
 
@@ -62,26 +83,50 @@ export function MonitorPage() {
       return;
     }
     lastRealtimeRefreshRef.current = now;
-    queryClient.invalidateQueries({ queryKey: ["monitor-endpoints"] });
+    queryClient.invalidateQueries({ queryKey: ["monitor-endpoints-page"] });
     if (event.endpoint_id && selectedEndpointID === event.endpoint_id) {
       queryClient.invalidateQueries({ queryKey: ["timeseries"] });
     }
   });
 
+  const ipListValues = useMemo(() => normalizeIPList(ipListSearch), [ipListSearch]);
+
   const monitorQuery = useQuery({
-    queryKey: ["monitor-endpoints", filters],
+    queryKey: [
+      "monitor-endpoints-page",
+      filters,
+      hostnameSearch,
+      ipListSearch,
+      page,
+      pageSize,
+      sortBy,
+      sortDir
+    ],
     queryFn: () =>
-      listMonitorEndpoints({
+      listMonitorEndpointsPage({
         vlan: filters.vlan,
         switches: filters.switches,
         ports: filters.ports,
-        groups: filters.groups
+        groups: filters.groups,
+        hostname: hostnameSearch,
+        ipList: ipListValues,
+        page,
+        pageSize,
+        sortBy: sortBy || undefined,
+        sortDir: sortDir || undefined
       }),
     refetchInterval: socketConnected ? false : autoRefreshMs
   });
 
-  const monitorRows = monitorQuery.data || [];
+  const monitorRows = monitorQuery.data?.items || [];
   const selectedEndpoint = monitorRows.find((row) => row.endpoint_id === selectedEndpointID) || null;
+
+  useEffect(() => {
+    const totalPages = monitorQuery.data?.total_pages ?? 0;
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [monitorQuery.data?.total_pages, page]);
 
   useEffect(() => {
     if (!monitorRows.length || selectedEndpointID === null) {
@@ -141,6 +186,8 @@ export function MonitorPage() {
       <div className="monitor-pane-top">
         <MonitorToolbar
           filters={filters}
+          hostnameSearch={hostnameSearch}
+          ipListSearch={ipListSearch}
           options={filterOptionsQuery.data}
           quickRange={quickRange}
           customStart={customStart}
@@ -148,14 +195,39 @@ export function MonitorPage() {
           settings={settingsQuery.data}
           groups={groupsQuery.data || []}
           probeRunning={probeRunning}
-          onFilterChange={setFilters}
-          onClearFilter={(key) =>
+          onFilterChange={(next) => {
+            setFilters(next);
+            setPage(1);
+          }}
+          onClearFilter={(key) => {
             setFilters((prev) => ({
               ...prev,
               [key]: []
-            }))
-          }
-          onClearAllFilters={() => setFilters({ vlan: [], switches: [], ports: [], groups: [] })}
+            }));
+            setPage(1);
+          }}
+          onClearAllFilters={() => {
+            setFilters({ vlan: [], switches: [], ports: [], groups: [] });
+            setHostnameSearch("");
+            setIPListSearch("");
+            setPage(1);
+          }}
+          onHostnameSearchChange={(next) => {
+            setHostnameSearch(next);
+            setPage(1);
+          }}
+          onIPListSearchChange={(next) => {
+            setIPListSearch(next);
+            setPage(1);
+          }}
+          onClearHostnameSearch={() => {
+            setHostnameSearch("");
+            setPage(1);
+          }}
+          onClearIPListSearch={() => {
+            setIPListSearch("");
+            setPage(1);
+          }}
           onQuickRangeChange={setQuickRange}
           onCustomStartChange={(value) => {
             setQuickRange("custom");
@@ -192,7 +264,27 @@ export function MonitorPage() {
         ) : monitorRows.length === 0 ? (
           <div className="panel state-panel">No endpoints match the active filters.</div>
         ) : (
-          <MonitorTable rows={monitorRows} selectedEndpointID={selectedEndpointID} onSelectionChange={setSelectedEndpointID} />
+          <MonitorTable
+            rows={monitorRows}
+            selectedEndpointID={selectedEndpointID}
+            onSelectionChange={setSelectedEndpointID}
+            page={monitorQuery.data?.page ?? page}
+            pageSize={(monitorQuery.data?.page_size as 50 | 100 | 200) ?? pageSize}
+            totalItems={monitorQuery.data?.total_items ?? 0}
+            totalPages={monitorQuery.data?.total_pages ?? 0}
+            onPageChange={(nextPage) => setPage(Math.max(1, nextPage))}
+            onPageSizeChange={(nextSize) => {
+              setPageSize(nextSize);
+              setPage(1);
+            }}
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSortChange={(nextSortBy, nextSortDir) => {
+              setSortBy(nextSortBy);
+              setSortDir(nextSortDir);
+              setPage(1);
+            }}
+          />
         )}
       </div>
 

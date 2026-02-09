@@ -1,11 +1,26 @@
-import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { useMemo } from "react";
-import type { MonitorEndpoint } from "../types/api";
+import type { MonitorEndpoint, MonitorSortField } from "../types/api";
 
 type Props = {
   rows: MonitorEndpoint[];
   selectedEndpointID: number | null;
   onSelectionChange: (id: number | null) => void;
+  page: number;
+  pageSize: 50 | 100 | 200;
+  totalItems: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: 50 | 100 | 200) => void;
+  sortBy: MonitorSortField | null;
+  sortDir: "asc" | "desc" | null;
+  onSortChange: (sortBy: MonitorSortField | null, sortDir: "asc" | "desc" | null) => void;
+};
+
+type MonitorColumn = {
+  key: string;
+  header: string;
+  sortable?: MonitorSortField;
+  render: (row: MonitorEndpoint) => string;
 };
 
 function formatDate(value: string | null): string {
@@ -22,87 +37,137 @@ function formatPercent(value: number): string {
   return `${value.toFixed(2)}%`;
 }
 
-const columnHelper = createColumnHelper<MonitorEndpoint>();
-
-const columns = [
-  columnHelper.accessor("hostname", { header: "Hostname" }),
-  columnHelper.accessor("last_failed_on", {
-    header: "Last Failed On",
-    cell: ({ getValue }) => formatDate(getValue())
-  }),
-  columnHelper.accessor("ip_address", { header: "IP Address" }),
-  columnHelper.accessor("mac_address", { header: "MAC Address" }),
-  columnHelper.accessor("reply_ip_address", { header: "Reply IP" }),
-  columnHelper.accessor("last_success_on", {
+const columns: MonitorColumn[] = [
+  { key: "hostname", header: "Hostname", render: (row) => row.hostname || "-" },
+  { key: "last_failed_on", header: "Last Failed On", render: (row) => formatDate(row.last_failed_on) },
+  { key: "ip_address", header: "IP Address", render: (row) => row.ip_address },
+  { key: "mac_address", header: "MAC Address", render: (row) => row.mac_address || "-" },
+  { key: "reply_ip_address", header: "Reply IP", render: (row) => row.reply_ip_address || "-" },
+  {
+    key: "last_success_on",
     header: "Last Success On",
-    cell: ({ getValue }) => formatDate(getValue())
-  }),
-  columnHelper.accessor("success_count", { header: "Success Count" }),
-  columnHelper.accessor("failed_count", { header: "Failed Count" }),
-  columnHelper.accessor("consecutive_failed_count", { header: "Consecutive Failed" }),
-  columnHelper.accessor("max_consecutive_failed_count", { header: "Max Consecutive Failed" }),
-  columnHelper.accessor("max_consecutive_failed_count_time", {
+    sortable: "last_success_on",
+    render: (row) => formatDate(row.last_success_on)
+  },
+  { key: "success_count", header: "Success Count", sortable: "success_count", render: (row) => String(row.success_count) },
+  { key: "failed_count", header: "Failed Count", sortable: "failed_count", render: (row) => String(row.failed_count) },
+  {
+    key: "consecutive_failed_count",
+    header: "Consecutive Failed",
+    sortable: "consecutive_failed_count",
+    render: (row) => String(row.consecutive_failed_count)
+  },
+  {
+    key: "max_consecutive_failed_count",
+    header: "Max Consecutive Failed",
+    sortable: "max_consecutive_failed_count",
+    render: (row) => String(row.max_consecutive_failed_count)
+  },
+  {
+    key: "max_consecutive_failed_count_time",
     header: "Max Consec Failed Time",
-    cell: ({ getValue }) => formatDate(getValue())
-  }),
-  columnHelper.accessor("failed_pct", {
-    header: "Failed %",
-    cell: ({ getValue }) => formatPercent(getValue())
-  }),
-  columnHelper.accessor("total_sent_ping", { header: "Total Sent Ping" }),
-  columnHelper.accessor("last_ping_status", { header: "Last Ping Status" }),
-  columnHelper.accessor("last_ping_latency", {
+    sortable: "max_consecutive_failed_count_time",
+    render: (row) => formatDate(row.max_consecutive_failed_count_time)
+  },
+  { key: "failed_pct", header: "Failed %", sortable: "failed_pct", render: (row) => formatPercent(row.failed_pct) },
+  { key: "total_sent_ping", header: "Total Sent Ping", render: (row) => String(row.total_sent_ping) },
+  { key: "last_ping_status", header: "Last Ping Status", render: (row) => row.last_ping_status || "-" },
+  {
+    key: "last_ping_latency",
     header: "Last Ping Latency",
-    cell: ({ getValue }) => formatLatency(getValue())
-  }),
-  columnHelper.accessor("average_latency", {
+    sortable: "last_ping_latency",
+    render: (row) => formatLatency(row.last_ping_latency)
+  },
+  {
+    key: "average_latency",
     header: "Average Latency",
-    cell: ({ getValue }) => formatLatency(getValue())
-  }),
-  columnHelper.accessor("vlan", { header: "VLAN" }),
-  columnHelper.accessor("switch", { header: "Switch" }),
-  columnHelper.accessor("port", { header: "Port" }),
-  columnHelper.accessor("port_type", { header: "Port Type" }),
-  columnHelper.accessor("group", {
-    header: "Group",
-    cell: ({ getValue }) => getValue().join(", ")
-  })
+    sortable: "average_latency",
+    render: (row) => formatLatency(row.average_latency)
+  },
+  { key: "vlan", header: "VLAN", render: (row) => row.vlan || "-" },
+  { key: "switch", header: "Switch", render: (row) => row.switch || "-" },
+  { key: "port", header: "Port", render: (row) => row.port || "-" },
+  { key: "port_type", header: "Port Type", render: (row) => row.port_type || "-" },
+  { key: "group", header: "Group", render: (row) => row.group.join(", ") || "-" }
 ];
 
-export function MonitorTable({ rows, selectedEndpointID, onSelectionChange }: Props) {
-  const data = useMemo(() => rows, [rows]);
+export function MonitorTable({
+  rows,
+  selectedEndpointID,
+  onSelectionChange,
+  page,
+  pageSize,
+  totalItems,
+  totalPages,
+  onPageChange,
+  onPageSizeChange,
+  sortBy,
+  sortDir,
+  onSortChange
+}: Props) {
+  const pageOptions = useMemo(() => {
+    if (totalPages < 1) {
+      return [1];
+    }
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }, [totalPages]);
 
-  const table = useReactTable({
-    data,
-    columns,
-    getRowId: (row) => row.endpoint_id.toString(),
-    getCoreRowModel: getCoreRowModel()
-  });
+  const startItem = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endItem = totalItems === 0 ? 0 : Math.min(page * pageSize, totalItems);
+
+  const toggleSort = (field: MonitorSortField) => {
+    if (sortBy !== field) {
+      onSortChange(field, "desc");
+      return;
+    }
+    if (sortDir === "desc") {
+      onSortChange(field, "asc");
+      return;
+    }
+    onSortChange(null, null);
+  };
 
   return (
     <div className="panel table-panel">
       <div className="table-scroll">
         <table className="monitor-table">
           <thead>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
+            <tr>
+              {columns.map((column) => {
+                const sortable = Boolean(column.sortable);
+                const active = sortable && sortBy === column.sortable;
+                const ariaSort = active ? (sortDir === "asc" ? "ascending" : "descending") : "none";
+                const indicator = !sortable ? "" : !active ? "↕" : sortDir === "desc" ? "↓" : "↑";
+
+                return (
+                  <th key={column.key} aria-sort={ariaSort}>
+                    {sortable && column.sortable ? (
+                      <button
+                        type="button"
+                        className={`table-sort-button ${active ? "table-sort-button-active" : ""}`}
+                        onClick={() => toggleSort(column.sortable!)}
+                        aria-label={`Sort by ${column.header}`}
+                      >
+                        <span>{column.header}</span>
+                        <span className="table-sort-indicator" aria-hidden>
+                          {indicator}
+                        </span>
+                      </button>
+                    ) : (
+                      column.header
+                    )}
                   </th>
-                ))}
-              </tr>
-            ))}
+                );
+              })}
+            </tr>
           </thead>
           <tbody>
-            {table.getRowModel().rows.map((row) => {
-              const endpointID = row.original.endpoint_id;
+            {rows.map((row) => {
+              const endpointID = row.endpoint_id;
               const selected = selectedEndpointID === endpointID;
               return (
                 <tr
-                  key={row.id}
+                  key={endpointID}
                   className={selected ? "row-selected" : ""}
                   onClick={() => onSelectionChange(selected ? null : endpointID)}
                   onKeyDown={(event) => {
@@ -114,14 +179,66 @@ export function MonitorTable({ rows, selectedEndpointID, onSelectionChange }: Pr
                   tabIndex={0}
                   aria-selected={selected}
                 >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                  {columns.map((column) => (
+                    <td key={`${endpointID}-${column.key}`}>{column.render(row)}</td>
                   ))}
                 </tr>
               );
             })}
           </tbody>
         </table>
+      </div>
+
+      <div className="table-footer">
+        <div className="table-summary">
+          Showing {startItem}-{endItem} of {totalItems}
+        </div>
+
+        <div className="table-pagination">
+          <label className="table-pagination-size">
+            Rows
+            <select
+              value={pageSize}
+              onChange={(event) => onPageSizeChange(Number(event.target.value) as 50 | 100 | 200)}
+              aria-label="Rows per page"
+            >
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+            </select>
+          </label>
+
+          <button type="button" className="btn btn-small" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+            Prev
+          </button>
+
+          <label className="table-pagination-page">
+            Page
+            <select
+              value={Math.min(page, Math.max(totalPages, 1))}
+              onChange={(event) => onPageChange(Number(event.target.value))}
+              aria-label="Page selection"
+              disabled={totalPages <= 1}
+            >
+              {pageOptions.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <span className="table-total-pages">/ {Math.max(totalPages, 1)}</span>
+
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => onPageChange(page + 1)}
+            disabled={totalPages === 0 || page >= totalPages}
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -11,6 +11,8 @@ export type FilterState = {
 
 type Props = {
   filters: FilterState;
+  hostnameSearch: string;
+  ipListSearch: string;
   options?: FilterOptions;
   quickRange: QuickRange;
   customStart: string;
@@ -21,6 +23,10 @@ type Props = {
   onFilterChange: (next: FilterState) => void;
   onClearFilter: (key: keyof FilterState) => void;
   onClearAllFilters: () => void;
+  onHostnameSearchChange: (next: string) => void;
+  onIPListSearchChange: (next: string) => void;
+  onClearHostnameSearch: () => void;
+  onClearIPListSearch: () => void;
   onQuickRangeChange: (next: QuickRange) => void;
   onCustomStartChange: (value: string) => void;
   onCustomEndChange: (value: string) => void;
@@ -36,6 +42,8 @@ function multiSelectValue(event: ChangeEvent<HTMLSelectElement>): string[] {
 
 export function MonitorToolbar({
   filters,
+  hostnameSearch,
+  ipListSearch,
   options,
   quickRange,
   customStart,
@@ -46,6 +54,10 @@ export function MonitorToolbar({
   onFilterChange,
   onClearFilter,
   onClearAllFilters,
+  onHostnameSearchChange,
+  onIPListSearchChange,
+  onClearHostnameSearch,
+  onClearIPListSearch,
   onQuickRangeChange,
   onCustomStartChange,
   onCustomEndChange,
@@ -112,6 +124,39 @@ export function MonitorToolbar({
             <button className="btn btn-small" type="button" onClick={onClearAllFilters}>
               Clear All
             </button>
+          </div>
+          <div className="monitor-search-grid">
+            <label>
+              Hostname Search
+              <div className="search-input-row">
+                <input
+                  type="text"
+                  value={hostnameSearch}
+                  onChange={(event) => onHostnameSearchChange(event.target.value)}
+                  placeholder="Contains match"
+                  aria-label="Search hostname"
+                />
+                <button className="btn btn-small" type="button" onClick={onClearHostnameSearch}>
+                  Clear
+                </button>
+              </div>
+            </label>
+            <label>
+              IP Search List
+              <textarea
+                rows={2}
+                value={ipListSearch}
+                onChange={(event) => onIPListSearchChange(event.target.value)}
+                placeholder="10.0.0.1,10.0.0.2 or newline separated"
+                aria-label="Search by IP list"
+              />
+              <div className="search-input-row">
+                <span className="field-help">IP list overrides hostname search when provided.</span>
+                <button className="btn btn-small" type="button" onClick={onClearIPListSearch}>
+                  Clear
+                </button>
+              </div>
+            </label>
           </div>
           <div className="filter-stack">
             {filterCards.map((filterCard) => {

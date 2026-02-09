@@ -24,6 +24,16 @@ type MonitorFilters struct {
 	GroupNames []string
 }
 
+type MonitorPageQuery struct {
+	Filters  MonitorFilters
+	Hostname string
+	IPList   []string
+	Page     int
+	PageSize int
+	SortBy   string
+	SortDir  string
+}
+
 type ProbeTarget struct {
 	EndpointID int64  `json:"endpoint_id"`
 	IP         string `json:"ip"`
@@ -544,6 +554,109 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 	return items, rows.Err()
 }
 
+func (s *Store) ListMonitorEndpointsPage(ctx context.Context, query MonitorPageQuery) ([]model.MonitorEndpoint, int64, error) {
+	whereClause, args := buildMonitorWhereClause(query.Filters, query.Hostname, query.IPList)
+
+	countSQL := `SELECT COUNT(*) FROM inventory_endpoint ie` + whereClause
+	var totalItems int64
+	if err := s.pool.QueryRow(ctx, countSQL, args...).Scan(&totalItems); err != nil {
+		return nil, 0, err
+	}
+
+	sortExpression, err := monitorSortExpression(query.SortBy)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	orderClause := "ie.ip ASC"
+	if sortExpression != "" {
+		orderClause = fmt.Sprintf("%s %s NULLS LAST, ie.ip ASC", sortExpression, strings.ToUpper(query.SortDir))
+	}
+
+	itemsSQL := `
+		SELECT
+			ie.id,
+			ie.hostname,
+			es.last_failed_on,
+			host(ie.ip) AS ip_address,
+			ie.mac,
+			COALESCE(host(es.reply_ip_address), NULL) AS reply_ip_address,
+			es.last_success_on,
+			COALESCE(es.success_count, 0) AS success_count,
+			COALESCE(es.failed_count, 0) AS failed_count,
+			COALESCE(es.consecutive_failed_count, 0) AS consecutive_failed_count,
+			COALESCE(es.max_consecutive_failed_count, 0) AS max_consecutive_failed_count,
+			es.max_consecutive_failed_count_time,
+			COALESCE(es.failed_pct, 0) AS failed_pct,
+			COALESCE(es.total_sent_ping, 0) AS total_sent_ping,
+			COALESCE(es.last_ping_status, 'unknown') AS last_ping_status,
+			es.last_ping_latency,
+			es.average_latency,
+			ie.vlan,
+			ie.switch_name,
+			ie.port,
+			ie.port_type,
+			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups
+		FROM inventory_endpoint ie
+		LEFT JOIN endpoint_stats_current es ON es.endpoint_id = ie.id
+		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
+		LEFT JOIN group_def gd ON gd.id = gm.group_id
+	` + whereClause + `
+		GROUP BY ie.id, ie.hostname, es.last_failed_on, ie.ip, ie.mac, es.reply_ip_address,
+			es.last_success_on, es.success_count, es.failed_count, es.consecutive_failed_count,
+			es.max_consecutive_failed_count, es.max_consecutive_failed_count_time, es.failed_pct,
+			es.total_sent_ping, es.last_ping_status, es.last_ping_latency, es.average_latency,
+			ie.vlan, ie.switch_name, ie.port, ie.port_type
+		ORDER BY ` + orderClause + `
+		LIMIT $%d OFFSET $%d
+	`
+
+	limitPos := len(args) + 1
+	offsetPos := len(args) + 2
+	itemsSQL = fmt.Sprintf(itemsSQL, limitPos, offsetPos)
+	itemsArgs := append(append([]any{}, args...), query.PageSize, (query.Page-1)*query.PageSize)
+
+	rows, err := s.pool.Query(ctx, itemsSQL, itemsArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	items := []model.MonitorEndpoint{}
+	for rows.Next() {
+		var item model.MonitorEndpoint
+		if err := rows.Scan(
+			&item.EndpointID,
+			&item.Hostname,
+			&item.LastFailedOn,
+			&item.IPAddress,
+			&item.MACAddress,
+			&item.ReplyIPAddress,
+			&item.LastSuccessOn,
+			&item.SuccessCount,
+			&item.FailedCount,
+			&item.ConsecutiveFailedCount,
+			&item.MaxConsecutiveFailed,
+			&item.MaxConsecutiveFailedAt,
+			&item.FailedPct,
+			&item.TotalSentPing,
+			&item.LastPingStatus,
+			&item.LastPingLatency,
+			&item.AverageLatency,
+			&item.VLAN,
+			&item.Switch,
+			&item.Port,
+			&item.PortType,
+			&item.Groups,
+		); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+
+	return items, totalItems, rows.Err()
+}
+
 func (s *Store) ListInventoryEndpoints(ctx context.Context, filters MonitorFilters) ([]model.InventoryEndpointView, error) {
 	query := `
 		SELECT
@@ -791,4 +904,72 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func buildMonitorWhereClause(filters MonitorFilters, hostname string, ipList []string) (string, []any) {
+	var query strings.Builder
+	query.WriteString(" WHERE 1=1")
+
+	args := []any{}
+	if len(filters.VLANs) > 0 {
+		query.WriteString(fmt.Sprintf(" AND ie.vlan = ANY($%d)", len(args)+1))
+		args = append(args, filters.VLANs)
+	}
+	if len(filters.Switches) > 0 {
+		query.WriteString(fmt.Sprintf(" AND ie.switch_name = ANY($%d)", len(args)+1))
+		args = append(args, filters.Switches)
+	}
+	if len(filters.Ports) > 0 {
+		query.WriteString(fmt.Sprintf(" AND ie.port = ANY($%d)", len(args)+1))
+		args = append(args, filters.Ports)
+	}
+	if len(filters.GroupNames) > 0 {
+		query.WriteString(fmt.Sprintf(`
+			AND EXISTS (
+				SELECT 1
+				FROM group_member gm2
+				JOIN group_def gd2 ON gd2.id = gm2.group_id
+				WHERE gm2.endpoint_id = ie.id
+				  AND gd2.name = ANY($%d)
+			)
+		`, len(args)+1))
+		args = append(args, filters.GroupNames)
+	}
+
+	if len(ipList) > 0 {
+		query.WriteString(fmt.Sprintf(" AND ie.ip = ANY($%d::inet[])", len(args)+1))
+		args = append(args, ipList)
+	} else if hostname != "" {
+		query.WriteString(fmt.Sprintf(" AND ie.hostname ILIKE $%d", len(args)+1))
+		args = append(args, "%"+hostname+"%")
+	}
+
+	return query.String(), args
+}
+
+func monitorSortExpression(sortBy string) (string, error) {
+	switch sortBy {
+	case "":
+		return "", nil
+	case "last_success_on":
+		return "es.last_success_on", nil
+	case "success_count":
+		return "COALESCE(es.success_count, 0)", nil
+	case "failed_count":
+		return "COALESCE(es.failed_count, 0)", nil
+	case "consecutive_failed_count":
+		return "COALESCE(es.consecutive_failed_count, 0)", nil
+	case "max_consecutive_failed_count":
+		return "COALESCE(es.max_consecutive_failed_count, 0)", nil
+	case "max_consecutive_failed_count_time":
+		return "es.max_consecutive_failed_count_time", nil
+	case "failed_pct":
+		return "COALESCE(es.failed_pct, 0)", nil
+	case "last_ping_latency":
+		return "es.last_ping_latency", nil
+	case "average_latency":
+		return "es.average_latency", nil
+	default:
+		return "", fmt.Errorf("invalid sort_by")
+	}
 }
