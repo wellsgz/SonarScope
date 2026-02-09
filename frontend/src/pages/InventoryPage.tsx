@@ -174,203 +174,205 @@ export function InventoryPage() {
   return (
     <div className="inventory-page-v13">
       <section className="panel inventory-import-panel">
-        <div className="panel-header" style={{ margin: "-1rem -1rem 0" }}>
+        <div className="panel-header">
           <h2 className="panel-title">Inventory Import</h2>
           <p className="panel-subtitle">Upload CSV/XLSX, review diff, and apply selected Add/Update actions.</p>
         </div>
 
-        <div className="inventory-actions">
-          <input type="file" accept=".csv,.xlsx,.xls,.xlsm" onChange={(event) => setFile(event.target.files?.[0] || null)} />
-          <button className="btn btn-primary" type="button" onClick={() => file && previewMutation.mutate(file)} disabled={!file}>
-            Preview
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => applyMutation.mutate()}
-            disabled={!preview || Object.keys(selection).length === 0 || groupAssignmentInvalid}
-          >
-            Apply Selected
-          </button>
-        </div>
+        <div className="inventory-panel-body">
+          <div className="inventory-actions">
+            <input type="file" accept=".csv,.xlsx,.xls,.xlsm" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            <button className="btn btn-primary" type="button" onClick={() => file && previewMutation.mutate(file)} disabled={!file}>
+              Preview
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => applyMutation.mutate()}
+              disabled={!preview || Object.keys(selection).length === 0 || groupAssignmentInvalid}
+            >
+              Apply Selected
+            </button>
+          </div>
 
-        <div className="inventory-import-assignment">
-          <label className="inventory-import-assignment-toggle">
-            <input
-              type="checkbox"
-              checked={assignToGroup}
-              onChange={(event) => setAssignToGroup(event.target.checked)}
-            />
-            Assign uploaded endpoints to a group
-          </label>
-          {assignToGroup ? (
-            <div className="inventory-import-assignment-controls">
-              <label>
-                Assignment Mode
-                <select
-                  value={groupAssignmentMode}
-                  onChange={(event) => setGroupAssignmentMode(event.target.value as "existing" | "create")}
-                >
-                  <option value="existing">Existing Group</option>
-                  <option value="create">Create Group</option>
-                </select>
-              </label>
-
-              {groupAssignmentMode === "existing" ? (
+          <div className="inventory-import-assignment">
+            <label className="inventory-import-assignment-toggle">
+              <input
+                type="checkbox"
+                checked={assignToGroup}
+                onChange={(event) => setAssignToGroup(event.target.checked)}
+              />
+              Assign uploaded endpoints to a group
+            </label>
+            {assignToGroup ? (
+              <div className="inventory-import-assignment-controls">
                 <label>
-                  Select Group
+                  Assignment Mode
                   <select
-                    value={selectedGroupID}
-                    onChange={(event) => setSelectedGroupID(event.target.value)}
-                    disabled={groupsQuery.isLoading}
+                    value={groupAssignmentMode}
+                    onChange={(event) => setGroupAssignmentMode(event.target.value as "existing" | "create")}
                   >
-                    <option value="">Select a group</option>
-                    {(groupsQuery.data || []).map((group) => (
-                      <option key={group.id} value={String(group.id)}>
-                        {group.name}
-                      </option>
-                    ))}
+                    <option value="existing">Existing Group</option>
+                    <option value="create">Create Group</option>
                   </select>
                 </label>
-              ) : (
-                <label>
-                  New Group Name
-                  <input
-                    value={newGroupName}
-                    onChange={(event) => setNewGroupName(event.target.value)}
-                    placeholder="NOC-Upload-2026-02-09"
-                  />
-                </label>
-              )}
-            </div>
-          ) : null}
-          <div className="field-help">
-            All valid rows in this upload (add/update/unchanged) will be added to the selected group. Existing group
-            members are kept.
-          </div>
-        </div>
 
-        {previewMutation.error && (
-          <div className="error-banner" role="alert" aria-live="assertive">
-            {(previewMutation.error as Error).message}
-          </div>
-        )}
-        {applyMutation.error && (
-          <div className="error-banner" role="alert" aria-live="assertive">
-            {(applyMutation.error as Error).message}
-          </div>
-        )}
-        {applyMutation.data && (
-          <div className="success-banner" role="status" aria-live="polite">
-            Added: {applyMutation.data.added}, Updated: {applyMutation.data.updated}, Errors: {applyMutation.data.errors.length}
-            {applyMutation.data.group_assignment ? (
-              <div>
-                Group "{applyMutation.data.group_assignment.group_name}": added {applyMutation.data.group_assignment.assigned_added}{" "}
-                member links ({applyMutation.data.group_assignment.resolved_endpoints}/
-                {applyMutation.data.group_assignment.valid_upload_ips} resolved).
+                {groupAssignmentMode === "existing" ? (
+                  <label>
+                    Select Group
+                    <select
+                      value={selectedGroupID}
+                      onChange={(event) => setSelectedGroupID(event.target.value)}
+                      disabled={groupsQuery.isLoading}
+                    >
+                      <option value="">Select a group</option>
+                      {(groupsQuery.data || []).map((group) => (
+                        <option key={group.id} value={String(group.id)}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <label>
+                    New Group Name
+                    <input
+                      value={newGroupName}
+                      onChange={(event) => setNewGroupName(event.target.value)}
+                      placeholder="NOC-Upload-2026-02-09"
+                    />
+                  </label>
+                )}
               </div>
             ) : null}
+            <div className="field-help">
+              All valid rows in this upload (add/update/unchanged) will be added to the selected group. Existing group
+              members are kept.
+            </div>
           </div>
-        )}
-        {applyMutation.data?.group_assignment?.used_existing_by_name && (
-          <div className="info-banner" role="status" aria-live="polite">
-            Group "{applyMutation.data.group_assignment.group_name}" already exists; using existing group.
-          </div>
-        )}
-        {applyMutation.data?.group_assignment && applyMutation.data.group_assignment.unresolved_ips > 0 && (
-          <div className="info-banner" role="status" aria-live="polite">
-            {applyMutation.data.group_assignment.unresolved_ips} valid uploaded IP(s) were not found in inventory at apply
-            time, so they could not be assigned to the group.
-          </div>
-        )}
 
-        {summary && (
-          <div className="summary-row">
-            <span className="status-chip">Add: {summary.add}</span>
-            <span className="status-chip">Update: {summary.update}</span>
-            <span className="status-chip">Unchanged: {summary.unchanged}</span>
-            <span className="status-chip">Invalid: {summary.invalid}</span>
-          </div>
-        )}
+          {previewMutation.error && (
+            <div className="error-banner" role="alert" aria-live="assertive">
+              {(previewMutation.error as Error).message}
+            </div>
+          )}
+          {applyMutation.error && (
+            <div className="error-banner" role="alert" aria-live="assertive">
+              {(applyMutation.error as Error).message}
+            </div>
+          )}
+          {applyMutation.data && (
+            <div className="success-banner" role="status" aria-live="polite">
+              Added: {applyMutation.data.added}, Updated: {applyMutation.data.updated}, Errors: {applyMutation.data.errors.length}
+              {applyMutation.data.group_assignment ? (
+                <div>
+                  Group "{applyMutation.data.group_assignment.group_name}": added {applyMutation.data.group_assignment.assigned_added}{" "}
+                  member links ({applyMutation.data.group_assignment.resolved_endpoints}/
+                  {applyMutation.data.group_assignment.valid_upload_ips} resolved).
+                </div>
+              ) : null}
+            </div>
+          )}
+          {applyMutation.data?.group_assignment?.used_existing_by_name && (
+            <div className="info-banner" role="status" aria-live="polite">
+              Group "{applyMutation.data.group_assignment.group_name}" already exists; using existing group.
+            </div>
+          )}
+          {applyMutation.data?.group_assignment && applyMutation.data.group_assignment.unresolved_ips > 0 && (
+            <div className="info-banner" role="status" aria-live="polite">
+              {applyMutation.data.group_assignment.unresolved_ips} valid uploaded IP(s) were not found in inventory at apply
+              time, so they could not be assigned to the group.
+            </div>
+          )}
 
-        {preview && (
-          <div className="table-scroll import-preview-table">
-            <table className="monitor-table">
-              <thead>
-                <tr>
-                  <th>Apply</th>
-                  <th>Action</th>
-                  <th>Row</th>
-                  <th>IP</th>
-                  <th>MAC</th>
-                  <th>VLAN</th>
-                  <th>Switch</th>
-                  <th>Port</th>
-                  <th>Port Type</th>
-                  <th>Message</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.candidates.map((candidate) => {
-                  const eligible = candidate.action === "add" || candidate.action === "update";
-                  const selected = selection[candidate.row_id];
-                  return (
-                    <tr key={candidate.row_id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(selected)}
-                          disabled={!eligible}
-                          onChange={(event) => {
-                            setSelection((prev) => {
-                              const next = { ...prev };
-                              if (!event.target.checked) {
-                                delete next[candidate.row_id];
-                              } else {
-                                next[candidate.row_id] = eligible ? (candidate.action as "add" | "update") : "add";
+          {summary && (
+            <div className="summary-row">
+              <span className="status-chip">Add: {summary.add}</span>
+              <span className="status-chip">Update: {summary.update}</span>
+              <span className="status-chip">Unchanged: {summary.unchanged}</span>
+              <span className="status-chip">Invalid: {summary.invalid}</span>
+            </div>
+          )}
+
+          {preview && (
+            <div className="table-scroll import-preview-table">
+              <table className="monitor-table">
+                <thead>
+                  <tr>
+                    <th>Apply</th>
+                    <th>Action</th>
+                    <th>Row</th>
+                    <th>IP</th>
+                    <th>MAC</th>
+                    <th>VLAN</th>
+                    <th>Switch</th>
+                    <th>Port</th>
+                    <th>Port Type</th>
+                    <th>Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.candidates.map((candidate) => {
+                    const eligible = candidate.action === "add" || candidate.action === "update";
+                    const selected = selection[candidate.row_id];
+                    return (
+                      <tr key={candidate.row_id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(selected)}
+                            disabled={!eligible}
+                            onChange={(event) => {
+                              setSelection((prev) => {
+                                const next = { ...prev };
+                                if (!event.target.checked) {
+                                  delete next[candidate.row_id];
+                                } else {
+                                  next[candidate.row_id] = eligible ? (candidate.action as "add" | "update") : "add";
+                                }
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span className={badgeClass(candidate.action)}>{candidate.action}</span>
+                            <select
+                              value={selected || candidate.action}
+                              disabled={!eligible || !selected}
+                              onChange={(event) =>
+                                setSelection((prev) => ({
+                                  ...prev,
+                                  [candidate.row_id]: event.target.value as "add" | "update"
+                                }))
                               }
-                              return next;
-                            });
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span className={badgeClass(candidate.action)}>{candidate.action}</span>
-                          <select
-                            value={selected || candidate.action}
-                            disabled={!eligible || !selected}
-                            onChange={(event) =>
-                              setSelection((prev) => ({
-                                ...prev,
-                                [candidate.row_id]: event.target.value as "add" | "update"
-                              }))
-                            }
-                          >
-                            <option value="add">add</option>
-                            <option value="update">update</option>
-                          </select>
-                        </div>
-                      </td>
-                      <td>{candidate.source_row}</td>
-                      <td>{candidate.ip}</td>
-                      <td>{candidate.mac}</td>
-                      <td>{candidate.vlan}</td>
-                      <td>{candidate.switch}</td>
-                      <td>{candidate.port}</td>
-                      <td>{candidate.port_type || "-"}</td>
-                      <td>{candidate.message}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                            >
+                              <option value="add">add</option>
+                              <option value="update">update</option>
+                            </select>
+                          </div>
+                        </td>
+                        <td>{candidate.source_row}</td>
+                        <td>{candidate.ip}</td>
+                        <td>{candidate.mac}</td>
+                        <td>{candidate.vlan}</td>
+                        <td>{candidate.switch}</td>
+                        <td>{candidate.port}</td>
+                        <td>{candidate.port_type || "-"}</td>
+                        <td>{candidate.message}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="panel inventory-list-panel">
-        <div className="panel-header" style={{ margin: "-1rem -1rem 0" }}>
+        <div className="panel-header">
           <div className="inventory-title-row">
             <h2 className="panel-title">Current Inventory</h2>
             <button className="btn btn-small" type="button" onClick={() => setFilters(defaultFilters)}>
@@ -380,218 +382,218 @@ export function InventoryPage() {
           <p className="panel-subtitle">Filter and maintain endpoint metadata (IP is immutable).</p>
         </div>
 
-        <div className="inventory-filter-section">
-          <div className="inventory-filter-grid">
-            {filterCards.map((filterCard) => {
-              const selectedValues = filters[filterCard.key];
-              return (
-                <details key={filterCard.key} className="filter-card" open={selectedValues.length > 0}>
-                  <summary className="filter-card-summary">
-                    <span>{filterCard.label}</span>
-                    <span className="count-badge">{selectedValues.length}</span>
-                  </summary>
-                  <div className="filter-card-body">
-                    <div className="filter-card-actions">
-                      <span>{selectedValues.length} selected</span>
-                      <button className="btn-link" type="button" onClick={() => setFilters((prev) => ({ ...prev, [filterCard.key]: [] }))}>
-                        Clear
-                      </button>
+        <div className="inventory-panel-body">
+          <div className="inventory-filter-section">
+            <div className="inventory-filter-grid">
+              {filterCards.map((filterCard) => {
+                const selectedValues = filters[filterCard.key];
+                return (
+                  <details key={filterCard.key} className="filter-card" open={selectedValues.length > 0}>
+                    <summary className="filter-card-summary">
+                      <span>{filterCard.label}</span>
+                      <span className="count-badge">{selectedValues.length}</span>
+                    </summary>
+                    <div className="filter-card-body">
+                      <div className="filter-card-actions">
+                        <span>{selectedValues.length} selected</span>
+                        <button className="btn-link" type="button" onClick={() => setFilters((prev) => ({ ...prev, [filterCard.key]: [] }))}>
+                          Clear
+                        </button>
+                      </div>
+                      <select
+                        multiple
+                        value={selectedValues}
+                        onChange={(event) =>
+                          setFilters((prev) => ({
+                            ...prev,
+                            [filterCard.key]: multiSelectValue(event)
+                          }))
+                        }
+                        aria-label={`${filterCard.label} filter`}
+                      >
+                        {filterCard.options.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    <select
-                      multiple
-                      value={selectedValues}
-                      onChange={(event) =>
-                        setFilters((prev) => ({
-                          ...prev,
-                          [filterCard.key]: multiSelectValue(event)
-                        }))
-                      }
-                      aria-label={`${filterCard.label} filter`}
-                    >
-                      {filterCard.options.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </details>
-              );
-            })}
-          </div>
-        </div>
-
-        {(inventoryQuery.error || updateMutation.error) && (
-          <div className="error-banner" role="alert" aria-live="assertive">
-            {(inventoryQuery.error as Error | undefined)?.message || (updateMutation.error as Error | undefined)?.message}
-          </div>
-        )}
-        {updateMutation.isSuccess && (
-          <div className="success-banner" role="status" aria-live="polite">
-            Inventory endpoint updated.
-          </div>
-        )}
-
-        {inventoryQuery.isLoading ? (
-          <div className="panel state-panel" style={{ minHeight: 220 }}>
-            <div>
-              <span className="skeleton-bar" style={{ width: 220 }} />
-              <p style={{ marginTop: 10 }}>Loading inventory records…</p>
+                  </details>
+                );
+              })}
             </div>
           </div>
-        ) : (inventoryQuery.data || []).length === 0 ? (
-          <div className="panel state-panel" style={{ minHeight: 220 }}>
-            No inventory rows match the active filters.
-          </div>
-        ) : (
-          <div className="table-scroll inventory-table-scroll">
-            <table className="monitor-table">
-              <thead>
-                <tr>
-                  <th>Hostname</th>
-                  <th>IP Address</th>
-                  <th>MAC</th>
-                  <th>VLAN</th>
-                  <th>Switch</th>
-                  <th>Port</th>
-                  <th>Port Type</th>
-                  <th>Description</th>
-                  <th>Group</th>
-                  <th>Updated At</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(inventoryQuery.data || []).map((row) => {
-                  const isEditing = editingEndpointID === row.endpoint_id && editingPatch !== null;
-                  return (
-                    <tr key={row.endpoint_id} className={isEditing ? "row-selected" : ""}>
-                      <td>
-                        {isEditing ? (
-                          <input
-                            value={editingPatch.hostname}
-                            onChange={(event) =>
-                              setEditingPatch((prev) => (prev ? { ...prev, hostname: event.target.value } : prev))
-                            }
-                          />
-                        ) : (
-                          row.hostname || "-"
-                        )}
-                      </td>
-                      <td>{row.ip_address}</td>
-                      <td>
-                        {isEditing ? (
-                          <input
-                            value={editingPatch.mac_address}
-                            onChange={(event) =>
-                              setEditingPatch((prev) => (prev ? { ...prev, mac_address: event.target.value } : prev))
-                            }
-                          />
-                        ) : (
-                          row.mac_address || "-"
-                        )}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <input
-                            value={editingPatch.vlan}
-                            onChange={(event) =>
-                              setEditingPatch((prev) => (prev ? { ...prev, vlan: event.target.value } : prev))
-                            }
-                          />
-                        ) : (
-                          row.vlan || "-"
-                        )}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <input
-                            value={editingPatch.switch}
-                            onChange={(event) =>
-                              setEditingPatch((prev) => (prev ? { ...prev, switch: event.target.value } : prev))
-                            }
-                          />
-                        ) : (
-                          row.switch || "-"
-                        )}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <input
-                            value={editingPatch.port}
-                            onChange={(event) =>
-                              setEditingPatch((prev) => (prev ? { ...prev, port: event.target.value } : prev))
-                            }
-                          />
-                        ) : (
-                          row.port || "-"
-                        )}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <input
-                            value={editingPatch.port_type}
-                            onChange={(event) =>
-                              setEditingPatch((prev) => (prev ? { ...prev, port_type: event.target.value } : prev))
-                            }
-                          />
-                        ) : (
-                          row.port_type || "-"
-                        )}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <input
-                            value={editingPatch.description}
-                            onChange={(event) =>
-                              setEditingPatch((prev) => (prev ? { ...prev, description: event.target.value } : prev))
-                            }
-                          />
-                        ) : (
-                          row.description || "-"
-                        )}
-                      </td>
-                      <td>{row.group.join(", ") || "-"}</td>
-                      <td>{new Date(row.updated_at).toLocaleString()}</td>
-                      <td>
-                        <div className="button-row">
+
+          {(inventoryQuery.error || updateMutation.error) && (
+            <div className="error-banner" role="alert" aria-live="assertive">
+              {(inventoryQuery.error as Error | undefined)?.message || (updateMutation.error as Error | undefined)?.message}
+            </div>
+          )}
+          {updateMutation.isSuccess && (
+            <div className="success-banner" role="status" aria-live="polite">
+              Inventory endpoint updated.
+            </div>
+          )}
+
+          {inventoryQuery.isLoading ? (
+            <div className="state-panel inventory-state-panel">
+              <div>
+                <span className="skeleton-bar" style={{ width: 220 }} />
+                <p style={{ marginTop: 10 }}>Loading inventory records…</p>
+              </div>
+            </div>
+          ) : (inventoryQuery.data || []).length === 0 ? (
+            <div className="state-panel inventory-state-panel">No inventory rows match the active filters.</div>
+          ) : (
+            <div className="table-scroll inventory-table-scroll">
+              <table className="monitor-table">
+                <thead>
+                  <tr>
+                    <th>Hostname</th>
+                    <th>IP Address</th>
+                    <th>MAC</th>
+                    <th>VLAN</th>
+                    <th>Switch</th>
+                    <th>Port</th>
+                    <th>Port Type</th>
+                    <th>Description</th>
+                    <th>Group</th>
+                    <th>Updated At</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(inventoryQuery.data || []).map((row) => {
+                    const isEditing = editingEndpointID === row.endpoint_id && editingPatch !== null;
+                    return (
+                      <tr key={row.endpoint_id} className={isEditing ? "row-selected" : ""}>
+                        <td>
                           {isEditing ? (
-                            <>
-                              <button className="btn btn-primary" type="button" onClick={() => updateMutation.mutate()}>
-                                Save
-                              </button>
+                            <input
+                              value={editingPatch.hostname}
+                              onChange={(event) =>
+                                setEditingPatch((prev) => (prev ? { ...prev, hostname: event.target.value } : prev))
+                              }
+                            />
+                          ) : (
+                            row.hostname || "-"
+                          )}
+                        </td>
+                        <td>{row.ip_address}</td>
+                        <td>
+                          {isEditing ? (
+                            <input
+                              value={editingPatch.mac_address}
+                              onChange={(event) =>
+                                setEditingPatch((prev) => (prev ? { ...prev, mac_address: event.target.value } : prev))
+                              }
+                            />
+                          ) : (
+                            row.mac_address || "-"
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <input
+                              value={editingPatch.vlan}
+                              onChange={(event) =>
+                                setEditingPatch((prev) => (prev ? { ...prev, vlan: event.target.value } : prev))
+                              }
+                            />
+                          ) : (
+                            row.vlan || "-"
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <input
+                              value={editingPatch.switch}
+                              onChange={(event) =>
+                                setEditingPatch((prev) => (prev ? { ...prev, switch: event.target.value } : prev))
+                              }
+                            />
+                          ) : (
+                            row.switch || "-"
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <input
+                              value={editingPatch.port}
+                              onChange={(event) =>
+                                setEditingPatch((prev) => (prev ? { ...prev, port: event.target.value } : prev))
+                              }
+                            />
+                          ) : (
+                            row.port || "-"
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <input
+                              value={editingPatch.port_type}
+                              onChange={(event) =>
+                                setEditingPatch((prev) => (prev ? { ...prev, port_type: event.target.value } : prev))
+                              }
+                            />
+                          ) : (
+                            row.port_type || "-"
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <input
+                              value={editingPatch.description}
+                              onChange={(event) =>
+                                setEditingPatch((prev) => (prev ? { ...prev, description: event.target.value } : prev))
+                              }
+                            />
+                          ) : (
+                            row.description || "-"
+                          )}
+                        </td>
+                        <td>{row.group.join(", ") || "-"}</td>
+                        <td>{new Date(row.updated_at).toLocaleString()}</td>
+                        <td>
+                          <div className="button-row">
+                            {isEditing ? (
+                              <>
+                                <button className="btn btn-primary" type="button" onClick={() => updateMutation.mutate()}>
+                                  Save
+                                </button>
+                                <button
+                                  className="btn"
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingEndpointID(null);
+                                    setEditingPatch(null);
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
                               <button
                                 className="btn"
                                 type="button"
                                 onClick={() => {
-                                  setEditingEndpointID(null);
-                                  setEditingPatch(null);
+                                  setEditingEndpointID(row.endpoint_id);
+                                  setEditingPatch(toPatch(row));
                                 }}
                               >
-                                Cancel
+                                Edit
                               </button>
-                            </>
-                          ) : (
-                            <button
-                              className="btn"
-                              type="button"
-                              onClick={() => {
-                                setEditingEndpointID(row.endpoint_id);
-                                setEditingPatch(toPatch(row));
-                              }}
-                            >
-                              Edit
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );
