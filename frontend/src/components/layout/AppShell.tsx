@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import type { Group, ProbeStatus } from "../../types/api";
 import type { AppViewKey, AppViewMeta, ThemeMode } from "../../types/ui";
 import { SidebarNav } from "./SidebarNav";
 import { TopBar } from "./TopBar";
@@ -7,12 +8,19 @@ type Props = {
   activeView: AppViewKey;
   views: AppViewMeta[];
   mode: ThemeMode;
-  followSystem: boolean;
   sidebarOpen: boolean;
   onOpenSidebar: () => void;
   onCloseSidebar: () => void;
   onToggleTheme: () => void;
   onViewChange: (view: AppViewKey) => void;
+  probeStatus: ProbeStatus;
+  groups: Group[];
+  selectedProbeGroupIDs: number[];
+  onProbeGroupSelectionChange: (ids: number[]) => void;
+  onStartProbeAll: () => void;
+  onStartProbeGroups: () => void;
+  onStopProbe: () => void;
+  probeBusy: boolean;
   children: ReactNode;
 };
 
@@ -20,12 +28,19 @@ export function AppShell({
   activeView,
   views,
   mode,
-  followSystem,
   sidebarOpen,
   onOpenSidebar,
   onCloseSidebar,
   onToggleTheme,
   onViewChange,
+  probeStatus,
+  groups,
+  selectedProbeGroupIDs,
+  onProbeGroupSelectionChange,
+  onStartProbeAll,
+  onStartProbeGroups,
+  onStopProbe,
+  probeBusy,
   children
 }: Props) {
   const activeMeta =
@@ -57,11 +72,18 @@ export function AppShell({
         activeView={activeView}
         views={views}
         mode={mode}
-        followSystem={followSystem}
         open={sidebarOpen}
         onClose={onCloseSidebar}
         onToggleTheme={onToggleTheme}
         onViewChange={onViewChange}
+        probeStatus={probeStatus}
+        groups={groups}
+        selectedProbeGroupIDs={selectedProbeGroupIDs}
+        onProbeGroupSelectionChange={onProbeGroupSelectionChange}
+        onStartProbeAll={onStartProbeAll}
+        onStartProbeGroups={onStartProbeGroups}
+        onStopProbe={onStopProbe}
+        probeBusy={probeBusy}
       />
 
       {sidebarOpen && <button className="shell-backdrop" onClick={onCloseSidebar} aria-label="Close navigation" />}

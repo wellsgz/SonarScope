@@ -1,5 +1,5 @@
 import { useMemo, type ChangeEvent } from "react";
-import type { FilterOptions, Group, MonitorDataScope, Settings } from "../types/api";
+import type { FilterOptions, MonitorDataScope, Settings } from "../types/api";
 import type { QuickRange } from "../hooks/time";
 
 export type FilterState = {
@@ -20,8 +20,6 @@ type Props = {
   customEnd: string;
   dataScope: MonitorDataScope;
   settings?: Settings;
-  groups: Group[];
-  probeRunning: boolean;
   onFilterChange: (next: FilterState) => void;
   onClearFilter: (key: keyof FilterState) => void;
   onClearAllFilters: () => void;
@@ -36,9 +34,6 @@ type Props = {
   onCustomEndChange: (value: string) => void;
   onDataScopeChange: (next: MonitorDataScope) => void;
   onSettingsPatch: (next: Settings) => void;
-  onStartAll: () => void;
-  onStartGroups: (groupIDs: number[]) => void;
-  onStop: () => void;
 };
 
 function multiSelectValue(event: ChangeEvent<HTMLSelectElement>): string[] {
@@ -56,8 +51,6 @@ export function MonitorToolbar({
   customEnd,
   dataScope,
   settings,
-  groups,
-  probeRunning,
   onFilterChange,
   onClearFilter,
   onClearAllFilters,
@@ -71,16 +64,8 @@ export function MonitorToolbar({
   onCustomStartChange,
   onCustomEndChange,
   onDataScopeChange,
-  onSettingsPatch,
-  onStartAll,
-  onStartGroups,
-  onStop
+  onSettingsPatch
 }: Props) {
-  const selectedGroupIDs = useMemo(
-    () => groups.filter((group) => filters.groups.includes(group.name)).map((group) => group.id),
-    [groups, filters.groups]
-  );
-
   const filterCards: Array<{ key: keyof FilterState; label: string; options: string[] }> = [
     { key: "vlan", label: "VLAN", options: options?.vlan || [] },
     { key: "switches", label: "Switch", options: options?.switch || [] },
@@ -274,27 +259,6 @@ export function MonitorToolbar({
               </div>
             </div>
           </details>
-        </section>
-
-        <section className="toolbar-block" aria-label="Probe control">
-          <div className="toolbar-title">Probe Control</div>
-          <div className="button-row">
-            <button className="btn btn-primary" type="button" onClick={onStartAll}>
-              Start All
-            </button>
-            <button
-              className="btn"
-              type="button"
-              onClick={() => onStartGroups(selectedGroupIDs)}
-              disabled={selectedGroupIDs.length === 0}
-            >
-              Start Groups
-            </button>
-            <button className="btn btn-danger" type="button" onClick={onStop}>
-              Stop
-            </button>
-          </div>
-          <div className="info-banner">Probe status: {probeRunning ? "Running" : "Stopped"}</div>
         </section>
 
         <section className="toolbar-block" aria-label="Global settings controls">

@@ -133,6 +133,12 @@
   background: color-mix(in srgb, var(--color-success) 12%, var(--color-surface-elevated));
 }
 
+.status-chip-stopped {
+  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 11%, var(--color-surface-elevated));
+}
+
 [data-theme="light"] .status-chip {
   border-color: #d3dceb;
   background: #f4f7fc;
@@ -143,6 +149,12 @@
   border-color: rgba(15, 159, 114, 0.34);
   background: rgba(15, 159, 114, 0.1);
   color: #0d7d5a;
+}
+
+[data-theme="light"] .status-chip-stopped {
+  border-color: rgba(202, 58, 72, 0.34);
+  background: rgba(202, 58, 72, 0.1);
+  color: #b42333;
 }
 
 [data-theme="light"] .theme-toggle {
@@ -170,6 +182,11 @@
 .status-dot-live {
   background: var(--color-success);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-success) 18%, transparent);
+}
+
+.status-dot-stopped {
+  background: var(--color-danger);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-danger) 18%, transparent);
 }
 
 input,

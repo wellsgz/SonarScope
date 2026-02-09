@@ -7,6 +7,7 @@ import type {
   MonitorEndpoint,
   MonitorEndpointPageResponse,
   MonitorSortField,
+  ProbeStatus,
   Settings,
   TimeSeriesResponse
 } from "../types/api";
@@ -207,6 +208,10 @@ export async function updateInventoryEndpoint(
     method: "PUT",
     body: JSON.stringify(payload)
   });
+}
+
+export async function getProbeStatus(): Promise<ProbeStatus> {
+  return request<ProbeStatus>("/api/probes/status");
 }
 
 export async function startProbe(payload: {

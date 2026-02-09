@@ -78,6 +78,12 @@ export type Settings = {
   auto_refresh_sec: number;
 };
 
+export type ProbeStatus = {
+  running: boolean;
+  scope: "all" | "groups" | "";
+  group_ids: number[];
+};
+
 export type ImportCandidate = {
   row_id: string;
   source_row: number;

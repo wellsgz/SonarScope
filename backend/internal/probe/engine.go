@@ -39,6 +39,12 @@ type Engine struct {
 	groupIDs []int64
 }
 
+type Status struct {
+	Running  bool
+	Scope    string
+	GroupIDs []int64
+}
+
 func NewEngine(st *store.Store, hub *telemetry.Hub, workers int, initialSettings model.Settings) *Engine {
 	engine := &Engine{
 		store:   st,
@@ -93,6 +99,23 @@ func (e *Engine) IsRunning() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.running
+}
+
+func (e *Engine) Status() Status {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	status := Status{
+		Running:  e.running,
+		Scope:    "",
+		GroupIDs: []int64{},
+	}
+	if !e.running {
+		return status
+	}
+	status.Scope = e.scope
+	status.GroupIDs = append(status.GroupIDs, e.groupIDs...)
+	return status
 }
 
 func (e *Engine) UpdateSettings(settings model.Settings) {

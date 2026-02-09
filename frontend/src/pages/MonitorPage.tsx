@@ -3,11 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getSettings,
   listFilterOptions,
-  listGroups,
   listMonitorEndpointsPage,
   listMonitorTimeSeries,
-  startProbe,
-  stopProbe,
   updateSettings
 } from "../api/client";
 import { MonitorChart } from "../components/MonitorChart";
@@ -15,7 +12,7 @@ import { MonitorTable } from "../components/MonitorTable";
 import { MonitorToolbar, type FilterState } from "../components/MonitorToolbar";
 import { rangeToDatesAt, toApiTime, type QuickRange } from "../hooks/time";
 import { useMonitorSocket } from "../hooks/useMonitorSocket";
-import type { MonitorDataScope, MonitorSortField, Settings } from "../types/api";
+import type { MonitorDataScope, MonitorSortField, ProbeStatus, Settings } from "../types/api";
 
 function toDateTimeLocal(value: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -67,7 +64,11 @@ function normalizeIPList(raw: string): string[] {
     });
 }
 
-export function MonitorPage() {
+type Props = {
+  probeStatus: ProbeStatus;
+};
+
+export function MonitorPage({ probeStatus }: Props) {
   const queryClient = useQueryClient();
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
@@ -84,7 +85,6 @@ export function MonitorPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
   const [dataScope, setDataScope] = useState<MonitorDataScope>("live");
   const [rangeAnchorMs, setRangeAnchorMs] = useState<number>(Date.now());
-  const [probeRunning, setProbeRunning] = useState(false);
   const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") {
       return true;
@@ -94,7 +94,6 @@ export function MonitorPage() {
   const lastRealtimeRefreshRef = useRef(0);
 
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: getSettings });
-  const groupsQuery = useQuery({ queryKey: ["groups"], queryFn: listGroups });
   const filterOptionsQuery = useQuery({ queryKey: ["filter-options"], queryFn: listFilterOptions });
 
   const autoRefreshMs = Math.max(1000, (settingsQuery.data?.auto_refresh_sec ?? 10) * 1000);
@@ -247,16 +246,6 @@ export function MonitorPage() {
       queryClient.invalidateQueries({ queryKey: ["settings"] });
     }
   });
-
-  const startProbeMutation = useMutation({
-    mutationFn: (payload: { scope: "all" | "groups"; group_ids?: number[] }) => startProbe(payload),
-    onSuccess: () => setProbeRunning(true)
-  });
-
-  const stopProbeMutation = useMutation({
-    mutationFn: stopProbe,
-    onSuccess: () => setProbeRunning(false)
-  });
   const controlsSummaryScope = dataScope === "live" ? "Live Snapshot" : "Selected Range";
 
   return (
@@ -273,8 +262,8 @@ export function MonitorPage() {
           <div className="panel monitor-controls-summary-panel">
             <span className="status-chip">{controlsSummaryScope}</span>
             <span className="status-chip">Filters: {activeFilterCount}</span>
-            <span className={`status-chip ${probeRunning ? "status-chip-live" : ""}`}>
-              {probeRunning ? "Probe Running" : "Probe Stopped"}
+            <span className={`status-chip ${probeStatus.running ? "status-chip-live" : "status-chip-stopped"}`}>
+              {probeStatus.running ? "Probe Running" : "Probe Stopped"}
             </span>
           </div>
         ) : (
@@ -289,8 +278,6 @@ export function MonitorPage() {
             customEnd={displayEndValue}
             dataScope={dataScope}
             settings={settingsQuery.data}
-            groups={groupsQuery.data || []}
-            probeRunning={probeRunning}
             onFilterChange={(next) => {
               setFilters(next);
               setPage(1);
@@ -358,20 +345,15 @@ export function MonitorPage() {
               setPage(1);
             }}
             onSettingsPatch={(settings) => settingsMutation.mutate(settings)}
-            onStartAll={() => startProbeMutation.mutate({ scope: "all" })}
-            onStartGroups={(groupIDs) => startProbeMutation.mutate({ scope: "groups", group_ids: groupIDs })}
-            onStop={() => stopProbeMutation.mutate()}
           />
         )}
       </aside>
 
       <div className="monitor-data-stack">
-        {(monitorQuery.error || settingsMutation.error || startProbeMutation.error || stopProbeMutation.error) && (
+        {(monitorQuery.error || settingsMutation.error) && (
           <div className="error-banner" role="alert" aria-live="assertive">
             {(monitorQuery.error as Error | undefined)?.message ||
-              (settingsMutation.error as Error | undefined)?.message ||
-              (startProbeMutation.error as Error | undefined)?.message ||
-              (stopProbeMutation.error as Error | undefined)?.message}
+              (settingsMutation.error as Error | undefined)?.message}
           </div>
         )}
 

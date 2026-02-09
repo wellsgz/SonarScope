@@ -1,3 +1,5 @@
+import type { ChangeEvent } from "react";
+import type { Group, ProbeStatus } from "../../types/api";
 import type { AppViewKey, AppViewMeta, ThemeMode } from "../../types/ui";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -5,14 +7,55 @@ type Props = {
   activeView: AppViewKey;
   views: AppViewMeta[];
   mode: ThemeMode;
-  followSystem: boolean;
   open: boolean;
   onClose: () => void;
   onToggleTheme: () => void;
   onViewChange: (view: AppViewKey) => void;
+  probeStatus: ProbeStatus;
+  groups: Group[];
+  selectedProbeGroupIDs: number[];
+  onProbeGroupSelectionChange: (ids: number[]) => void;
+  onStartProbeAll: () => void;
+  onStartProbeGroups: () => void;
+  onStopProbe: () => void;
+  probeBusy: boolean;
 };
 
-export function SidebarNav({ activeView, views, mode, followSystem, open, onClose, onToggleTheme, onViewChange }: Props) {
+function toSelectedIDs(event: ChangeEvent<HTMLSelectElement>): number[] {
+  return Array.from(event.target.selectedOptions)
+    .map((option) => Number(option.value))
+    .filter((id) => Number.isFinite(id));
+}
+
+export function SidebarNav({
+  activeView,
+  views,
+  mode,
+  open,
+  onClose,
+  onToggleTheme,
+  onViewChange,
+  probeStatus,
+  groups,
+  selectedProbeGroupIDs,
+  onProbeGroupSelectionChange,
+  onStartProbeAll,
+  onStartProbeGroups,
+  onStopProbe,
+  probeBusy
+}: Props) {
+  const scopeSummary = !probeStatus.running
+    ? "Scope: —"
+    : probeStatus.scope === "groups"
+      ? `Scope: Groups (${probeStatus.group_ids.length})`
+      : "Scope: All Endpoints";
+
+  const footerSummary = !probeStatus.running
+    ? "Stopped"
+    : probeStatus.scope === "groups"
+      ? `Probing · Groups (${probeStatus.group_ids.length})`
+      : "Probing · All";
+
   return (
     <aside className={`sidebar ${open ? "sidebar-open" : ""}`} aria-label="Primary">
       <div className="sidebar-brand-row">
@@ -48,10 +91,60 @@ export function SidebarNav({ activeView, views, mode, followSystem, open, onClos
         })}
       </nav>
 
+      <section className="sidebar-probe-engine panel" aria-label="Probe engine controls">
+        <div className="sidebar-probe-header">
+          <div className="sidebar-probe-title">Probe Engine</div>
+          <span className={`status-chip ${probeStatus.running ? "status-chip-live" : "status-chip-stopped"}`}>
+            {probeStatus.running ? "Probing" : "Stopped"}
+          </span>
+        </div>
+        <div className="sidebar-probe-scope">{scopeSummary}</div>
+
+        <label className="sidebar-probe-label">
+          Group Targets
+          <select
+            multiple
+            value={selectedProbeGroupIDs.map(String)}
+            onChange={(event) => onProbeGroupSelectionChange(toSelectedIDs(event))}
+            aria-label="Select groups for probe scope"
+          >
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="sidebar-probe-selected">Selected groups: {selectedProbeGroupIDs.length}</div>
+
+        <div className="sidebar-probe-actions">
+          <button className="btn btn-small btn-primary" type="button" disabled={probeBusy} onClick={onStartProbeAll}>
+            Start All
+          </button>
+          <button
+            className="btn btn-small"
+            type="button"
+            disabled={probeBusy || selectedProbeGroupIDs.length === 0}
+            onClick={onStartProbeGroups}
+          >
+            Start Groups
+          </button>
+          <button
+            className="btn btn-small btn-danger"
+            type="button"
+            disabled={probeBusy || !probeStatus.running}
+            onClick={onStopProbe}
+          >
+            Stop
+          </button>
+        </div>
+      </section>
+
       <div className="sidebar-footer">
-        <div className="sidebar-footer-status">
-          <span className="status-dot status-dot-live" aria-hidden />
-          {followSystem ? `NOC Mode · System (${mode})` : "NOC Mode"}
+        <div className={`sidebar-footer-status ${probeStatus.running ? "sidebar-footer-status-live" : "sidebar-footer-status-stopped"}`}>
+          <span className={`status-dot ${probeStatus.running ? "status-dot-live" : "status-dot-stopped"}`} aria-hidden />
+          {footerSummary}
         </div>
         <ThemeToggle mode={mode} onToggle={onToggleTheme} />
       </div>
