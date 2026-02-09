@@ -62,10 +62,25 @@ export function SidebarNav({
     return groups.filter((group) => group.name.toLowerCase().includes(keyword));
   }, [groups, groupSearch]);
 
+  const groupEndpointCountMap = useMemo(() => {
+    return new Map(groups.map((group) => [group.id, group.endpoint_ids?.length ?? 0]));
+  }, [groups]);
+
+  const selectedDraftEndpointCount = useMemo(() => {
+    return draftGroupIDs.reduce((total, groupID) => total + (groupEndpointCountMap.get(groupID) ?? 0), 0);
+  }, [draftGroupIDs, groupEndpointCountMap]);
+
+  const activeScopeEndpointCount = useMemo(() => {
+    if (!probeStatus.running || probeStatus.scope !== "groups") {
+      return 0;
+    }
+    return probeStatus.group_ids.reduce((total, groupID) => total + (groupEndpointCountMap.get(groupID) ?? 0), 0);
+  }, [probeStatus.running, probeStatus.scope, probeStatus.group_ids, groupEndpointCountMap]);
+
   const targetSummary = !probeStatus.running
     ? "Target: —"
     : probeStatus.scope === "groups"
-      ? `Target: Groups (${probeStatus.group_ids.length})`
+      ? `Target: Groups (${probeStatus.group_ids.length}) · Endpoints (${activeScopeEndpointCount})`
       : "Target: All Endpoints";
 
   const footerSummary = probeStatus.running ? "Probing" : "Stopped";
@@ -166,14 +181,17 @@ export function SidebarNav({
                             checked={draftGroupIDs.includes(group.id)}
                             onChange={() => toggleDraftGroup(group.id)}
                           />
-                          <span>{group.name}</span>
+                          <span className="sidebar-group-picker-item-name">{group.name}</span>
+                          <span className="sidebar-group-picker-item-count">({group.endpoint_ids?.length ?? 0})</span>
                         </label>
                       ))
                     ) : (
                       <div className="sidebar-group-picker-empty">No matching groups.</div>
                     )}
                   </div>
-                  <div className="sidebar-group-picker-meta">Selected: {draftGroupIDs.length}</div>
+                  <div className="sidebar-group-picker-meta">
+                    Selected: {draftGroupIDs.length} · Endpoints: {selectedDraftEndpointCount}
+                  </div>
                   <div className="sidebar-group-picker-actions">
                     <button className="btn btn-small" type="button" onClick={() => setGroupPickerOpen(false)}>
                       Cancel

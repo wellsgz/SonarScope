@@ -267,6 +267,17 @@ label {
   border-radius: var(--radius-sm);
 }
 
+.sidebar-group-picker-item-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebar-group-picker-item-count {
+  flex: 0 0 auto;
+  color: var(--color-text-subtle);
+  font-size: 0.72rem;
+}
+
 .sidebar-group-picker-item:hover {
   background: color-mix(in srgb, var(--color-accent-soft) 90%, transparent);
 }
