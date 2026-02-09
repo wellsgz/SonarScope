@@ -1092,8 +1092,8 @@ func buildMonitorWhereClause(filters MonitorFilters, hostname string, mac string
 			args = append(args, "%"+hostname+"%")
 		}
 		if mac != "" {
-			query.WriteString(fmt.Sprintf(" AND translate(lower(ie.mac), ':- ', '') LIKE '%%' || translate(lower($%d::text), ':- ', '') || '%%'", len(args)+1))
-			args = append(args, mac)
+			query.WriteString(fmt.Sprintf(" AND replace(replace(replace(lower(ie.mac), ':', ''), '-', ''), ' ', '') LIKE $%d", len(args)+1))
+			args = append(args, "%"+normalizeMACSearchTerm(mac)+"%")
 		}
 	}
 
@@ -1140,4 +1140,9 @@ func monitorRangeSortExpression(sortBy string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid sort_by")
 	}
+}
+
+func normalizeMACSearchTerm(value string) string {
+	replacer := strings.NewReplacer(":", "", "-", "", " ", "", "\t", "", "\n", "", "\r", "")
+	return replacer.Replace(strings.ToLower(strings.TrimSpace(value)))
 }
