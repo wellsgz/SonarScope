@@ -27,89 +27,91 @@ export function SettingsPage() {
   return (
     <div className="settings-layout">
       <section className="panel settings-page">
-        <div className="panel-header" style={{ margin: "-1rem -1rem 0" }}>
+        <div className="panel-header">
           <h2 className="panel-title">Probe Policy</h2>
           <p className="panel-subtitle">Configure global probe cadence and packet parameters.</p>
         </div>
 
-        <div className="setting-grid">
-          <label>
-            Ping Interval (1-30s)
-            <input
-              type="number"
-              min={1}
-              max={30}
-              value={draft.ping_interval_sec}
-              onChange={(event) => setDraft((prev) => ({ ...prev, ping_interval_sec: Number(event.target.value) }))}
-            />
-            <span className="settings-inline-help">Lower values improve granularity but increase probe volume.</span>
-          </label>
+        <div className="settings-panel-body">
+          <div className="setting-grid">
+            <label>
+              Ping Interval (1-30s)
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={draft.ping_interval_sec}
+                onChange={(event) => setDraft((prev) => ({ ...prev, ping_interval_sec: Number(event.target.value) }))}
+              />
+              <span className="settings-inline-help">Lower values improve granularity but increase probe volume.</span>
+            </label>
 
-          <label>
-            ICMP Payload Size (8-1400 bytes)
-            <input
-              type="number"
-              min={8}
-              max={1400}
-              value={draft.icmp_payload_bytes}
-              onChange={(event) => setDraft((prev) => ({ ...prev, icmp_payload_bytes: Number(event.target.value) }))}
-            />
-            <span className="settings-inline-help">56 bytes is standard and safe for most environments.</span>
-          </label>
+            <label>
+              ICMP Payload Size (8-1400 bytes)
+              <input
+                type="number"
+                min={8}
+                max={1400}
+                value={draft.icmp_payload_bytes}
+                onChange={(event) => setDraft((prev) => ({ ...prev, icmp_payload_bytes: Number(event.target.value) }))}
+              />
+              <span className="settings-inline-help">56 bytes is standard and safe for most environments.</span>
+            </label>
 
-          <label>
-            ICMP Timeout (20-1000ms)
-            <input
-              type="number"
-              min={20}
-              max={1000}
-              value={draft.icmp_timeout_ms}
-              onChange={(event) => setDraft((prev) => ({ ...prev, icmp_timeout_ms: Number(event.target.value) }))}
-            />
-            <span className="settings-inline-help">
-              Lower values fail faster; higher values tolerate transient network jitter.
-            </span>
-          </label>
+            <label>
+              ICMP Timeout (20-1000ms)
+              <input
+                type="number"
+                min={20}
+                max={1000}
+                value={draft.icmp_timeout_ms}
+                onChange={(event) => setDraft((prev) => ({ ...prev, icmp_timeout_ms: Number(event.target.value) }))}
+              />
+              <span className="settings-inline-help">
+                Lower values fail faster; higher values tolerate transient network jitter.
+              </span>
+            </label>
 
-          <label>
-            Auto Refresh (1-60s)
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={draft.auto_refresh_sec}
-              onChange={(event) => setDraft((prev) => ({ ...prev, auto_refresh_sec: Number(event.target.value) }))}
-            />
-            <span className="settings-inline-help">Applies to monitor refresh cadence and live table updates.</span>
-          </label>
-        </div>
-
-        <div className="button-row">
-          <button className="btn btn-primary" type="button" onClick={() => saveMutation.mutate(draft)}>
-            Save Settings
-          </button>
-        </div>
-
-        {(settingsQuery.error || saveMutation.error) && (
-          <div className="error-banner" role="alert" aria-live="assertive">
-            {(settingsQuery.error as Error | undefined)?.message ||
-              (saveMutation.error as Error | undefined)?.message}
+            <label>
+              Auto Refresh (1-60s)
+              <input
+                type="number"
+                min={1}
+                max={60}
+                value={draft.auto_refresh_sec}
+                onChange={(event) => setDraft((prev) => ({ ...prev, auto_refresh_sec: Number(event.target.value) }))}
+              />
+              <span className="settings-inline-help">Applies to monitor refresh cadence and live table updates.</span>
+            </label>
           </div>
-        )}
-        {saveMutation.isSuccess && (
-          <div className="success-banner" role="status" aria-live="polite">
-            Settings updated.
+
+          <div className="button-row settings-save-row">
+            <button className="btn btn-primary" type="button" onClick={() => saveMutation.mutate(draft)}>
+              Save Settings
+            </button>
           </div>
-        )}
+
+          {(settingsQuery.error || saveMutation.error) && (
+            <div className="error-banner" role="alert" aria-live="assertive">
+              {(settingsQuery.error as Error | undefined)?.message ||
+                (saveMutation.error as Error | undefined)?.message}
+            </div>
+          )}
+          {saveMutation.isSuccess && (
+            <div className="success-banner" role="status" aria-live="polite">
+              Settings updated.
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="panel settings-page">
-        <div className="panel-header" style={{ margin: "-1rem -1rem 0" }}>
+        <div className="panel-header">
           <h2 className="panel-title">Operational Guidance</h2>
           <p className="panel-subtitle">Recommended defaults for stable high-volume monitoring.</p>
         </div>
 
-        <div className="setting-grid">
+        <div className="settings-panel-body settings-guidance-stack">
           <div className="info-banner">
             <strong>10,000 endpoints baseline</strong>
             <p>Use intervals above 1s unless infrastructure is sized for sustained high PPS.</p>

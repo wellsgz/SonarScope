@@ -265,8 +265,7 @@
 
 .inventory-import-panel,
 .inventory-list-panel,
-.groups-layout .panel,
-.settings-layout .panel {
+.groups-layout .panel {
   padding: var(--space-4);
 }
 
@@ -337,7 +336,31 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
+  align-items: start;
   min-width: 0;
+}
+
+.settings-layout .panel {
+  padding: 0;
+}
+
+.settings-page {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-panel-body {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-guidance-stack {
+  align-content: start;
+}
+
+.settings-save-row {
+  margin-top: var(--space-1);
 }
 
 .settings-inline-help {
