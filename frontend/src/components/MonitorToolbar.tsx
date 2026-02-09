@@ -311,22 +311,6 @@ export function MonitorToolbar({
               }
             />
           </label>
-          <label>
-            Auto Refresh (1-60s)
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={settings?.auto_refresh_sec ?? 10}
-              onChange={(event) =>
-                settings &&
-                onSettingsPatch({
-                  ...settings,
-                  auto_refresh_sec: Number(event.target.value)
-                })
-              }
-            />
-          </label>
         </section>
       </div>
     </div>

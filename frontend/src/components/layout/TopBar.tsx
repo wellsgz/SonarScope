@@ -1,3 +1,6 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getSettings, updateSettings } from "../../api/client";
+import type { Settings } from "../../types/api";
 import type { AppViewMeta } from "../../types/ui";
 
 type Props = {
@@ -6,6 +9,37 @@ type Props = {
 };
 
 export function TopBar({ activeView, onOpenSidebar }: Props) {
+  const queryClient = useQueryClient();
+  const isMonitorView = activeView.key === "monitor";
+
+  const settingsQuery = useQuery({
+    queryKey: ["settings"],
+    queryFn: getSettings,
+    enabled: isMonitorView
+  });
+
+  const settingsMutation = useMutation({
+    mutationFn: (next: Settings) => updateSettings(next),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+    }
+  });
+
+  const handleAutoRefreshChange = (value: string) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+    const current = settingsQuery.data;
+    if (!current || current.auto_refresh_sec === parsed) {
+      return;
+    }
+    settingsMutation.mutate({
+      ...current,
+      auto_refresh_sec: parsed
+    });
+  };
+
   return (
     <header className="topbar" role="banner">
       <div className="topbar-frame">
@@ -19,6 +53,23 @@ export function TopBar({ activeView, onOpenSidebar }: Props) {
             <p className="topbar-subtitle">{activeView.subtitle}</p>
           </div>
         </div>
+
+        {isMonitorView ? (
+          <div className="topbar-controls" aria-label="Monitor controls">
+            <label className="topbar-control">
+              <span className="topbar-control-label">Auto Refresh (s)</span>
+              <input
+                type="number"
+                min={1}
+                max={60}
+                value={settingsQuery.data?.auto_refresh_sec ?? 10}
+                disabled={settingsMutation.isPending}
+                onChange={(event) => handleAutoRefreshChange(event.target.value)}
+                aria-label="Auto refresh interval in seconds"
+              />
+            </label>
+          </div>
+        ) : null}
       </div>
     </header>
   );
