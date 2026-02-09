@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Group, ProbeStatus } from "../../types/api";
 import type { AppViewKey, AppViewMeta, ThemeMode } from "../../types/ui";
 import { ThemeToggle } from "./ThemeToggle";
@@ -21,12 +21,6 @@ type Props = {
   probeBusy: boolean;
 };
 
-function toSelectedIDs(event: ChangeEvent<HTMLSelectElement>): number[] {
-  return Array.from(event.target.selectedOptions)
-    .map((option) => Number(option.value))
-    .filter((id) => Number.isFinite(id));
-}
-
 export function SidebarNav({
   activeView,
   views,
@@ -44,17 +38,51 @@ export function SidebarNav({
   onStopProbe,
   probeBusy
 }: Props) {
-  const scopeSummary = !probeStatus.running
-    ? "Scope: —"
-    : probeStatus.scope === "groups"
-      ? `Scope: Groups (${probeStatus.group_ids.length})`
-      : "Scope: All Endpoints";
+  const [groupPickerOpen, setGroupPickerOpen] = useState(false);
+  const [groupSearch, setGroupSearch] = useState("");
+  const [draftGroupIDs, setDraftGroupIDs] = useState<number[]>(selectedProbeGroupIDs);
 
-  const footerSummary = !probeStatus.running
-    ? "Stopped"
+  useEffect(() => {
+    const validIDs = new Set(groups.map((group) => group.id));
+    setDraftGroupIDs((current) => current.filter((id) => validIDs.has(id)));
+  }, [groups]);
+
+  useEffect(() => {
+    if (!groupPickerOpen) {
+      setDraftGroupIDs(selectedProbeGroupIDs);
+      setGroupSearch("");
+    }
+  }, [groupPickerOpen, selectedProbeGroupIDs]);
+
+  const filteredGroups = useMemo(() => {
+    const keyword = groupSearch.trim().toLowerCase();
+    if (!keyword) {
+      return groups;
+    }
+    return groups.filter((group) => group.name.toLowerCase().includes(keyword));
+  }, [groups, groupSearch]);
+
+  const targetSummary = !probeStatus.running
+    ? "Target: —"
     : probeStatus.scope === "groups"
-      ? `Probing · Groups (${probeStatus.group_ids.length})`
-      : "Probing · All";
+      ? `Target: Groups (${probeStatus.group_ids.length})`
+      : "Target: All Endpoints";
+
+  const footerSummary = probeStatus.running ? "Probing" : "Stopped";
+
+  function toggleDraftGroup(groupID: number) {
+    setDraftGroupIDs((current) => {
+      if (current.includes(groupID)) {
+        return current.filter((id) => id !== groupID);
+      }
+      return [...current, groupID];
+    });
+  }
+
+  function applyGroupSelection() {
+    onProbeGroupSelectionChange([...draftGroupIDs].sort((a, b) => a - b));
+    setGroupPickerOpen(false);
+  }
 
   return (
     <aside className={`sidebar ${open ? "sidebar-open" : ""}`} aria-label="Primary">
@@ -91,37 +119,61 @@ export function SidebarNav({
         })}
       </nav>
 
-      <section className="sidebar-probe-engine panel" aria-label="Probe engine controls">
-        <div className="sidebar-probe-header">
-          <div className="sidebar-probe-title">Probe Engine</div>
-          <span className={`status-chip ${probeStatus.running ? "status-chip-live" : "status-chip-stopped"}`}>
-            {probeStatus.running ? "Probing" : "Stopped"}
-          </span>
-        </div>
-        <div className="sidebar-probe-scope">{scopeSummary}</div>
-
-        <label className="sidebar-probe-label">
-          Group Targets
-          <select
-            multiple
-            value={selectedProbeGroupIDs.map(String)}
-            onChange={(event) => onProbeGroupSelectionChange(toSelectedIDs(event))}
-            aria-label="Select groups for probe scope"
-          >
-            {groups.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="sidebar-probe-selected">Selected groups: {selectedProbeGroupIDs.length}</div>
-
-        <div className="sidebar-probe-actions">
+      <section className="sidebar-probe-actions-module" aria-label="Probe actions">
+        <div className="sidebar-probe-actions-title">Probe Actions</div>
+        <div className="sidebar-probe-action-row">
           <button className="btn btn-small btn-primary" type="button" disabled={probeBusy} onClick={onStartProbeAll}>
             Start All
           </button>
+          <div className={`sidebar-group-picker ${groupPickerOpen ? "sidebar-group-picker-open" : ""}`}>
+            <button
+              className="btn btn-small"
+              type="button"
+              aria-expanded={groupPickerOpen}
+              aria-controls="sidebar-group-picker-popover"
+              onClick={() => setGroupPickerOpen((current) => !current)}
+            >
+              Select Groups ({selectedProbeGroupIDs.length})
+            </button>
+            {groupPickerOpen ? (
+              <div className="sidebar-group-picker-popover" id="sidebar-group-picker-popover">
+                <label className="sidebar-group-picker-search">
+                  Search groups
+                  <input
+                    type="text"
+                    placeholder="Contains match"
+                    value={groupSearch}
+                    onChange={(event) => setGroupSearch(event.target.value)}
+                  />
+                </label>
+                <div className="sidebar-group-picker-list" role="listbox" aria-multiselectable="true">
+                  {filteredGroups.length ? (
+                    filteredGroups.map((group) => (
+                      <label key={group.id} className="sidebar-group-picker-item">
+                        <input
+                          type="checkbox"
+                          checked={draftGroupIDs.includes(group.id)}
+                          onChange={() => toggleDraftGroup(group.id)}
+                        />
+                        <span>{group.name}</span>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="sidebar-group-picker-empty">No matching groups.</div>
+                  )}
+                </div>
+                <div className="sidebar-group-picker-meta">Selected: {draftGroupIDs.length}</div>
+                <div className="sidebar-group-picker-actions">
+                  <button className="btn btn-small" type="button" onClick={() => setGroupPickerOpen(false)}>
+                    Cancel
+                  </button>
+                  <button className="btn btn-small btn-primary" type="button" onClick={applyGroupSelection}>
+                    Apply Groups
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
           <button
             className="btn btn-small"
             type="button"
@@ -139,6 +191,7 @@ export function SidebarNav({
             Stop
           </button>
         </div>
+        <div className="sidebar-probe-target">{targetSummary}</div>
       </section>
 
       <div className="sidebar-footer">
