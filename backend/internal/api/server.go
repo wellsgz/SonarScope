@@ -51,7 +51,7 @@ func NewServer(cfg config.Config, st *store.Store, p *probe.Engine, hub *telemet
 	}
 }
 
-const deleteJobBatchSize = 1000
+const deleteJobBatchSize = 50
 
 type inventoryDeleteJobState struct {
 	Active             bool

@@ -260,10 +260,10 @@ type InventoryDeleteJobStatusResponse struct {
 	Mode               InventoryDeleteJobMode  `json:"mode,omitempty"`
 	GroupID            *int64                  `json:"group_id,omitempty"`
 	State              InventoryDeleteJobState `json:"state,omitempty"`
-	MatchedEndpoints   int64                   `json:"matched_endpoints,omitempty"`
-	ProcessedEndpoints int64                   `json:"processed_endpoints,omitempty"`
-	DeletedEndpoints   int64                   `json:"deleted_endpoints,omitempty"`
-	ProgressPct        float64                 `json:"progress_pct,omitempty"`
+	MatchedEndpoints   int64                   `json:"matched_endpoints"`
+	ProcessedEndpoints int64                   `json:"processed_endpoints"`
+	DeletedEndpoints   int64                   `json:"deleted_endpoints"`
+	ProgressPct        float64                 `json:"progress_pct"`
 	Phase              string                  `json:"phase,omitempty"`
 	Error              string                  `json:"error,omitempty"`
 	StartedAt          *time.Time              `json:"started_at,omitempty"`

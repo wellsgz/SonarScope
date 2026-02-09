@@ -1244,7 +1244,7 @@ func (s *Store) DeleteInventoryEndpointsByIDs(
 		return 0, nil
 	}
 	if batchSize <= 0 {
-		batchSize = 100
+		batchSize = 50
 	}
 
 	var processedCount int64
@@ -1271,9 +1271,13 @@ func (s *Store) DeleteInventoryEndpointsByIDs(
 			return deletedCount, err
 		}
 
-		if _, err := tx.Exec(ctx, `DELETE FROM ping_raw WHERE endpoint_id = ANY($1)`, batchIDs); err != nil {
-			_ = tx.Rollback(ctx)
-			return deletedCount, err
+		// Delete ping history per endpoint to keep each statement narrowly indexed
+		// and avoid planner choices that can turn large ANY() deletes into long scans.
+		for _, endpointID := range batchIDs {
+			if _, err := tx.Exec(ctx, `DELETE FROM ping_raw WHERE endpoint_id = $1`, endpointID); err != nil {
+				_ = tx.Rollback(ctx)
+				return deletedCount, err
+			}
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM endpoint_stats_current WHERE endpoint_id = ANY($1)`, batchIDs); err != nil {
 			_ = tx.Rollback(ctx)
