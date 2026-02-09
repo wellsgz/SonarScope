@@ -12,6 +12,7 @@ export type FilterState = {
 type Props = {
   filters: FilterState;
   hostnameSearch: string;
+  macSearch: string;
   ipListSearch: string;
   options?: FilterOptions;
   quickRange: QuickRange;
@@ -25,8 +26,10 @@ type Props = {
   onClearFilter: (key: keyof FilterState) => void;
   onClearAllFilters: () => void;
   onHostnameSearchChange: (next: string) => void;
+  onMACSearchChange: (next: string) => void;
   onIPListSearchChange: (next: string) => void;
   onClearHostnameSearch: () => void;
+  onClearMACSearch: () => void;
   onClearIPListSearch: () => void;
   onQuickRangeChange: (next: QuickRange) => void;
   onCustomStartChange: (value: string) => void;
@@ -45,6 +48,7 @@ function multiSelectValue(event: ChangeEvent<HTMLSelectElement>): string[] {
 export function MonitorToolbar({
   filters,
   hostnameSearch,
+  macSearch,
   ipListSearch,
   options,
   quickRange,
@@ -58,8 +62,10 @@ export function MonitorToolbar({
   onClearFilter,
   onClearAllFilters,
   onHostnameSearchChange,
+  onMACSearchChange,
   onIPListSearchChange,
   onClearHostnameSearch,
+  onClearMACSearch,
   onClearIPListSearch,
   onQuickRangeChange,
   onCustomStartChange,
@@ -166,6 +172,21 @@ export function MonitorToolbar({
                   aria-label="Search hostname"
                 />
                 <button className="btn btn-small" type="button" onClick={onClearHostnameSearch}>
+                  Clear
+                </button>
+              </div>
+            </label>
+            <label>
+              MAC Address Search
+              <div className="search-input-row">
+                <input
+                  type="text"
+                  value={macSearch}
+                  onChange={(event) => onMACSearchChange(event.target.value)}
+                  placeholder="Contains match"
+                  aria-label="Search MAC address"
+                />
+                <button className="btn btn-small" type="button" onClick={onClearMACSearch}>
                   Clear
                 </button>
               </div>

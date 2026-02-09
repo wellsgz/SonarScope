@@ -68,7 +68,7 @@ Payload for create/update:
 ## Monitoring
 
 - `GET /api/monitor/endpoints?vlan=100,200&switch=sw-a&port=1/1&group=DB-Core`
-- `GET /api/monitor/endpoints-page?vlan=100&group=DB-Core&page=1&page_size=100&sort_by=failed_count&sort_dir=desc&hostname=web&ip_list=10.0.0.1,10.0.0.2`
+- `GET /api/monitor/endpoints-page?vlan=100&group=DB-Core&page=1&page_size=100&sort_by=failed_count&sort_dir=desc&hostname=web&mac=AA:BB&ip_list=10.0.0.1,10.0.0.2`
 - `GET /api/monitor/timeseries?endpoint_ids=1001,1002&start=2026-02-08-00-00-00&end=2026-02-08-01-00-00`
 - `GET /api/monitor/filter-options`
 

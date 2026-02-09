@@ -126,6 +126,7 @@ export async function listMonitorEndpointsPage(filters: {
   ports?: string[];
   groups?: string[];
   hostname?: string;
+  mac?: string;
   ipList?: string[];
   page: number;
   pageSize: 50 | 100 | 200;
@@ -141,6 +142,7 @@ export async function listMonitorEndpointsPage(filters: {
     port: filters.ports?.join(","),
     group: filters.groups?.join(","),
     hostname: filters.hostname?.trim() || undefined,
+    mac: filters.mac?.trim() || undefined,
     ip_list: filters.ipList?.join(","),
     page: String(filters.page),
     page_size: String(filters.pageSize),

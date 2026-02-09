@@ -27,6 +27,7 @@ type MonitorFilters struct {
 type MonitorPageQuery struct {
 	Filters    MonitorFilters
 	Hostname   string
+	MAC        string
 	IPList     []string
 	Page       int
 	PageSize   int
@@ -558,7 +559,7 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 }
 
 func (s *Store) ListMonitorEndpointsPage(ctx context.Context, query MonitorPageQuery) ([]model.MonitorEndpoint, int64, error) {
-	whereClause, args := buildMonitorWhereClause(query.Filters, query.Hostname, query.IPList)
+	whereClause, args := buildMonitorWhereClause(query.Filters, query.Hostname, query.MAC, query.IPList)
 
 	countSQL := `SELECT COUNT(*) FROM inventory_endpoint ie` + whereClause
 	var totalItems int64
@@ -1052,7 +1053,7 @@ func derefString(value *string) string {
 	return *value
 }
 
-func buildMonitorWhereClause(filters MonitorFilters, hostname string, ipList []string) (string, []any) {
+func buildMonitorWhereClause(filters MonitorFilters, hostname string, mac string, ipList []string) (string, []any) {
 	var query strings.Builder
 	query.WriteString(" WHERE 1=1")
 
@@ -1085,9 +1086,15 @@ func buildMonitorWhereClause(filters MonitorFilters, hostname string, ipList []s
 	if len(ipList) > 0 {
 		query.WriteString(fmt.Sprintf(" AND ie.ip = ANY($%d::inet[])", len(args)+1))
 		args = append(args, ipList)
-	} else if hostname != "" {
-		query.WriteString(fmt.Sprintf(" AND ie.hostname ILIKE $%d", len(args)+1))
-		args = append(args, "%"+hostname+"%")
+	} else {
+		if hostname != "" {
+			query.WriteString(fmt.Sprintf(" AND ie.hostname ILIKE $%d", len(args)+1))
+			args = append(args, "%"+hostname+"%")
+		}
+		if mac != "" {
+			query.WriteString(fmt.Sprintf(" AND translate(upper(ie.mac), ':- ', '') ILIKE '%%' || translate(upper($%d), ':- ', '') || '%%'", len(args)+1))
+			args = append(args, mac)
+		}
 	}
 
 	return query.String(), args

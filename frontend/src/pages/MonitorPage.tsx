@@ -75,6 +75,7 @@ export function MonitorPage() {
   const [customEnd, setCustomEnd] = useState(toDateTimeLocal(new Date()));
   const [selectedEndpointID, setSelectedEndpointID] = useState<number | null>(null);
   const [hostnameSearch, setHostnameSearch] = useState("");
+  const [macSearch, setMACSearch] = useState("");
   const [ipListSearch, setIPListSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<50 | 100 | 200>(50);
@@ -146,6 +147,7 @@ export function MonitorPage() {
       "monitor-endpoints-page",
       filters,
       hostnameSearch,
+      macSearch,
       ipListSearch,
       dataScope,
       dataScope === "range" ? effectiveStart.toISOString() : "",
@@ -162,6 +164,7 @@ export function MonitorPage() {
         ports: filters.ports,
         groups: filters.groups,
         hostname: hostnameSearch,
+        mac: macSearch,
         ipList: ipListValues,
         page,
         pageSize,
@@ -239,6 +242,7 @@ export function MonitorPage() {
         <MonitorToolbar
           filters={filters}
           hostnameSearch={hostnameSearch}
+          macSearch={macSearch}
           ipListSearch={ipListSearch}
           options={filterOptionsQuery.data}
           quickRange={quickRange}
@@ -262,11 +266,16 @@ export function MonitorPage() {
           onClearAllFilters={() => {
             setFilters({ vlan: [], switches: [], ports: [], groups: [] });
             setHostnameSearch("");
+            setMACSearch("");
             setIPListSearch("");
             setPage(1);
           }}
           onHostnameSearchChange={(next) => {
             setHostnameSearch(next);
+            setPage(1);
+          }}
+          onMACSearchChange={(next) => {
+            setMACSearch(next);
             setPage(1);
           }}
           onIPListSearchChange={(next) => {
@@ -275,6 +284,10 @@ export function MonitorPage() {
           }}
           onClearHostnameSearch={() => {
             setHostnameSearch("");
+            setPage(1);
+          }}
+          onClearMACSearch={() => {
+            setMACSearch("");
             setPage(1);
           }}
           onClearIPListSearch={() => {

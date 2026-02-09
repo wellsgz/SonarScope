@@ -524,6 +524,7 @@ func (s *Server) handleMonitorEndpointsPage(w http.ResponseWriter, r *http.Reque
 	}
 
 	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
+	mac := strings.TrimSpace(r.URL.Query().Get("mac"))
 	ipList, err := parseIPListQuery(r, "ip_list")
 	if err != nil {
 		util.WriteError(w, http.StatusBadRequest, err.Error())
@@ -559,6 +560,7 @@ func (s *Server) handleMonitorEndpointsPage(w http.ResponseWriter, r *http.Reque
 	items, totalItems, err := s.store.ListMonitorEndpointsPage(r.Context(), store.MonitorPageQuery{
 		Filters:    filters,
 		Hostname:   hostname,
+		MAC:        mac,
 		IPList:     ipList,
 		Page:       page,
 		PageSize:   pageSize,
