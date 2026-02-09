@@ -3,11 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getSettings,
   listFilterOptions,
-  listGroups,
   listMonitorEndpointsPage,
   listMonitorTimeSeries,
-  startProbe,
-  stopProbe,
   updateSettings
 } from "../api/client";
 import { MonitorChart } from "../components/MonitorChart";
@@ -50,6 +47,7 @@ const rangeSortableFields: MonitorSortField[] = [
   "failed_pct",
   "average_latency"
 ];
+const monitorControlsCollapsedKey = "sonarscope.monitor.controls_collapsed";
 
 function normalizeIPList(raw: string): string[] {
   const seen = new Set<string>();
@@ -83,11 +81,15 @@ export function MonitorPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
   const [dataScope, setDataScope] = useState<MonitorDataScope>("live");
   const [rangeAnchorMs, setRangeAnchorMs] = useState<number>(Date.now());
-  const [probeRunning, setProbeRunning] = useState(false);
+  const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+    return window.localStorage.getItem(monitorControlsCollapsedKey) !== "0";
+  });
   const lastRealtimeRefreshRef = useRef(0);
 
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: getSettings });
-  const groupsQuery = useQuery({ queryKey: ["groups"], queryFn: listGroups });
   const filterOptionsQuery = useQuery({ queryKey: ["filter-options"], queryFn: listFilterOptions });
 
   const autoRefreshMs = Math.max(1000, (settingsQuery.data?.auto_refresh_sec ?? 10) * 1000);
@@ -106,6 +108,13 @@ export function MonitorPage() {
     return () => window.clearInterval(intervalID);
   }, [quickRange, autoRefreshMs]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(monitorControlsCollapsedKey, controlsCollapsed ? "1" : "0");
+  }, [controlsCollapsed]);
+
   const socketConnected = useMonitorSocket((message) => {
     const event = message as { type?: string; endpoint_id?: number };
     if (event.type !== "probe_update") {
@@ -123,6 +132,14 @@ export function MonitorPage() {
   });
 
   const ipListValues = useMemo(() => normalizeIPList(ipListSearch), [ipListSearch]);
+  const activeFilterCount =
+    filters.vlan.length +
+    filters.switches.length +
+    filters.ports.length +
+    filters.groups.length +
+    (hostnameSearch.trim() ? 1 : 0) +
+    (macSearch.trim() ? 1 : 0) +
+    (ipListValues.length > 0 ? 1 : 0);
 
   const { effectiveStart, effectiveEnd } = useMemo(() => {
     if (quickRange === "custom") {
@@ -225,164 +242,164 @@ export function MonitorPage() {
       queryClient.invalidateQueries({ queryKey: ["settings"] });
     }
   });
-
-  const startProbeMutation = useMutation({
-    mutationFn: (payload: { scope: "all" | "groups"; group_ids?: number[] }) => startProbe(payload),
-    onSuccess: () => setProbeRunning(true)
-  });
-
-  const stopProbeMutation = useMutation({
-    mutationFn: stopProbe,
-    onSuccess: () => setProbeRunning(false)
-  });
+  const controlsSummaryScope = dataScope === "live" ? "Live Snapshot" : "Selected Range";
 
   return (
-    <div className="monitor-page">
-      <div className="monitor-pane-top">
-        <MonitorToolbar
-          filters={filters}
-          hostnameSearch={hostnameSearch}
-          macSearch={macSearch}
-          ipListSearch={ipListSearch}
-          options={filterOptionsQuery.data}
-          quickRange={quickRange}
-          customStart={displayStartValue}
-          customEnd={displayEndValue}
-          dataScope={dataScope}
-          settings={settingsQuery.data}
-          groups={groupsQuery.data || []}
-          probeRunning={probeRunning}
-          onFilterChange={(next) => {
-            setFilters(next);
-            setPage(1);
-          }}
-          onClearFilter={(key) => {
-            setFilters((prev) => ({
-              ...prev,
-              [key]: []
-            }));
-            setPage(1);
-          }}
-          onClearAllFilters={() => {
-            setFilters({ vlan: [], switches: [], ports: [], groups: [] });
-            setHostnameSearch("");
-            setMACSearch("");
-            setIPListSearch("");
-            setPage(1);
-          }}
-          onHostnameSearchChange={(next) => {
-            setHostnameSearch(next);
-            setPage(1);
-          }}
-          onMACSearchChange={(next) => {
-            setMACSearch(next);
-            setPage(1);
-          }}
-          onIPListSearchChange={(next) => {
-            setIPListSearch(next);
-            setPage(1);
-          }}
-          onClearHostnameSearch={() => {
-            setHostnameSearch("");
-            setPage(1);
-          }}
-          onClearMACSearch={() => {
-            setMACSearch("");
-            setPage(1);
-          }}
-          onClearIPListSearch={() => {
-            setIPListSearch("");
-            setPage(1);
-          }}
-          onQuickRangeChange={(next) => {
-            setQuickRange(next);
-            if (next !== "custom") {
-              setRangeAnchorMs(Date.now());
-            }
-          }}
-          onCustomStartChange={(value) => {
-            setQuickRange("custom");
-            setCustomStart(value);
-            setRangeAnchorMs(Date.now());
-          }}
-          onCustomEndChange={(value) => {
-            setQuickRange("custom");
-            setCustomEnd(value);
-            setRangeAnchorMs(Date.now());
-          }}
-          onDataScopeChange={(next) => {
-            if (next === "range" && sortBy && !rangeSortableFields.includes(sortBy)) {
-              setSortBy(null);
-              setSortDir(null);
-            }
-            setDataScope(next);
-            setPage(1);
-          }}
-          onSettingsPatch={(settings) => settingsMutation.mutate(settings)}
-          onStartAll={() => startProbeMutation.mutate({ scope: "all" })}
-          onStartGroups={(groupIDs) => startProbeMutation.mutate({ scope: "groups", group_ids: groupIDs })}
-          onStop={() => stopProbeMutation.mutate()}
-        />
-      </div>
-
-      {(monitorQuery.error || settingsMutation.error || startProbeMutation.error || stopProbeMutation.error) && (
-        <div className="error-banner" role="alert" aria-live="assertive">
-          {(monitorQuery.error as Error | undefined)?.message ||
-            (settingsMutation.error as Error | undefined)?.message ||
-            (startProbeMutation.error as Error | undefined)?.message ||
-            (stopProbeMutation.error as Error | undefined)?.message}
+    <div className={`monitor-page ${controlsCollapsed ? "monitor-page-controls-collapsed" : ""}`}>
+      <aside className={`monitor-controls-column ${controlsCollapsed ? "monitor-controls-column-collapsed" : ""}`}>
+        <div className="panel monitor-controls-header-panel">
+          <div className="toolbar-title">Control Center</div>
+          <button className="btn btn-small" type="button" onClick={() => setControlsCollapsed((prev) => !prev)}>
+            {controlsCollapsed ? "Expand" : "Collapse"}
+          </button>
         </div>
-      )}
 
-      <div className="monitor-pane-middle">
-        {monitorQuery.isLoading ? (
-          <div className="panel state-panel">
-            <div>
-              <span className="skeleton-bar" style={{ width: 240 }} />
-              <p style={{ marginTop: 10 }}>Loading endpoint telemetry…</p>
-            </div>
+        {controlsCollapsed ? (
+          <div className="panel monitor-controls-summary-panel">
+            <span className="status-chip">{controlsSummaryScope}</span>
+            <span className="status-chip">Filters: {activeFilterCount}</span>
           </div>
-        ) : monitorRows.length === 0 ? (
-          <div className="panel state-panel">No endpoints match the active filters.</div>
         ) : (
-          <MonitorTable
-            rows={monitorRows}
-            selectedEndpointID={selectedEndpointID}
-            onSelectionChange={setSelectedEndpointID}
-            page={monitorQuery.data?.page ?? page}
-            pageSize={(monitorQuery.data?.page_size as 50 | 100 | 200) ?? pageSize}
-            totalItems={monitorQuery.data?.total_items ?? 0}
-            totalPages={monitorQuery.data?.total_pages ?? 0}
-            onPageChange={(nextPage) => setPage(Math.max(1, nextPage))}
-            onPageSizeChange={(nextSize) => {
-              setPageSize(nextSize);
+          <MonitorToolbar
+            filters={filters}
+            hostnameSearch={hostnameSearch}
+            macSearch={macSearch}
+            ipListSearch={ipListSearch}
+            options={filterOptionsQuery.data}
+            quickRange={quickRange}
+            customStart={displayStartValue}
+            customEnd={displayEndValue}
+            dataScope={dataScope}
+            settings={settingsQuery.data}
+            onFilterChange={(next) => {
+              setFilters(next);
               setPage(1);
             }}
-            sortableFields={dataScope === "range" ? rangeSortableFields : liveSortableFields}
-            sortBy={sortBy}
-            sortDir={sortDir}
-            onSortChange={(nextSortBy, nextSortDir) => {
-              setSortBy(nextSortBy);
-              setSortDir(nextSortDir);
+            onClearFilter={(key) => {
+              setFilters((prev) => ({
+                ...prev,
+                [key]: []
+              }));
               setPage(1);
             }}
+            onClearAllFilters={() => {
+              setFilters({ vlan: [], switches: [], ports: [], groups: [] });
+              setHostnameSearch("");
+              setMACSearch("");
+              setIPListSearch("");
+              setPage(1);
+            }}
+            onHostnameSearchChange={(next) => {
+              setHostnameSearch(next);
+              setPage(1);
+            }}
+            onMACSearchChange={(next) => {
+              setMACSearch(next);
+              setPage(1);
+            }}
+            onIPListSearchChange={(next) => {
+              setIPListSearch(next);
+              setPage(1);
+            }}
+            onClearHostnameSearch={() => {
+              setHostnameSearch("");
+              setPage(1);
+            }}
+            onClearMACSearch={() => {
+              setMACSearch("");
+              setPage(1);
+            }}
+            onClearIPListSearch={() => {
+              setIPListSearch("");
+              setPage(1);
+            }}
+            onQuickRangeChange={(next) => {
+              setQuickRange(next);
+              if (next !== "custom") {
+                setRangeAnchorMs(Date.now());
+              }
+            }}
+            onCustomStartChange={(value) => {
+              setQuickRange("custom");
+              setCustomStart(value);
+              setRangeAnchorMs(Date.now());
+            }}
+            onCustomEndChange={(value) => {
+              setQuickRange("custom");
+              setCustomEnd(value);
+              setRangeAnchorMs(Date.now());
+            }}
+            onDataScopeChange={(next) => {
+              if (next === "range" && sortBy && !rangeSortableFields.includes(sortBy)) {
+                setSortBy(null);
+                setSortDir(null);
+              }
+              setDataScope(next);
+              setPage(1);
+            }}
+            onSettingsPatch={(settings) => settingsMutation.mutate(settings)}
           />
         )}
-      </div>
+      </aside>
 
-      <div className="monitor-pane-bottom">
-        {selectedEndpointID === null ? (
-          <div className="panel state-panel empty-chart-panel">Select an endpoint row to visualize loss rate and latency.</div>
-        ) : timeSeriesQuery.isLoading ? (
-          <div className="panel state-panel">Loading timeseries data…</div>
-        ) : (timeSeriesQuery.data?.series || []).length === 0 ? (
-          <div className="panel state-panel">No timeseries data found for the selected range.</div>
-        ) : (
-          <MonitorChart
-            points={timeSeriesQuery.data?.series || []}
-            endpointLabel={selectedEndpoint ? `${selectedEndpoint.hostname || selectedEndpoint.ip_address} (${selectedEndpoint.ip_address})` : `ID ${selectedEndpointID}`}
-          />
+      <div className="monitor-data-stack">
+        {(monitorQuery.error || settingsMutation.error) && (
+          <div className="error-banner" role="alert" aria-live="assertive">
+            {(monitorQuery.error as Error | undefined)?.message ||
+              (settingsMutation.error as Error | undefined)?.message}
+          </div>
         )}
+
+        <div className="monitor-pane-middle">
+          {monitorQuery.isLoading ? (
+            <div className="panel state-panel">
+              <div>
+                <span className="skeleton-bar" style={{ width: 240 }} />
+                <p style={{ marginTop: 10 }}>Loading endpoint telemetry…</p>
+              </div>
+            </div>
+          ) : monitorRows.length === 0 ? (
+            <div className="panel state-panel">No endpoints match the active filters.</div>
+          ) : (
+            <MonitorTable
+              rows={monitorRows}
+              selectedEndpointID={selectedEndpointID}
+              onSelectionChange={setSelectedEndpointID}
+              page={monitorQuery.data?.page ?? page}
+              pageSize={(monitorQuery.data?.page_size as 50 | 100 | 200) ?? pageSize}
+              totalItems={monitorQuery.data?.total_items ?? 0}
+              totalPages={monitorQuery.data?.total_pages ?? 0}
+              onPageChange={(nextPage) => setPage(Math.max(1, nextPage))}
+              onPageSizeChange={(nextSize) => {
+                setPageSize(nextSize);
+                setPage(1);
+              }}
+              sortableFields={dataScope === "range" ? rangeSortableFields : liveSortableFields}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSortChange={(nextSortBy, nextSortDir) => {
+                setSortBy(nextSortBy);
+                setSortDir(nextSortDir);
+                setPage(1);
+              }}
+            />
+          )}
+        </div>
+
+        <div className="monitor-pane-bottom">
+          {selectedEndpointID === null ? (
+            <div className="panel state-panel empty-chart-panel">Select an endpoint row to visualize loss rate and latency.</div>
+          ) : timeSeriesQuery.isLoading ? (
+            <div className="panel state-panel">Loading timeseries data…</div>
+          ) : (timeSeriesQuery.data?.series || []).length === 0 ? (
+            <div className="panel state-panel">No timeseries data found for the selected range.</div>
+          ) : (
+            <MonitorChart
+              points={timeSeriesQuery.data?.series || []}
+              endpointLabel={selectedEndpoint ? `${selectedEndpoint.hostname || selectedEndpoint.ip_address} (${selectedEndpoint.ip_address})` : `ID ${selectedEndpointID}`}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

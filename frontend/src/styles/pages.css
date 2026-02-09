@@ -1,17 +1,71 @@
 .monitor-page {
   display: grid;
-  grid-template-rows: auto minmax(320px, 1fr) minmax(300px, 0.9fr);
+  grid-template-columns: minmax(72px, 360px) minmax(0, 1fr);
   gap: var(--space-4);
   min-height: calc(100vh - var(--topbar-height) - var(--space-6));
   min-width: 0;
   overflow-x: clip;
 }
 
-.monitor-pane-top,
+.monitor-page-controls-collapsed {
+  grid-template-columns: minmax(72px, 220px) minmax(0, 1fr);
+}
+
+.monitor-controls-column,
 .monitor-pane-middle,
 .monitor-pane-bottom {
   min-height: 0;
   min-width: 0;
+}
+
+.monitor-controls-column {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+}
+
+.monitor-controls-header-panel {
+  padding: var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.monitor-controls-summary-panel {
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.monitor-controls-column-collapsed {
+  grid-template-columns: 1fr;
+}
+
+.monitor-controls-column .toolbar-panel {
+  padding: 0;
+  box-shadow: none;
+}
+
+.monitor-controls-column .toolbar-grid {
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+
+.monitor-controls-column .toolbar-block {
+  padding: var(--space-3);
+}
+
+.monitor-data-stack {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(320px, 1fr) minmax(300px, 0.9fr);
+  gap: var(--space-4);
+}
+
+.monitor-pane-middle,
+.monitor-pane-bottom {
   overflow: hidden;
 }
 
@@ -283,7 +337,16 @@
 
 @media (max-width: 1024px) {
   .monitor-page {
-    grid-template-rows: auto minmax(320px, 1fr) minmax(260px, 0.8fr);
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .monitor-page-controls-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .monitor-data-stack {
+    grid-template-rows: minmax(320px, 1fr) minmax(260px, 0.8fr);
   }
 
   .groups-layout,
@@ -297,8 +360,8 @@
 }
 
 @media (max-width: 768px) {
-  .monitor-page {
-    grid-template-rows: auto minmax(300px, 1fr) minmax(240px, 0.8fr);
+  .monitor-data-stack {
+    grid-template-rows: minmax(300px, 1fr) minmax(240px, 0.8fr);
   }
 
   .toolbar-grid,

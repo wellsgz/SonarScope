@@ -74,6 +74,7 @@ func (s *Server) Routes() http.Handler {
 		})
 
 		r.Route("/probes", func(r chi.Router) {
+			r.Get("/status", s.handleProbeStatus)
 			r.Post("/start", s.handleProbeStart)
 			r.Post("/stop", s.handleProbeStop)
 		})
@@ -377,10 +378,24 @@ func (s *Server) handleProbeStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	responseGroupIDs := req.GroupIDs
+	if responseGroupIDs == nil {
+		responseGroupIDs = []int64{}
+	}
+
 	util.WriteJSON(w, http.StatusOK, map[string]any{
 		"running":   true,
 		"scope":     req.Scope,
-		"group_ids": req.GroupIDs,
+		"group_ids": responseGroupIDs,
+	})
+}
+
+func (s *Server) handleProbeStatus(w http.ResponseWriter, _ *http.Request) {
+	status := s.probe.Status()
+	util.WriteJSON(w, http.StatusOK, map[string]any{
+		"running":   status.Running,
+		"scope":     status.Scope,
+		"group_ids": status.GroupIDs,
 	})
 }
 
