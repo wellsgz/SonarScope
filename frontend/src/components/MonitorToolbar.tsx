@@ -1,5 +1,5 @@
 import { useMemo, type ChangeEvent } from "react";
-import type { FilterOptions, Group, Settings } from "../types/api";
+import type { FilterOptions, Group, MonitorDataScope, Settings } from "../types/api";
 import type { QuickRange } from "../hooks/time";
 
 export type FilterState = {
@@ -17,6 +17,7 @@ type Props = {
   quickRange: QuickRange;
   customStart: string;
   customEnd: string;
+  dataScope: MonitorDataScope;
   settings?: Settings;
   groups: Group[];
   probeRunning: boolean;
@@ -30,6 +31,7 @@ type Props = {
   onQuickRangeChange: (next: QuickRange) => void;
   onCustomStartChange: (value: string) => void;
   onCustomEndChange: (value: string) => void;
+  onDataScopeChange: (next: MonitorDataScope) => void;
   onSettingsPatch: (next: Settings) => void;
   onStartAll: () => void;
   onStartGroups: (groupIDs: number[]) => void;
@@ -48,6 +50,7 @@ export function MonitorToolbar({
   quickRange,
   customStart,
   customEnd,
+  dataScope,
   settings,
   groups,
   probeRunning,
@@ -61,6 +64,7 @@ export function MonitorToolbar({
   onQuickRangeChange,
   onCustomStartChange,
   onCustomEndChange,
+  onDataScopeChange,
   onSettingsPatch,
   onStartAll,
   onStartGroups,
@@ -102,6 +106,27 @@ export function MonitorToolbar({
               </button>
             ))}
           </div>
+          <div className="quick-range-row">
+            <button
+              type="button"
+              className={`chip ${dataScope === "live" ? "chip-active" : ""}`}
+              onClick={() => onDataScopeChange("live")}
+            >
+              Live Snapshot
+            </button>
+            <button
+              type="button"
+              className={`chip ${dataScope === "range" ? "chip-active" : ""}`}
+              onClick={() => onDataScopeChange("range")}
+            >
+              Selected Range
+            </button>
+          </div>
+          <span className="field-help">
+            {dataScope === "live"
+              ? "Live: middle pane uses current endpoint stats."
+              : "Selected Range: middle pane counters are recalculated for the chosen window."}
+          </span>
           <div className="custom-time-row">
             <input
               type="datetime-local"

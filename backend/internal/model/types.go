@@ -67,13 +67,15 @@ type MonitorEndpoint struct {
 }
 
 type MonitorEndpointsPageResponse struct {
-	Items      []MonitorEndpoint `json:"items"`
-	Page       int               `json:"page"`
-	PageSize   int               `json:"page_size"`
-	TotalItems int64             `json:"total_items"`
-	TotalPages int               `json:"total_pages"`
-	SortBy     string            `json:"sort_by,omitempty"`
-	SortDir    string            `json:"sort_dir,omitempty"`
+	Items       []MonitorEndpoint `json:"items"`
+	Page        int               `json:"page"`
+	PageSize    int               `json:"page_size"`
+	TotalItems  int64             `json:"total_items"`
+	TotalPages  int               `json:"total_pages"`
+	SortBy      string            `json:"sort_by,omitempty"`
+	SortDir     string            `json:"sort_dir,omitempty"`
+	StatsScope  string            `json:"stats_scope,omitempty"`
+	RangeRollup string            `json:"range_rollup,omitempty"`
 }
 
 type InventoryEndpointView struct {

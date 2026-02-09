@@ -2,6 +2,7 @@ import type {
   FilterOptions,
   Group,
   InventoryEndpoint,
+  MonitorDataScope,
   ImportPreview,
   MonitorEndpoint,
   MonitorEndpointPageResponse,
@@ -128,6 +129,9 @@ export async function listMonitorEndpointsPage(filters: {
   ipList?: string[];
   page: number;
   pageSize: 50 | 100 | 200;
+  statsScope?: MonitorDataScope;
+  start?: string;
+  end?: string;
   sortBy?: MonitorSortField;
   sortDir?: "asc" | "desc";
 }): Promise<MonitorEndpointPageResponse> {
@@ -140,6 +144,9 @@ export async function listMonitorEndpointsPage(filters: {
     ip_list: filters.ipList?.join(","),
     page: String(filters.page),
     page_size: String(filters.pageSize),
+    stats_scope: filters.statsScope,
+    start: filters.start,
+    end: filters.end,
     sort_by: filters.sortBy,
     sort_dir: filters.sortDir
   });

@@ -1,7 +1,7 @@
 export type QuickRange = "5m" | "30m" | "1h" | "12h" | "24h" | "custom";
 
-export function rangeToDates(range: QuickRange): { start: Date; end: Date } {
-  const end = new Date();
+export function rangeToDatesAt(range: QuickRange, anchor: Date): { start: Date; end: Date } {
+  const end = new Date(anchor.getTime());
   const start = new Date(end.getTime());
 
   switch (range) {
@@ -25,6 +25,10 @@ export function rangeToDates(range: QuickRange): { start: Date; end: Date } {
   }
 
   return { start, end };
+}
+
+export function rangeToDates(range: QuickRange): { start: Date; end: Date } {
+  return rangeToDatesAt(range, new Date());
 }
 
 export function toApiTime(date: Date): string {

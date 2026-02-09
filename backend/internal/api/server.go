@@ -489,10 +489,23 @@ func (s *Server) handleMonitorEndpointsPage(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	statsScope := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("stats_scope")))
+	if statsScope == "" {
+		statsScope = "live"
+	}
+	if statsScope != "live" && statsScope != "range" {
+		util.WriteError(w, http.StatusBadRequest, "stats_scope must be live or range")
+		return
+	}
+
 	sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
 	sortDir := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_dir")))
 	if sortBy != "" {
-		if _, err := storeMonitorSortExpression(sortBy); err != nil {
+		validateSort := storeMonitorSortExpression
+		if statsScope == "range" {
+			validateSort = storeMonitorRangeSortExpression
+		}
+		if _, err := validateSort(sortBy); err != nil {
 			util.WriteError(w, http.StatusBadRequest, "invalid sort_by")
 			return
 		}
@@ -517,14 +530,43 @@ func (s *Server) handleMonitorEndpointsPage(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	var start time.Time
+	var end time.Time
+	if statsScope == "range" {
+		startRaw := strings.TrimSpace(r.URL.Query().Get("start"))
+		endRaw := strings.TrimSpace(r.URL.Query().Get("end"))
+		if startRaw == "" || endRaw == "" {
+			util.WriteError(w, http.StatusBadRequest, "start and end are required when stats_scope=range")
+			return
+		}
+
+		start, err = parseQueryTimestamp(startRaw)
+		if err != nil {
+			util.WriteError(w, http.StatusBadRequest, "invalid start format")
+			return
+		}
+		end, err = parseQueryTimestamp(endRaw)
+		if err != nil {
+			util.WriteError(w, http.StatusBadRequest, "invalid end format")
+			return
+		}
+		if !start.Before(end) {
+			util.WriteError(w, http.StatusBadRequest, "start must be before end")
+			return
+		}
+	}
+
 	items, totalItems, err := s.store.ListMonitorEndpointsPage(r.Context(), store.MonitorPageQuery{
-		Filters:  filters,
-		Hostname: hostname,
-		IPList:   ipList,
-		Page:     page,
-		PageSize: pageSize,
-		SortBy:   sortBy,
-		SortDir:  sortDir,
+		Filters:    filters,
+		Hostname:   hostname,
+		IPList:     ipList,
+		Page:       page,
+		PageSize:   pageSize,
+		SortBy:     sortBy,
+		SortDir:    sortDir,
+		StatsScope: statsScope,
+		Start:      start,
+		End:        end,
 	})
 	if err != nil {
 		if err.Error() == "invalid sort_by" {
@@ -540,14 +582,25 @@ func (s *Server) handleMonitorEndpointsPage(w http.ResponseWriter, r *http.Reque
 		totalPages = 0
 	}
 
+	rangeRollup := ""
+	if statsScope == "range" {
+		if end.Sub(start) > 48*time.Hour {
+			rangeRollup = "1h"
+		} else {
+			rangeRollup = "1m"
+		}
+	}
+
 	util.WriteJSON(w, http.StatusOK, model.MonitorEndpointsPageResponse{
-		Items:      items,
-		Page:       page,
-		PageSize:   pageSize,
-		TotalItems: totalItems,
-		TotalPages: totalPages,
-		SortBy:     sortBy,
-		SortDir:    sortDir,
+		Items:       items,
+		Page:        page,
+		PageSize:    pageSize,
+		TotalItems:  totalItems,
+		TotalPages:  totalPages,
+		SortBy:      sortBy,
+		SortDir:     sortDir,
+		StatsScope:  statsScope,
+		RangeRollup: rangeRollup,
 	})
 }
 
@@ -697,6 +750,30 @@ func storeMonitorSortExpression(sortBy string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid sort_by")
 	}
+}
+
+func storeMonitorRangeSortExpression(sortBy string) (string, error) {
+	switch sortBy {
+	case "",
+		"last_success_on",
+		"success_count",
+		"failed_count",
+		"failed_pct",
+		"average_latency":
+		return sortBy, nil
+	default:
+		return "", fmt.Errorf("invalid sort_by")
+	}
+}
+
+func parseQueryTimestamp(raw string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t.UTC(), nil
+	}
+	if t, err := time.Parse("2006-01-02-15-04-05", raw); err == nil {
+		return t.UTC(), nil
+	}
+	return time.Time{}, fmt.Errorf("invalid time format")
 }
 
 func parseInt64CSVQuery(r *http.Request, key string) []int64 {

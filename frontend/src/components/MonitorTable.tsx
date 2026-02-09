@@ -11,6 +11,7 @@ type Props = {
   totalPages: number;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: 50 | 100 | 200) => void;
+  sortableFields: MonitorSortField[];
   sortBy: MonitorSortField | null;
   sortDir: "asc" | "desc" | null;
   onSortChange: (sortBy: MonitorSortField | null, sortDir: "asc" | "desc" | null) => void;
@@ -101,10 +102,13 @@ export function MonitorTable({
   totalPages,
   onPageChange,
   onPageSizeChange,
+  sortableFields,
   sortBy,
   sortDir,
   onSortChange
 }: Props) {
+  const sortableSet = useMemo(() => new Set<MonitorSortField>(sortableFields), [sortableFields]);
+
   const pageOptions = useMemo(() => {
     if (totalPages < 1) {
       return [1];
@@ -134,7 +138,7 @@ export function MonitorTable({
           <thead>
             <tr>
               {columns.map((column) => {
-                const sortable = Boolean(column.sortable);
+                const sortable = Boolean(column.sortable && sortableSet.has(column.sortable));
                 const active = sortable && sortBy === column.sortable;
                 const ariaSort = active ? (sortDir === "asc" ? "ascending" : "descending") : "none";
                 const indicator = !sortable ? "" : !active ? "↕" : sortDir === "desc" ? "↓" : "↑";

@@ -34,6 +34,8 @@ export type MonitorSortField =
   | "last_ping_latency"
   | "average_latency";
 
+export type MonitorDataScope = "live" | "range";
+
 export type MonitorEndpointPageResponse = {
   items: MonitorEndpoint[];
   page: number;
@@ -42,6 +44,8 @@ export type MonitorEndpointPageResponse = {
   total_pages: number;
   sort_by?: string;
   sort_dir?: "asc" | "desc";
+  stats_scope?: MonitorDataScope;
+  range_rollup?: "1m" | "1h";
 };
 
 export type InventoryEndpoint = {

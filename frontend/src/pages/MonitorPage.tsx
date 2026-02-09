@@ -13,9 +13,9 @@ import {
 import { MonitorChart } from "../components/MonitorChart";
 import { MonitorTable } from "../components/MonitorTable";
 import { MonitorToolbar, type FilterState } from "../components/MonitorToolbar";
-import { rangeToDates, toApiTime, type QuickRange } from "../hooks/time";
+import { rangeToDatesAt, toApiTime, type QuickRange } from "../hooks/time";
 import { useMonitorSocket } from "../hooks/useMonitorSocket";
-import type { MonitorSortField, Settings } from "../types/api";
+import type { MonitorDataScope, MonitorSortField, Settings } from "../types/api";
 
 function toDateTimeLocal(value: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -30,6 +30,26 @@ const defaultFilters: FilterState = {
   ports: [],
   groups: []
 };
+
+const liveSortableFields: MonitorSortField[] = [
+  "last_success_on",
+  "success_count",
+  "failed_count",
+  "consecutive_failed_count",
+  "max_consecutive_failed_count",
+  "max_consecutive_failed_count_time",
+  "failed_pct",
+  "last_ping_latency",
+  "average_latency"
+];
+
+const rangeSortableFields: MonitorSortField[] = [
+  "last_success_on",
+  "success_count",
+  "failed_count",
+  "failed_pct",
+  "average_latency"
+];
 
 function normalizeIPList(raw: string): string[] {
   const seen = new Set<string>();
@@ -57,9 +77,11 @@ export function MonitorPage() {
   const [hostnameSearch, setHostnameSearch] = useState("");
   const [ipListSearch, setIPListSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<50 | 100 | 200>(100);
+  const [pageSize, setPageSize] = useState<50 | 100 | 200>(50);
   const [sortBy, setSortBy] = useState<MonitorSortField | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
+  const [dataScope, setDataScope] = useState<MonitorDataScope>("live");
+  const [rangeAnchorMs, setRangeAnchorMs] = useState<number>(Date.now());
   const [probeRunning, setProbeRunning] = useState(false);
   const lastRealtimeRefreshRef = useRef(0);
 
@@ -72,6 +94,16 @@ export function MonitorPage() {
   useEffect(() => {
     lastRealtimeRefreshRef.current = 0;
   }, [autoRefreshMs]);
+
+  useEffect(() => {
+    if (quickRange === "custom") {
+      return;
+    }
+    const refreshRangeAnchor = () => setRangeAnchorMs(Date.now());
+    refreshRangeAnchor();
+    const intervalID = window.setInterval(refreshRangeAnchor, autoRefreshMs);
+    return () => window.clearInterval(intervalID);
+  }, [quickRange, autoRefreshMs]);
 
   const socketConnected = useMonitorSocket((message) => {
     const event = message as { type?: string; endpoint_id?: number };
@@ -91,12 +123,33 @@ export function MonitorPage() {
 
   const ipListValues = useMemo(() => normalizeIPList(ipListSearch), [ipListSearch]);
 
+  const { effectiveStart, effectiveEnd } = useMemo(() => {
+    if (quickRange === "custom") {
+      const startDate = new Date(customStart);
+      const endDate = new Date(customEnd);
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        const fallbackEnd = new Date();
+        const fallbackStart = new Date(fallbackEnd.getTime() - 30 * 60 * 1000);
+        return { effectiveStart: fallbackStart, effectiveEnd: fallbackEnd };
+      }
+      return { effectiveStart: startDate, effectiveEnd: endDate };
+    }
+    const { start, end } = rangeToDatesAt(quickRange, new Date(rangeAnchorMs));
+    return { effectiveStart: start, effectiveEnd: end };
+  }, [quickRange, customStart, customEnd, rangeAnchorMs]);
+
+  const displayStartValue = quickRange === "custom" ? customStart : toDateTimeLocal(effectiveStart);
+  const displayEndValue = quickRange === "custom" ? customEnd : toDateTimeLocal(effectiveEnd);
+
   const monitorQuery = useQuery({
     queryKey: [
       "monitor-endpoints-page",
       filters,
       hostnameSearch,
       ipListSearch,
+      dataScope,
+      dataScope === "range" ? effectiveStart.toISOString() : "",
+      dataScope === "range" ? effectiveEnd.toISOString() : "",
       page,
       pageSize,
       sortBy,
@@ -112,6 +165,9 @@ export function MonitorPage() {
         ipList: ipListValues,
         page,
         pageSize,
+        statsScope: dataScope,
+        start: dataScope === "range" ? toApiTime(effectiveStart) : undefined,
+        end: dataScope === "range" ? toApiTime(effectiveEnd) : undefined,
         sortBy: sortBy || undefined,
         sortDir: sortDir || undefined
       }),
@@ -137,28 +193,24 @@ export function MonitorPage() {
     }
   }, [monitorRows, selectedEndpointID]);
 
-  const { start, end } = useMemo(() => {
-    if (quickRange === "custom") {
-      const startDate = new Date(customStart);
-      const endDate = new Date(customEnd);
-      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-        return rangeToDates("30m");
-      }
-      return {
-        start: startDate,
-        end: endDate
-      };
+  useEffect(() => {
+    if (dataScope !== "range") {
+      return;
     }
-    return rangeToDates(quickRange);
-  }, [quickRange, customStart, customEnd]);
+    if (sortBy && !rangeSortableFields.includes(sortBy)) {
+      setSortBy(null);
+      setSortDir(null);
+      setPage(1);
+    }
+  }, [dataScope, sortBy]);
 
   const timeSeriesQuery = useQuery({
-    queryKey: ["timeseries", selectedEndpointID, start.toISOString(), end.toISOString()],
+    queryKey: ["timeseries", selectedEndpointID, effectiveStart.toISOString(), effectiveEnd.toISOString()],
     queryFn: () =>
       listMonitorTimeSeries({
         endpointIds: selectedEndpointID ? [selectedEndpointID] : [],
-        start: toApiTime(start),
-        end: toApiTime(end)
+        start: toApiTime(effectiveStart),
+        end: toApiTime(effectiveEnd)
       }),
     enabled: selectedEndpointID !== null,
     refetchInterval: socketConnected ? false : autoRefreshMs
@@ -190,8 +242,9 @@ export function MonitorPage() {
           ipListSearch={ipListSearch}
           options={filterOptionsQuery.data}
           quickRange={quickRange}
-          customStart={customStart}
-          customEnd={customEnd}
+          customStart={displayStartValue}
+          customEnd={displayEndValue}
+          dataScope={dataScope}
           settings={settingsQuery.data}
           groups={groupsQuery.data || []}
           probeRunning={probeRunning}
@@ -228,14 +281,29 @@ export function MonitorPage() {
             setIPListSearch("");
             setPage(1);
           }}
-          onQuickRangeChange={setQuickRange}
+          onQuickRangeChange={(next) => {
+            setQuickRange(next);
+            if (next !== "custom") {
+              setRangeAnchorMs(Date.now());
+            }
+          }}
           onCustomStartChange={(value) => {
             setQuickRange("custom");
             setCustomStart(value);
+            setRangeAnchorMs(Date.now());
           }}
           onCustomEndChange={(value) => {
             setQuickRange("custom");
             setCustomEnd(value);
+            setRangeAnchorMs(Date.now());
+          }}
+          onDataScopeChange={(next) => {
+            if (next === "range" && sortBy && !rangeSortableFields.includes(sortBy)) {
+              setSortBy(null);
+              setSortDir(null);
+            }
+            setDataScope(next);
+            setPage(1);
           }}
           onSettingsPatch={(settings) => settingsMutation.mutate(settings)}
           onStartAll={() => startProbeMutation.mutate({ scope: "all" })}
@@ -277,6 +345,7 @@ export function MonitorPage() {
               setPageSize(nextSize);
               setPage(1);
             }}
+            sortableFields={dataScope === "range" ? rangeSortableFields : liveSortableFields}
             sortBy={sortBy}
             sortDir={sortDir}
             onSortChange={(nextSortBy, nextSortDir) => {
