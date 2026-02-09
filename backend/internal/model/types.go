@@ -106,6 +106,7 @@ type Group struct {
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
+	IsSystem    bool      `json:"is_system"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	EndpointIDs []int64   `json:"endpoint_ids,omitempty"`
@@ -205,4 +206,19 @@ type ImportApplyResponse struct {
 	Updated         int                          `json:"updated"`
 	Errors          []string                     `json:"errors"`
 	GroupAssignment *ImportGroupAssignmentResult `json:"group_assignment,omitempty"`
+}
+
+type DeleteInventoryByGroupResponse struct {
+	Deleted      bool  `json:"deleted"`
+	DeletedCount int64 `json:"deleted_count"`
+	GroupID      int64 `json:"group_id"`
+}
+
+type DeleteAllInventoryRequest struct {
+	ConfirmPhrase string `json:"confirm_phrase"`
+}
+
+type DeleteAllInventoryResponse struct {
+	Deleted      bool  `json:"deleted"`
+	DeletedCount int64 `json:"deleted_count"`
 }

@@ -334,6 +334,46 @@
   min-height: 220px;
 }
 
+.inventory-danger-zone {
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.inventory-danger-title {
+  font-family: var(--font-heading);
+  font-size: 0.84rem;
+  color: var(--color-danger);
+}
+
+.inventory-danger-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.inventory-danger-card {
+  border: 1px dashed color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-danger) 6%, var(--color-surface-elevated));
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.inventory-danger-card h4 {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.inventory-delete-all-confirm {
+  display: grid;
+  gap: var(--space-2);
+}
+
 .groups-layout {
   display: grid;
   grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.4fr);
@@ -417,6 +457,10 @@
   }
 
   .inventory-import-assignment-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-danger-grid {
     grid-template-columns: 1fr;
   }
 }

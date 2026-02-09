@@ -17,6 +17,10 @@ function parseManualIPList(raw: string): string[] {
     });
 }
 
+function isReservedGroupName(value: string): boolean {
+  return value.trim().toLowerCase() === "no group";
+}
+
 export function GroupsPage() {
   const queryClient = useQueryClient();
   const [editingID, setEditingID] = useState<number | null>(null);
@@ -134,6 +138,9 @@ export function GroupsPage() {
     };
   };
 
+  const editingGroup = editingID ? (groupsQuery.data || []).find((group) => group.id === editingID) : null;
+  const reservedGroupName = isReservedGroupName(name);
+
   return (
     <div className="groups-layout">
       <section className="panel">
@@ -208,6 +215,16 @@ export function GroupsPage() {
               {groupUpdateNotice}
             </div>
           )}
+          {reservedGroupName && (
+            <div className="error-banner" role="alert" aria-live="assertive">
+              Group name "no group" is reserved for system assignment and cannot be created or edited.
+            </div>
+          )}
+          {editingGroup?.is_system && (
+            <div className="info-banner" role="status" aria-live="polite">
+              System group settings are read-only.
+            </div>
+          )}
 
           <div className="button-row">
             <button
@@ -217,7 +234,7 @@ export function GroupsPage() {
                 const payload = resolveSaveRequest();
                 saveMutation.mutate(payload);
               }}
-              disabled={!name.trim()}
+              disabled={!name.trim() || reservedGroupName || Boolean(editingGroup?.is_system)}
             >
               {editingID ? "Update Group" : "Create Group"}
             </button>
@@ -285,23 +302,29 @@ export function GroupsPage() {
                     <td>{new Date(group.updated_at).toLocaleString()}</td>
                     <td>
                       <div className="button-row">
-                        <button
-                          className="btn"
-                          type="button"
-                          onClick={() => {
-                            setEditingID(group.id);
-                            setName(group.name);
-                            setDescription(group.description);
-                            setEndpointIDs(group.endpoint_ids || []);
-                            setManualIPList("");
-                            setGroupUpdateNotice(null);
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button className="btn btn-danger" type="button" onClick={() => deleteMutation.mutate(group.id)}>
-                          Delete
-                        </button>
+                        {group.is_system ? (
+                          <span className="status-chip">System</span>
+                        ) : (
+                          <>
+                            <button
+                              className="btn"
+                              type="button"
+                              onClick={() => {
+                                setEditingID(group.id);
+                                setName(group.name);
+                                setDescription(group.description);
+                                setEndpointIDs(group.endpoint_ids || []);
+                                setManualIPList("");
+                                setGroupUpdateNotice(null);
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button className="btn btn-danger" type="button" onClick={() => deleteMutation.mutate(group.id)}>
+                              Delete
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

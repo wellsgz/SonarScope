@@ -2,6 +2,8 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
+  deleteAllInventoryEndpoints,
+  deleteInventoryEndpointsByGroup,
   importInventoryPreview,
   listGroups,
   listInventoryEndpoints,
@@ -71,6 +73,9 @@ export function InventoryPage() {
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [editingEndpointID, setEditingEndpointID] = useState<number | null>(null);
   const [editingPatch, setEditingPatch] = useState<InventoryPatch | null>(null);
+  const [deleteGroupID, setDeleteGroupID] = useState("");
+  const [deleteAllArmed, setDeleteAllArmed] = useState(false);
+  const [deleteAllPhrase, setDeleteAllPhrase] = useState("");
 
   const filterCards: Array<{ key: keyof FilterState; label: string; options: string[] }> = [
     { key: "vlan", label: "VLAN", options: [] },
@@ -104,6 +109,15 @@ export function InventoryPage() {
       })
   });
 
+  function invalidateInventoryAndMonitorQueries() {
+    queryClient.invalidateQueries({ queryKey: ["inventory-endpoints"] });
+    queryClient.invalidateQueries({ queryKey: ["inventory-filter-options"] });
+    queryClient.invalidateQueries({ queryKey: ["groups"] });
+    queryClient.invalidateQueries({ queryKey: ["monitor-endpoints-page"] });
+    queryClient.invalidateQueries({ queryKey: ["monitor-endpoints"] });
+    queryClient.invalidateQueries({ queryKey: ["filter-options"] });
+  }
+
   const previewMutation = useMutation({
     mutationFn: (upload: File) => importInventoryPreview(upload),
     onSuccess: (data) => {
@@ -132,9 +146,7 @@ export function InventoryPage() {
           })
         : Promise.reject(new Error("No preview available")),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["inventory-endpoints"] });
-      queryClient.invalidateQueries({ queryKey: ["inventory-filter-options"] });
-      queryClient.invalidateQueries({ queryKey: ["groups"] });
+      invalidateInventoryAndMonitorQueries();
     }
   });
 
@@ -148,8 +160,27 @@ export function InventoryPage() {
     onSuccess: () => {
       setEditingEndpointID(null);
       setEditingPatch(null);
-      queryClient.invalidateQueries({ queryKey: ["inventory-endpoints"] });
-      queryClient.invalidateQueries({ queryKey: ["inventory-filter-options"] });
+      invalidateInventoryAndMonitorQueries();
+    }
+  });
+
+  const deleteByGroupMutation = useMutation({
+    mutationFn: (groupID: number) => deleteInventoryEndpointsByGroup(groupID),
+    onSuccess: () => {
+      setEditingEndpointID(null);
+      setEditingPatch(null);
+      invalidateInventoryAndMonitorQueries();
+    }
+  });
+
+  const deleteAllMutation = useMutation({
+    mutationFn: (confirmPhrase: string) => deleteAllInventoryEndpoints(confirmPhrase),
+    onSuccess: () => {
+      setEditingEndpointID(null);
+      setEditingPatch(null);
+      setDeleteAllArmed(false);
+      setDeleteAllPhrase("");
+      invalidateInventoryAndMonitorQueries();
     }
   });
 
@@ -424,14 +455,27 @@ export function InventoryPage() {
             </div>
           </div>
 
-          {(inventoryQuery.error || updateMutation.error) && (
+          {(inventoryQuery.error || updateMutation.error || deleteByGroupMutation.error || deleteAllMutation.error) && (
             <div className="error-banner" role="alert" aria-live="assertive">
-              {(inventoryQuery.error as Error | undefined)?.message || (updateMutation.error as Error | undefined)?.message}
+              {(inventoryQuery.error as Error | undefined)?.message ||
+                (updateMutation.error as Error | undefined)?.message ||
+                (deleteByGroupMutation.error as Error | undefined)?.message ||
+                (deleteAllMutation.error as Error | undefined)?.message}
             </div>
           )}
           {updateMutation.isSuccess && (
             <div className="success-banner" role="status" aria-live="polite">
               Inventory endpoint updated.
+            </div>
+          )}
+          {deleteByGroupMutation.data && (
+            <div className="success-banner" role="status" aria-live="polite">
+              Deleted {deleteByGroupMutation.data.deleted_count} endpoint(s) from selected group.
+            </div>
+          )}
+          {deleteAllMutation.data && (
+            <div className="success-banner" role="status" aria-live="polite">
+              Deleted {deleteAllMutation.data.deleted_count} endpoint(s) from inventory.
             </div>
           )}
 
@@ -593,6 +637,107 @@ export function InventoryPage() {
               </table>
             </div>
           )}
+
+          <section className="inventory-danger-zone" aria-label="Inventory danger zone">
+            <h3 className="inventory-danger-title">Danger Zone</h3>
+            <p className="field-help">
+              Deleting endpoints permanently removes inventory membership and probe history records.
+            </p>
+            <div className="inventory-danger-grid">
+              <div className="inventory-danger-card">
+                <h4>Delete Endpoints By Group</h4>
+                <label>
+                  Group
+                  <select value={deleteGroupID} onChange={(event) => setDeleteGroupID(event.target.value)}>
+                    <option value="">Select a group</option>
+                    {(groupsQuery.data || []).map((group) => (
+                      <option key={group.id} value={String(group.id)}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="button-row">
+                  <button
+                    className="btn btn-danger"
+                    type="button"
+                    disabled={!deleteGroupID || deleteByGroupMutation.isPending}
+                    onClick={() => {
+                      const groupID = Number(deleteGroupID);
+                      const groupName = (groupsQuery.data || []).find((group) => group.id === groupID)?.name || "selected group";
+                      const confirmed = window.confirm(
+                        `Delete all endpoints assigned to "${groupName}"? This cannot be undone.`
+                      );
+                      if (!confirmed) {
+                        return;
+                      }
+                      deleteByGroupMutation.mutate(groupID);
+                    }}
+                  >
+                    Delete Group Endpoints
+                  </button>
+                </div>
+              </div>
+
+              <div className="inventory-danger-card">
+                <h4>Delete All Endpoints</h4>
+                <p className="field-help">
+                  This removes every endpoint and all related probe data from the database.
+                </p>
+                {!deleteAllArmed ? (
+                  <button
+                    className="btn btn-danger"
+                    type="button"
+                    onClick={() => {
+                      setDeleteAllArmed(true);
+                      setDeleteAllPhrase("");
+                    }}
+                  >
+                    Start Delete-All
+                  </button>
+                ) : (
+                  <div className="inventory-delete-all-confirm">
+                    <p className="field-help">
+                      Type <code>DELETE ALL ENDPOINTS</code> to confirm.
+                    </p>
+                    <input
+                      value={deleteAllPhrase}
+                      onChange={(event) => setDeleteAllPhrase(event.target.value)}
+                      placeholder="DELETE ALL ENDPOINTS"
+                    />
+                    <div className="button-row">
+                      <button
+                        className="btn"
+                        type="button"
+                        onClick={() => {
+                          setDeleteAllArmed(false);
+                          setDeleteAllPhrase("");
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="btn btn-danger"
+                        type="button"
+                        disabled={deleteAllPhrase.trim() !== "DELETE ALL ENDPOINTS" || deleteAllMutation.isPending}
+                        onClick={() => {
+                          const finalConfirm = window.confirm(
+                            "Final confirmation: delete ALL endpoints and related data?"
+                          );
+                          if (!finalConfirm) {
+                            return;
+                          }
+                          deleteAllMutation.mutate(deleteAllPhrase.trim());
+                        }}
+                      >
+                        Delete All Endpoints
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
         </div>
       </section>
     </div>

@@ -66,6 +66,7 @@ export type Group = {
   id: number;
   name: string;
   description: string;
+  is_system?: boolean;
   created_at: string;
   updated_at: string;
   endpoint_ids?: number[];
@@ -131,6 +132,17 @@ export type ImportApplyResponse = {
   updated: number;
   errors: string[];
   group_assignment?: ImportGroupAssignmentResult;
+};
+
+export type DeleteInventoryByGroupResponse = {
+  deleted: boolean;
+  deleted_count: number;
+  group_id: number;
+};
+
+export type DeleteAllInventoryResponse = {
+  deleted: boolean;
+  deleted_count: number;
 };
 
 export type TimeSeriesPoint = {

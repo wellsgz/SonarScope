@@ -1,4 +1,6 @@
 import type {
+  DeleteAllInventoryResponse,
+  DeleteInventoryByGroupResponse,
   FilterOptions,
   Group,
   ImportApplyResponse,
@@ -209,6 +211,19 @@ export async function updateInventoryEndpoint(
   return request<InventoryEndpoint>(`/api/inventory/endpoints/${endpointID}`, {
     method: "PUT",
     body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteInventoryEndpointsByGroup(groupID: number): Promise<DeleteInventoryByGroupResponse> {
+  return request<DeleteInventoryByGroupResponse>(`/api/inventory/endpoints/by-group/${groupID}`, {
+    method: "DELETE"
+  });
+}
+
+export async function deleteAllInventoryEndpoints(confirmPhrase: string): Promise<DeleteAllInventoryResponse> {
+  return request<DeleteAllInventoryResponse>("/api/inventory/endpoints/delete-all", {
+    method: "POST",
+    body: JSON.stringify({ confirm_phrase: confirmPhrase })
   });
 }
 

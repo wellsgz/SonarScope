@@ -17,6 +17,13 @@ type Store struct {
 	pool *pgxpool.Pool
 }
 
+const noGroupName = "no group"
+
+var (
+	ErrReservedGroupName  = errors.New(`group name "no group" is reserved`)
+	ErrSystemGroupMutable = errors.New("system group cannot be modified")
+)
+
 type MonitorFilters struct {
 	VLANs      []string
 	Switches   []string
@@ -176,6 +183,7 @@ func (s *Store) ListGroups(ctx context.Context) ([]model.Group, error) {
 		SELECT g.id,
 		       g.name,
 		       g.description,
+		       g.is_system,
 		       g.created_at,
 		       g.updated_at,
 		       COALESCE(array_agg(gm.endpoint_id) FILTER (WHERE gm.endpoint_id IS NOT NULL), '{}') AS endpoint_ids
@@ -192,7 +200,7 @@ func (s *Store) ListGroups(ctx context.Context) ([]model.Group, error) {
 	groups := []model.Group{}
 	for rows.Next() {
 		var g model.Group
-		if err := rows.Scan(&g.ID, &g.Name, &g.Description, &g.CreatedAt, &g.UpdatedAt, &g.EndpointIDs); err != nil {
+		if err := rows.Scan(&g.ID, &g.Name, &g.Description, &g.IsSystem, &g.CreatedAt, &g.UpdatedAt, &g.EndpointIDs); err != nil {
 			return nil, err
 		}
 		groups = append(groups, g)
@@ -201,6 +209,10 @@ func (s *Store) ListGroups(ctx context.Context) ([]model.Group, error) {
 }
 
 func (s *Store) CreateGroup(ctx context.Context, name string, description string, endpointIDs []int64) (model.Group, error) {
+	if isNoGroupName(name) {
+		return model.Group{}, ErrReservedGroupName
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return model.Group{}, err
@@ -211,8 +223,8 @@ func (s *Store) CreateGroup(ctx context.Context, name string, description string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO group_def(name, description)
 		VALUES ($1, $2)
-		RETURNING id, name, description, created_at, updated_at
-	`, name, description).Scan(&group.ID, &group.Name, &group.Description, &group.CreatedAt, &group.UpdatedAt)
+		RETURNING id, name, description, is_system, created_at, updated_at
+	`, strings.TrimSpace(name), description).Scan(&group.ID, &group.Name, &group.Description, &group.IsSystem, &group.CreatedAt, &group.UpdatedAt)
 	if err != nil {
 		return model.Group{}, err
 	}
@@ -222,7 +234,9 @@ func (s *Store) CreateGroup(ctx context.Context, name string, description string
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO group_member(group_id, endpoint_id)
 			VALUES ($1, $2)
-			ON CONFLICT DO NOTHING
+			ON CONFLICT (endpoint_id) DO UPDATE
+			SET group_id = EXCLUDED.group_id
+			WHERE group_member.group_id IS DISTINCT FROM EXCLUDED.group_id
 		`, group.ID, endpointID); err != nil {
 			return model.Group{}, err
 		}
@@ -243,6 +257,39 @@ func (s *Store) UpdateGroup(ctx context.Context, id int64, name string, descript
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	var isSystem bool
+	if err := tx.QueryRow(ctx, `SELECT is_system FROM group_def WHERE id = $1`, id).Scan(&isSystem); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.Group{}, pgx.ErrNoRows
+		}
+		return model.Group{}, err
+	}
+	if isSystem {
+		return model.Group{}, ErrSystemGroupMutable
+	}
+	if isNoGroupName(name) {
+		return model.Group{}, ErrReservedGroupName
+	}
+
+	currentEndpointIDs := make([]int64, 0)
+	rows, err := tx.Query(ctx, `SELECT endpoint_id FROM group_member WHERE group_id = $1`, id)
+	if err != nil {
+		return model.Group{}, err
+	}
+	for rows.Next() {
+		var endpointID int64
+		if err := rows.Scan(&endpointID); err != nil {
+			rows.Close()
+			return model.Group{}, err
+		}
+		currentEndpointIDs = append(currentEndpointIDs, endpointID)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return model.Group{}, err
+	}
+	rows.Close()
+
 	group := model.Group{}
 	cmd, err := tx.Exec(ctx, `
 		UPDATE group_def
@@ -250,7 +297,7 @@ func (s *Store) UpdateGroup(ctx context.Context, id int64, name string, descript
 			description = $3,
 			updated_at = now()
 		WHERE id = $1
-	`, id, name, description)
+	`, id, strings.TrimSpace(name), description)
 	if err != nil {
 		return model.Group{}, err
 	}
@@ -258,26 +305,41 @@ func (s *Store) UpdateGroup(ctx context.Context, id int64, name string, descript
 		return model.Group{}, pgx.ErrNoRows
 	}
 
-	if _, err := tx.Exec(ctx, `DELETE FROM group_member WHERE group_id = $1`, id); err != nil {
-		return model.Group{}, err
-	}
-
 	endpointIDs = uniqueInt64(endpointIDs)
 	for _, endpointID := range endpointIDs {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO group_member(group_id, endpoint_id)
 			VALUES ($1, $2)
-			ON CONFLICT DO NOTHING
+			ON CONFLICT (endpoint_id) DO UPDATE
+			SET group_id = EXCLUDED.group_id
+			WHERE group_member.group_id IS DISTINCT FROM EXCLUDED.group_id
 		`, id, endpointID); err != nil {
 			return model.Group{}, err
 		}
 	}
 
+	noGroupID, err := getNoGroupIDTx(ctx, tx)
+	if err != nil {
+		return model.Group{}, err
+	}
+	removeEndpointIDs := subtractEndpointIDs(currentEndpointIDs, endpointIDs)
+	for _, endpointID := range removeEndpointIDs {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO group_member(group_id, endpoint_id)
+			VALUES ($1, $2)
+			ON CONFLICT (endpoint_id) DO UPDATE
+			SET group_id = EXCLUDED.group_id
+			WHERE group_member.group_id IS DISTINCT FROM EXCLUDED.group_id
+		`, noGroupID, endpointID); err != nil {
+			return model.Group{}, err
+		}
+	}
+
 	err = tx.QueryRow(ctx, `
-		SELECT id, name, description, created_at, updated_at
+		SELECT id, name, description, is_system, created_at, updated_at
 		FROM group_def
 		WHERE id = $1
-	`, id).Scan(&group.ID, &group.Name, &group.Description, &group.CreatedAt, &group.UpdatedAt)
+	`, id).Scan(&group.ID, &group.Name, &group.Description, &group.IsSystem, &group.CreatedAt, &group.UpdatedAt)
 	if err != nil {
 		return model.Group{}, err
 	}
@@ -293,10 +355,10 @@ func (s *Store) UpdateGroup(ctx context.Context, id int64, name string, descript
 func (s *Store) GetGroupByID(ctx context.Context, id int64) (model.Group, error) {
 	group := model.Group{}
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, description, created_at, updated_at
+		SELECT id, name, description, is_system, created_at, updated_at
 		FROM group_def
 		WHERE id = $1
-	`, id).Scan(&group.ID, &group.Name, &group.Description, &group.CreatedAt, &group.UpdatedAt)
+	`, id).Scan(&group.ID, &group.Name, &group.Description, &group.IsSystem, &group.CreatedAt, &group.UpdatedAt)
 	if err != nil {
 		return model.Group{}, err
 	}
@@ -330,16 +392,20 @@ func (s *Store) GetGroupByID(ctx context.Context, id int64) (model.Group, error)
 func (s *Store) GetGroupByNameCI(ctx context.Context, name string) (model.Group, error) {
 	group := model.Group{}
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, description, created_at, updated_at
+		SELECT id, name, description, is_system, created_at, updated_at
 		FROM group_def
 		WHERE lower(name) = lower($1)
 		ORDER BY id
 		LIMIT 1
-	`, strings.TrimSpace(name)).Scan(&group.ID, &group.Name, &group.Description, &group.CreatedAt, &group.UpdatedAt)
+	`, strings.TrimSpace(name)).Scan(&group.ID, &group.Name, &group.Description, &group.IsSystem, &group.CreatedAt, &group.UpdatedAt)
 	if err != nil {
 		return model.Group{}, err
 	}
 	return s.GetGroupByID(ctx, group.ID)
+}
+
+func (s *Store) GetNoGroup(ctx context.Context) (model.Group, error) {
+	return s.GetGroupByNameCI(ctx, noGroupName)
 }
 
 func (s *Store) ResolveEndpointIDsByIPs(ctx context.Context, ips []string) ([]int64, error) {
@@ -382,7 +448,9 @@ func (s *Store) AddEndpointsToGroup(ctx context.Context, groupID int64, endpoint
 	cmd, err := s.pool.Exec(ctx, `
 		INSERT INTO group_member(group_id, endpoint_id)
 		SELECT $1, unnest($2::bigint[])
-		ON CONFLICT DO NOTHING
+		ON CONFLICT (endpoint_id) DO UPDATE
+		SET group_id = EXCLUDED.group_id
+		WHERE group_member.group_id IS DISTINCT FROM EXCLUDED.group_id
 	`, groupID, endpointIDs)
 	if err != nil {
 		return 0, err
@@ -391,12 +459,41 @@ func (s *Store) AddEndpointsToGroup(ctx context.Context, groupID int64, endpoint
 }
 
 func (s *Store) DeleteGroup(ctx context.Context, id int64) error {
-	cmd, err := s.pool.Exec(ctx, `DELETE FROM group_def WHERE id = $1`, id)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var isSystem bool
+	if err := tx.QueryRow(ctx, `SELECT is_system FROM group_def WHERE id = $1`, id).Scan(&isSystem); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return pgx.ErrNoRows
+		}
+		return err
+	}
+	if isSystem {
+		return ErrSystemGroupMutable
+	}
+
+	noGroupID, err := getNoGroupIDTx(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE group_member SET group_id = $1 WHERE group_id = $2`, noGroupID, id); err != nil {
+		return err
+	}
+
+	cmd, err := tx.Exec(ctx, `DELETE FROM group_def WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}
 	if cmd.RowsAffected() == 0 {
 		return pgx.ErrNoRows
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
 	}
 	return nil
 }
@@ -1049,6 +1146,45 @@ func (s *Store) GetInventoryEndpointByID(ctx context.Context, endpointID int64) 
 	return item, nil
 }
 
+func (s *Store) DeleteInventoryEndpointsByGroup(ctx context.Context, groupID int64) (int64, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM group_def WHERE id = $1)`, groupID).Scan(&exists); err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, pgx.ErrNoRows
+	}
+
+	cmd, err := tx.Exec(ctx, `
+		DELETE FROM inventory_endpoint ie
+		USING group_member gm
+		WHERE gm.group_id = $1
+		  AND gm.endpoint_id = ie.id
+	`, groupID)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return cmd.RowsAffected(), nil
+}
+
+func (s *Store) DeleteAllInventoryEndpoints(ctx context.Context) (int64, error) {
+	cmd, err := s.pool.Exec(ctx, `DELETE FROM inventory_endpoint`)
+	if err != nil {
+		return 0, err
+	}
+	return cmd.RowsAffected(), nil
+}
+
 func (s *Store) QueryTimeSeries(ctx context.Context, endpointIDs []int64, start time.Time, end time.Time, rollup string) ([]model.TimeSeriesPoint, error) {
 	if len(endpointIDs) == 0 {
 		return []model.TimeSeriesPoint{}, nil
@@ -1262,4 +1398,39 @@ func monitorRangeSortExpression(sortBy string) (string, error) {
 func normalizeMACSearchTerm(value string) string {
 	replacer := strings.NewReplacer(":", "", "-", "", " ", "", "\t", "", "\n", "", "\r", "")
 	return replacer.Replace(strings.ToLower(strings.TrimSpace(value)))
+}
+
+func isNoGroupName(name string) bool {
+	return strings.EqualFold(strings.TrimSpace(name), noGroupName)
+}
+
+func subtractEndpointIDs(current []int64, next []int64) []int64 {
+	if len(current) == 0 {
+		return nil
+	}
+	nextSet := make(map[int64]struct{}, len(next))
+	for _, endpointID := range next {
+		nextSet[endpointID] = struct{}{}
+	}
+	removed := make([]int64, 0)
+	for _, endpointID := range current {
+		if _, keep := nextSet[endpointID]; !keep {
+			removed = append(removed, endpointID)
+		}
+	}
+	return uniqueInt64(removed)
+}
+
+func getNoGroupIDTx(ctx context.Context, tx pgx.Tx) (int64, error) {
+	var noGroupID int64
+	if err := tx.QueryRow(ctx, `
+		SELECT id
+		FROM group_def
+		WHERE lower(name) = lower($1)
+		ORDER BY id
+		LIMIT 1
+	`, noGroupName).Scan(&noGroupID); err != nil {
+		return 0, err
+	}
+	return noGroupID, nil
 }

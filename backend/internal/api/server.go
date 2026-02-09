@@ -61,6 +61,8 @@ func (s *Server) Routes() http.Handler {
 		r.Route("/inventory", func(r chi.Router) {
 			r.Get("/endpoints", s.handleInventoryEndpoints)
 			r.Put("/endpoints/{endpointID}", s.handleInventoryEndpointUpdate)
+			r.Delete("/endpoints/by-group/{groupID}", s.handleInventoryDeleteByGroup)
+			r.Post("/endpoints/delete-all", s.handleInventoryDeleteAll)
 			r.Get("/filter-options", s.handleInventoryFilters)
 			r.Post("/import-preview", s.handleInventoryImportPreview)
 			r.Post("/import-apply", s.handleInventoryImportApply)
@@ -366,6 +368,54 @@ func (s *Server) handleInventoryEndpointUpdate(w http.ResponseWriter, r *http.Re
 	util.WriteJSON(w, http.StatusOK, item)
 }
 
+func (s *Server) handleInventoryDeleteByGroup(w http.ResponseWriter, r *http.Request) {
+	groupID, err := strconv.ParseInt(chi.URLParam(r, "groupID"), 10, 64)
+	if err != nil || groupID < 1 {
+		util.WriteError(w, http.StatusBadRequest, "invalid group id")
+		return
+	}
+
+	deletedCount, err := s.store.DeleteInventoryEndpointsByGroup(r.Context(), groupID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			util.WriteError(w, http.StatusNotFound, "group not found")
+			return
+		}
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	util.WriteJSON(w, http.StatusOK, model.DeleteInventoryByGroupResponse{
+		Deleted:      true,
+		DeletedCount: deletedCount,
+		GroupID:      groupID,
+	})
+}
+
+func (s *Server) handleInventoryDeleteAll(w http.ResponseWriter, r *http.Request) {
+	var req model.DeleteAllInventoryRequest
+	if err := util.DecodeJSON(r, &req); err != nil {
+		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
+		return
+	}
+
+	if strings.TrimSpace(req.ConfirmPhrase) != "DELETE ALL ENDPOINTS" {
+		util.WriteError(w, http.StatusBadRequest, "confirm_phrase must be DELETE ALL ENDPOINTS")
+		return
+	}
+
+	deletedCount, err := s.store.DeleteAllInventoryEndpoints(r.Context())
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	util.WriteJSON(w, http.StatusOK, model.DeleteAllInventoryResponse{
+		Deleted:      true,
+		DeletedCount: deletedCount,
+	})
+}
+
 func (s *Server) handleInventoryFilters(w http.ResponseWriter, r *http.Request) {
 	filters, err := s.store.ListDistinctFilters(r.Context())
 	if err != nil {
@@ -402,6 +452,10 @@ func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	group, err := s.store.CreateGroup(r.Context(), strings.TrimSpace(req.Name), req.Description, req.EndpointIDs)
 	if err != nil {
+		if errors.Is(err, store.ErrReservedGroupName) {
+			util.WriteError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		util.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -436,6 +490,14 @@ func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
 			util.WriteError(w, http.StatusNotFound, "group not found")
 			return
 		}
+		if errors.Is(err, store.ErrSystemGroupMutable) {
+			util.WriteError(w, http.StatusForbidden, err.Error())
+			return
+		}
+		if errors.Is(err, store.ErrReservedGroupName) {
+			util.WriteError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		util.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -452,6 +514,10 @@ func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.DeleteGroup(r.Context(), groupID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			util.WriteError(w, http.StatusNotFound, "group not found")
+			return
+		}
+		if errors.Is(err, store.ErrSystemGroupMutable) {
+			util.WriteError(w, http.StatusForbidden, err.Error())
 			return
 		}
 		util.WriteError(w, http.StatusInternalServerError, err.Error())
