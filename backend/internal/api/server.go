@@ -378,10 +378,15 @@ func (s *Server) handleProbeStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	responseGroupIDs := req.GroupIDs
+	if responseGroupIDs == nil {
+		responseGroupIDs = []int64{}
+	}
+
 	util.WriteJSON(w, http.StatusOK, map[string]any{
 		"running":   true,
 		"scope":     req.Scope,
-		"group_ids": req.GroupIDs,
+		"group_ids": responseGroupIDs,
 	})
 }
 
