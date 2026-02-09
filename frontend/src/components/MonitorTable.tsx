@@ -194,9 +194,9 @@ export function MonitorTable({
           Showing {startItem}-{endItem} of {totalItems}
         </div>
 
-        <div className="table-pagination">
-          <label className="table-pagination-size">
-            Rows
+        <div className="table-pagination" aria-label="Monitor pagination controls">
+          <div className="table-pagination-control">
+            <span className="table-pagination-label">Rows</span>
             <select
               value={pageSize}
               onChange={(event) => onPageSizeChange(Number(event.target.value) as 50 | 100 | 200)}
@@ -206,14 +206,14 @@ export function MonitorTable({
               <option value={100}>100</option>
               <option value={200}>200</option>
             </select>
-          </label>
+          </div>
 
           <button type="button" className="btn btn-small" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
             Prev
           </button>
 
-          <label className="table-pagination-page">
-            Page
+          <div className="table-pagination-control">
+            <span className="table-pagination-label">Page</span>
             <select
               value={Math.min(page, Math.max(totalPages, 1))}
               onChange={(event) => onPageChange(Number(event.target.value))}
@@ -226,7 +226,7 @@ export function MonitorTable({
                 </option>
               ))}
             </select>
-          </label>
+          </div>
 
           <span className="table-total-pages">/ {Math.max(totalPages, 1)}</span>
 

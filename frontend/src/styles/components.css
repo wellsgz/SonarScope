@@ -318,41 +318,63 @@ label {
 .table-footer {
   border-top: 1px solid var(--color-border);
   padding: var(--space-2) var(--space-3);
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
-  flex-wrap: wrap;
 }
 
 .table-summary {
   font-size: 0.76rem;
   color: var(--color-text-subtle);
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .table-pagination {
+  justify-self: end;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
-.table-pagination-size,
-.table-pagination-page {
+.table-pagination-control {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: 0.76rem;
+  white-space: nowrap;
 }
 
-.table-pagination-size select,
-.table-pagination-page select {
+.table-pagination-label {
+  font-size: 0.76rem;
+  color: var(--color-text-muted);
+}
+
+.table-pagination-control select {
   min-width: 4.5rem;
 }
 
 .table-total-pages {
   font-size: 0.76rem;
   color: var(--color-text-subtle);
+  white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .table-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .table-summary {
+    white-space: normal;
+  }
+
+  .table-pagination {
+    justify-self: start;
+    flex-wrap: wrap;
+  }
 }
 
 .badge {
