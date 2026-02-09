@@ -216,6 +216,10 @@ label {
   gap: var(--space-1);
 }
 
+.scope-toggle-row {
+  margin-bottom: var(--space-1);
+}
+
 .chip {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-pill);

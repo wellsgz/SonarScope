@@ -23,6 +23,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-4);
+  align-items: start;
   min-width: 0;
 }
 
@@ -35,6 +36,10 @@
   flex-direction: column;
   gap: var(--space-2);
   min-width: 0;
+}
+
+.toolbar-block-scope {
+  gap: var(--space-2);
 }
 
 .toolbar-title {

@@ -85,28 +85,9 @@ export function MonitorToolbar({
   return (
     <div className="panel toolbar-panel">
       <div className="toolbar-grid">
-        <section className="toolbar-block" aria-label="Time range controls">
-          <div className="toolbar-title">Time Range</div>
-          <div className="quick-range-row">
-            {[
-              { id: "5m", label: "Last 5m" },
-              { id: "30m", label: "Last 30m" },
-              { id: "1h", label: "Last 1h" },
-              { id: "12h", label: "Last 12h" },
-              { id: "24h", label: "Last 24h" },
-              { id: "custom", label: "Custom" }
-            ].map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`chip ${quickRange === item.id ? "chip-active" : ""}`}
-                onClick={() => onQuickRangeChange(item.id as QuickRange)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          <div className="quick-range-row">
+        <section className="toolbar-block toolbar-block-scope" aria-label="Data scope and window controls">
+          <div className="toolbar-title">Data Scope &amp; Window</div>
+          <div className="quick-range-row scope-toggle-row">
             <button
               type="button"
               className={`chip ${dataScope === "live" ? "chip-active" : ""}`}
@@ -124,23 +105,46 @@ export function MonitorToolbar({
           </div>
           <span className="field-help">
             {dataScope === "live"
-              ? "Live: middle pane uses current endpoint stats."
+              ? "Live Snapshot: middle pane shows current endpoint counters."
               : "Selected Range: middle pane counters are recalculated for the chosen window."}
           </span>
-          <div className="custom-time-row">
-            <input
-              type="datetime-local"
-              value={customStart}
-              onChange={(event) => onCustomStartChange(event.target.value)}
-              aria-label="Custom start time"
-            />
-            <input
-              type="datetime-local"
-              value={customEnd}
-              onChange={(event) => onCustomEndChange(event.target.value)}
-              aria-label="Custom end time"
-            />
-          </div>
+          {dataScope === "range" ? (
+            <>
+              <div className="quick-range-row">
+                {[
+                  { id: "5m", label: "Last 5m" },
+                  { id: "30m", label: "Last 30m" },
+                  { id: "1h", label: "Last 1h" },
+                  { id: "12h", label: "Last 12h" },
+                  { id: "24h", label: "Last 24h" },
+                  { id: "custom", label: "Custom" }
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`chip ${quickRange === item.id ? "chip-active" : ""}`}
+                    onClick={() => onQuickRangeChange(item.id as QuickRange)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="custom-time-row">
+                <input
+                  type="datetime-local"
+                  value={customStart}
+                  onChange={(event) => onCustomStartChange(event.target.value)}
+                  aria-label="Custom start time"
+                />
+                <input
+                  type="datetime-local"
+                  value={customEnd}
+                  onChange={(event) => onCustomEndChange(event.target.value)}
+                  aria-label="Custom end time"
+                />
+              </div>
+            </>
+          ) : null}
         </section>
 
         <section className="toolbar-block" aria-label="Endpoint filters">
