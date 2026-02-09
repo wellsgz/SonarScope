@@ -185,15 +185,15 @@ export function SidebarNav({
                 </div>
               ) : null}
             </div>
-            <button
-              className="btn btn-small"
-              type="button"
-              disabled={probeBusy || selectedProbeGroupIDs.length === 0}
-              onClick={onStartProbeGroups}
-            >
-              Start Groups
-            </button>
           </div>
+          <button
+            className="btn btn-small sidebar-probe-start-groups"
+            type="button"
+            disabled={probeBusy || selectedProbeGroupIDs.length === 0}
+            onClick={onStartProbeGroups}
+          >
+            Start Groups
+          </button>
           <div className="sidebar-probe-target">{targetSummary}</div>
         </section>
 
