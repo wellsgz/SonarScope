@@ -139,39 +139,6 @@
   background: color-mix(in srgb, var(--color-danger) 11%, var(--color-surface-elevated));
 }
 
-[data-theme="light"] .status-chip {
-  border-color: #d3dceb;
-  background: #f4f7fc;
-  color: #475569;
-}
-
-[data-theme="light"] .status-chip-live {
-  border-color: rgba(15, 159, 114, 0.34);
-  background: rgba(15, 159, 114, 0.1);
-  color: #0d7d5a;
-}
-
-[data-theme="light"] .status-chip-stopped {
-  border-color: rgba(202, 58, 72, 0.34);
-  background: rgba(202, 58, 72, 0.1);
-  color: #b42333;
-}
-
-[data-theme="light"] .theme-toggle {
-  border-color: #bfd0e6;
-  background: #ffffff;
-}
-
-[data-theme="light"] .btn {
-  border-color: #c8d4e6;
-  background: #f8faff;
-}
-
-[data-theme="light"] .btn-primary {
-  border-color: #1d4ed8;
-  background: rgba(29, 78, 216, 0.12);
-}
-
 .status-dot {
   display: inline-block;
   width: 0.44rem;

@@ -32,53 +32,53 @@
 }
 
 [data-theme="light"] {
-  --color-bg: #f8fafc;
-  --color-bg-strong: #f1f5f9;
+  --color-bg: #f4f9ff;
+  --color-bg-strong: #eaf3ff;
   --color-surface: #ffffff;
-  --color-surface-elevated: #fcfdff;
-  --color-border: #d6deeb;
-  --color-border-strong: #becbde;
+  --color-surface-elevated: #f7fbff;
+  --color-border: #c9dbf2;
+  --color-border-strong: #b3cbea;
 
-  --color-text: #1e293b;
-  --color-text-muted: #334155;
-  --color-text-subtle: #64748b;
+  --color-text: #18263b;
+  --color-text-muted: #304760;
+  --color-text-subtle: #5d7697;
 
-  --color-accent: #1e40af;
-  --color-accent-soft: rgba(30, 64, 175, 0.12);
-  --color-accent-strong: #1d4ed8;
+  --color-accent: #0a79c9;
+  --color-accent-soft: rgba(10, 121, 201, 0.15);
+  --color-accent-strong: #005ea8;
 
-  --color-success: #0f9f72;
-  --color-warning: #f59e0b;
-  --color-danger: #dc4f65;
+  --color-success: #0e9f6e;
+  --color-warning: #d97706;
+  --color-danger: #d6455d;
 
-  --color-focus-ring: rgba(30, 64, 175, 0.28);
-  --color-overlay: rgba(17, 24, 39, 0.22);
+  --color-focus-ring: rgba(10, 121, 201, 0.3);
+  --color-overlay: rgba(12, 33, 66, 0.2);
   --shadow-soft: 0 8px 20px rgba(15, 23, 42, 0.07);
   --shadow-elevated: 0 16px 34px rgba(15, 23, 42, 0.11);
 }
 
 [data-theme="dark"] {
-  --color-bg: #060c17;
-  --color-bg-strong: #0b1423;
-  --color-surface: #0f1a2b;
-  --color-surface-elevated: #152238;
-  --color-border: #21324d;
-  --color-border-strong: #2d4670;
+  --color-bg: #07101d;
+  --color-bg-strong: #0b1628;
+  --color-surface: #101c31;
+  --color-surface-elevated: #152641;
+  --color-border: #254062;
+  --color-border-strong: #33557f;
 
-  --color-text: #e7edf8;
-  --color-text-muted: #b4c3db;
-  --color-text-subtle: #94a7c4;
+  --color-text: #e7f0ff;
+  --color-text-muted: #b6c8e3;
+  --color-text-subtle: #8fa5c7;
 
-  --color-accent: #818cf8;
-  --color-accent-soft: rgba(129, 140, 248, 0.2);
-  --color-accent-strong: #a5b4fc;
+  --color-accent: #43b0ff;
+  --color-accent-soft: rgba(67, 176, 255, 0.22);
+  --color-accent-strong: #7cc8ff;
 
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
+  --color-success: #2ed39a;
+  --color-warning: #f6b34a;
+  --color-danger: #ff6b7d;
 
-  --color-focus-ring: rgba(129, 140, 248, 0.38);
-  --color-overlay: rgba(2, 9, 20, 0.65);
+  --color-focus-ring: rgba(67, 176, 255, 0.4);
+  --color-overlay: rgba(2, 9, 20, 0.72);
   --shadow-soft: 0 10px 28px rgba(2, 12, 27, 0.22);
   --shadow-elevated: 0 18px 42px rgba(2, 12, 27, 0.32);
 }

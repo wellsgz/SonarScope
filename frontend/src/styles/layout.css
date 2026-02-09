@@ -35,7 +35,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 75%, #ffffff), var(--color-accent));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 58%, #ffffff), var(--color-accent));
   color: #ffffff;
   box-shadow: var(--shadow-soft);
 }
