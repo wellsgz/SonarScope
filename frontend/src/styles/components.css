@@ -249,6 +249,12 @@ label {
   width: 100%;
 }
 
+.sidebar-probe-primary-row .btn,
+.sidebar-probe-group-row .btn {
+  width: 100%;
+  white-space: nowrap;
+}
+
 .sidebar-group-picker > .btn {
   width: 100%;
 }
@@ -325,7 +331,8 @@ label {
 }
 
 @media (max-width: 1024px) {
-  .sidebar-probe-action-row {
+  .sidebar-probe-primary-row,
+  .sidebar-probe-group-row {
     grid-template-columns: 1fr;
   }
 }

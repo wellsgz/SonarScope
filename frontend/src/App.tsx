@@ -102,8 +102,8 @@ export default function App() {
     if (view === "inventory") return <InventoryPage />;
     if (view === "groups") return <GroupsPage />;
     if (view === "settings") return <SettingsPage />;
-    return <MonitorPage probeStatus={probeStatus} />;
-  }, [view, probeStatus]);
+    return <MonitorPage />;
+  }, [view]);
 
   return (
     <AppShell

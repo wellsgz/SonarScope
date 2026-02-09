@@ -119,89 +119,91 @@ export function SidebarNav({
         })}
       </nav>
 
-      <section className="sidebar-probe-actions-module" aria-label="Probe actions">
-        <div className="sidebar-probe-actions-title">Probe Actions</div>
-        <div className="sidebar-probe-action-row">
-          <button className="btn btn-small btn-primary" type="button" disabled={probeBusy} onClick={onStartProbeAll}>
-            Start All
-          </button>
-          <button
-            className="btn btn-small"
-            type="button"
-            disabled={probeBusy || selectedProbeGroupIDs.length === 0}
-            onClick={onStartProbeGroups}
-          >
-            Start Groups
-          </button>
-          <button
-            className="btn btn-small btn-danger"
-            type="button"
-            disabled={probeBusy || !probeStatus.running}
-            onClick={onStopProbe}
-          >
-            Stop
-          </button>
-        </div>
-        <div className="sidebar-probe-picker-row">
-          <div className={`sidebar-group-picker ${groupPickerOpen ? "sidebar-group-picker-open" : ""}`}>
+      <div className="sidebar-bottom-stack">
+        <section className="sidebar-probe-actions-module" aria-label="Probe actions">
+          <div className="sidebar-probe-actions-title">Probe Actions</div>
+          <div className="sidebar-probe-primary-row">
+            <button className="btn btn-small btn-primary" type="button" disabled={probeBusy} onClick={onStartProbeAll}>
+              Start All
+            </button>
+            <button
+              className="btn btn-small btn-danger"
+              type="button"
+              disabled={probeBusy || !probeStatus.running}
+              onClick={onStopProbe}
+            >
+              Stop
+            </button>
+          </div>
+          <div className="sidebar-probe-group-row">
+            <div className={`sidebar-group-picker ${groupPickerOpen ? "sidebar-group-picker-open" : ""}`}>
+              <button
+                className="btn btn-small"
+                type="button"
+                aria-expanded={groupPickerOpen}
+                aria-controls="sidebar-group-picker-popover"
+                onClick={() => setGroupPickerOpen((current) => !current)}
+              >
+                Select Groups ({selectedProbeGroupIDs.length})
+              </button>
+              {groupPickerOpen ? (
+                <div className="sidebar-group-picker-popover" id="sidebar-group-picker-popover">
+                  <label className="sidebar-group-picker-search">
+                    Search groups
+                    <input
+                      type="text"
+                      placeholder="Contains match"
+                      value={groupSearch}
+                      onChange={(event) => setGroupSearch(event.target.value)}
+                    />
+                  </label>
+                  <div className="sidebar-group-picker-list" role="listbox" aria-multiselectable="true">
+                    {filteredGroups.length ? (
+                      filteredGroups.map((group) => (
+                        <label key={group.id} className="sidebar-group-picker-item">
+                          <input
+                            type="checkbox"
+                            checked={draftGroupIDs.includes(group.id)}
+                            onChange={() => toggleDraftGroup(group.id)}
+                          />
+                          <span>{group.name}</span>
+                        </label>
+                      ))
+                    ) : (
+                      <div className="sidebar-group-picker-empty">No matching groups.</div>
+                    )}
+                  </div>
+                  <div className="sidebar-group-picker-meta">Selected: {draftGroupIDs.length}</div>
+                  <div className="sidebar-group-picker-actions">
+                    <button className="btn btn-small" type="button" onClick={() => setGroupPickerOpen(false)}>
+                      Cancel
+                    </button>
+                    <button className="btn btn-small btn-primary" type="button" onClick={applyGroupSelection}>
+                      Apply Groups
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
             <button
               className="btn btn-small"
               type="button"
-              aria-expanded={groupPickerOpen}
-              aria-controls="sidebar-group-picker-popover"
-              onClick={() => setGroupPickerOpen((current) => !current)}
+              disabled={probeBusy || selectedProbeGroupIDs.length === 0}
+              onClick={onStartProbeGroups}
             >
-              Select Groups ({selectedProbeGroupIDs.length})
+              Start Groups
             </button>
-            {groupPickerOpen ? (
-              <div className="sidebar-group-picker-popover" id="sidebar-group-picker-popover">
-                <label className="sidebar-group-picker-search">
-                  Search groups
-                  <input
-                    type="text"
-                    placeholder="Contains match"
-                    value={groupSearch}
-                    onChange={(event) => setGroupSearch(event.target.value)}
-                  />
-                </label>
-                <div className="sidebar-group-picker-list" role="listbox" aria-multiselectable="true">
-                  {filteredGroups.length ? (
-                    filteredGroups.map((group) => (
-                      <label key={group.id} className="sidebar-group-picker-item">
-                        <input
-                          type="checkbox"
-                          checked={draftGroupIDs.includes(group.id)}
-                          onChange={() => toggleDraftGroup(group.id)}
-                        />
-                        <span>{group.name}</span>
-                      </label>
-                    ))
-                  ) : (
-                    <div className="sidebar-group-picker-empty">No matching groups.</div>
-                  )}
-                </div>
-                <div className="sidebar-group-picker-meta">Selected: {draftGroupIDs.length}</div>
-                <div className="sidebar-group-picker-actions">
-                  <button className="btn btn-small" type="button" onClick={() => setGroupPickerOpen(false)}>
-                    Cancel
-                  </button>
-                  <button className="btn btn-small btn-primary" type="button" onClick={applyGroupSelection}>
-                    Apply Groups
-                  </button>
-                </div>
-              </div>
-            ) : null}
           </div>
-        </div>
-        <div className="sidebar-probe-target">{targetSummary}</div>
-      </section>
+          <div className="sidebar-probe-target">{targetSummary}</div>
+        </section>
 
-      <div className="sidebar-footer">
-        <div className={`sidebar-footer-status ${probeStatus.running ? "sidebar-footer-status-live" : "sidebar-footer-status-stopped"}`}>
-          <span className={`status-dot ${probeStatus.running ? "status-dot-live" : "status-dot-stopped"}`} aria-hidden />
-          {footerSummary}
+        <div className="sidebar-footer">
+          <div className={`sidebar-footer-status ${probeStatus.running ? "sidebar-footer-status-live" : "sidebar-footer-status-stopped"}`}>
+            <span className={`status-dot ${probeStatus.running ? "status-dot-live" : "status-dot-stopped"}`} aria-hidden />
+            {footerSummary}
+          </div>
+          <ThemeToggle mode={mode} onToggle={onToggleTheme} />
         </div>
-        <ThemeToggle mode={mode} onToggle={onToggleTheme} />
       </div>
     </aside>
   );

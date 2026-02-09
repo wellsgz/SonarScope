@@ -12,7 +12,7 @@ import { MonitorTable } from "../components/MonitorTable";
 import { MonitorToolbar, type FilterState } from "../components/MonitorToolbar";
 import { rangeToDatesAt, toApiTime, type QuickRange } from "../hooks/time";
 import { useMonitorSocket } from "../hooks/useMonitorSocket";
-import type { MonitorDataScope, MonitorSortField, ProbeStatus, Settings } from "../types/api";
+import type { MonitorDataScope, MonitorSortField, Settings } from "../types/api";
 
 function toDateTimeLocal(value: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -64,11 +64,7 @@ function normalizeIPList(raw: string): string[] {
     });
 }
 
-type Props = {
-  probeStatus: ProbeStatus;
-};
-
-export function MonitorPage({ probeStatus }: Props) {
+export function MonitorPage() {
   const queryClient = useQueryClient();
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
@@ -262,9 +258,6 @@ export function MonitorPage({ probeStatus }: Props) {
           <div className="panel monitor-controls-summary-panel">
             <span className="status-chip">{controlsSummaryScope}</span>
             <span className="status-chip">Filters: {activeFilterCount}</span>
-            <span className={`status-chip ${probeStatus.running ? "status-chip-live" : "status-chip-stopped"}`}>
-              {probeStatus.running ? "Probe Running" : "Probe Stopped"}
-            </span>
           </div>
         ) : (
           <MonitorToolbar
