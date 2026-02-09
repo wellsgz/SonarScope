@@ -56,8 +56,11 @@ export function AppShell({
       <SidebarNav
         activeView={activeView}
         views={views}
+        mode={mode}
+        followSystem={followSystem}
         open={sidebarOpen}
         onClose={onCloseSidebar}
+        onToggleTheme={onToggleTheme}
         onViewChange={onViewChange}
       />
 
@@ -66,9 +69,6 @@ export function AppShell({
       <div className="app-main">
         <TopBar
           activeView={activeMeta}
-          mode={mode}
-          followSystem={followSystem}
-          onToggleTheme={onToggleTheme}
           onOpenSidebar={onOpenSidebar}
         />
 

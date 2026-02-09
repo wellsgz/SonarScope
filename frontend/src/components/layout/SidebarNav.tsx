@@ -1,14 +1,18 @@
-import type { AppViewKey, AppViewMeta } from "../../types/ui";
+import type { AppViewKey, AppViewMeta, ThemeMode } from "../../types/ui";
+import { ThemeToggle } from "./ThemeToggle";
 
 type Props = {
   activeView: AppViewKey;
   views: AppViewMeta[];
+  mode: ThemeMode;
+  followSystem: boolean;
   open: boolean;
   onClose: () => void;
+  onToggleTheme: () => void;
   onViewChange: (view: AppViewKey) => void;
 };
 
-export function SidebarNav({ activeView, views, open, onClose, onViewChange }: Props) {
+export function SidebarNav({ activeView, views, mode, followSystem, open, onClose, onToggleTheme, onViewChange }: Props) {
   return (
     <aside className={`sidebar ${open ? "sidebar-open" : ""}`} aria-label="Primary">
       <div className="sidebar-brand-row">
@@ -45,8 +49,11 @@ export function SidebarNav({ activeView, views, open, onClose, onViewChange }: P
       </nav>
 
       <div className="sidebar-footer">
-        <span className="status-dot status-dot-live" aria-hidden />
-        Live NOC Mode
+        <div className="sidebar-footer-status">
+          <span className="status-dot status-dot-live" aria-hidden />
+          {followSystem ? `NOC Mode · System (${mode})` : "NOC Mode"}
+        </div>
+        <ThemeToggle mode={mode} onToggle={onToggleTheme} />
       </div>
     </aside>
   );
