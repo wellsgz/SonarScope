@@ -1244,7 +1244,7 @@ func (s *Store) DeleteInventoryEndpointsByIDs(
 		return 0, nil
 	}
 	if batchSize <= 0 {
-		batchSize = 50
+		batchSize = 100
 	}
 
 	var processedCount int64
@@ -1271,23 +1271,29 @@ func (s *Store) DeleteInventoryEndpointsByIDs(
 			return deletedCount, err
 		}
 
-		// Delete ping history per endpoint to keep each statement narrowly indexed
-		// and avoid planner choices that can turn large ANY() deletes into long scans.
-		for _, endpointID := range batchIDs {
-			if _, err := tx.Exec(ctx, `DELETE FROM ping_raw WHERE endpoint_id = $1`, endpointID); err != nil {
-				_ = tx.Rollback(ctx)
-				return deletedCount, err
-			}
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM endpoint_stats_current WHERE endpoint_id = ANY($1)`, batchIDs); err != nil {
-			_ = tx.Rollback(ctx)
-			return deletedCount, err
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM group_member WHERE endpoint_id = ANY($1)`, batchIDs); err != nil {
-			_ = tx.Rollback(ctx)
-			return deletedCount, err
-		}
-		cmd, err := tx.Exec(ctx, `DELETE FROM inventory_endpoint WHERE id = ANY($1)`, batchIDs)
+		cmd, err := tx.Exec(ctx, `
+			WITH doomed AS (
+				SELECT DISTINCT UNNEST($1::BIGINT[]) AS endpoint_id
+			),
+			deleted_ping_raw AS (
+				DELETE FROM ping_raw pr
+				USING doomed d
+				WHERE pr.endpoint_id = d.endpoint_id
+			),
+			deleted_stats AS (
+				DELETE FROM endpoint_stats_current esc
+				USING doomed d
+				WHERE esc.endpoint_id = d.endpoint_id
+			),
+			deleted_group_member AS (
+				DELETE FROM group_member gm
+				USING doomed d
+				WHERE gm.endpoint_id = d.endpoint_id
+			)
+			DELETE FROM inventory_endpoint ie
+			USING doomed d
+			WHERE ie.id = d.endpoint_id
+		`, batchIDs)
 		if err != nil {
 			_ = tx.Rollback(ctx)
 			return deletedCount, err
@@ -1337,6 +1343,16 @@ func (s *Store) PauseContinuousAggregateRefreshJobs(ctx context.Context) ([]int6
 			return nil, err
 		}
 	}
+
+	// Best-effort cancellation of currently running refresh workers so delete jobs
+	// do not compete with heavy aggregate refresh I/O while purge is active.
+	_, _ = s.pool.Exec(ctx, `
+		SELECT pg_cancel_backend(pid)
+		FROM pg_stat_activity
+		WHERE datname = current_database()
+		  AND pid <> pg_backend_pid()
+		  AND query ILIKE 'CALL _timescaledb_functions.policy_refresh_continuous_aggregate%'
+	`)
 
 	return jobIDs, nil
 }

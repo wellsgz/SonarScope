@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"strconv"
@@ -51,7 +52,7 @@ func NewServer(cfg config.Config, st *store.Store, p *probe.Engine, hub *telemet
 	}
 }
 
-const deleteJobBatchSize = 50
+const deleteJobBatchSize = 100
 
 type inventoryDeleteJobState struct {
 	Active             bool
@@ -63,6 +64,7 @@ type inventoryDeleteJobState struct {
 	ProcessedEndpoints int64
 	DeletedEndpoints   int64
 	ProgressPct        float64
+	EtaSeconds         *int64
 	Phase              string
 	Error              string
 	StartedAt          *time.Time
@@ -105,6 +107,7 @@ func (s *Server) deleteJobSnapshot() model.InventoryDeleteJobStatusResponse {
 		ProcessedEndpoints: job.ProcessedEndpoints,
 		DeletedEndpoints:   job.DeletedEndpoints,
 		ProgressPct:        job.ProgressPct,
+		EtaSeconds:         cloneInt64Ptr(job.EtaSeconds),
 		Phase:              job.Phase,
 		Error:              job.Error,
 		StartedAt:          cloneTimePtr(job.StartedAt),
@@ -138,6 +141,7 @@ func (s *Server) beginDeleteJob(mode model.InventoryDeleteJobMode, groupID *int6
 		ProcessedEndpoints: 0,
 		DeletedEndpoints:   0,
 		ProgressPct:        0,
+		EtaSeconds:         nil,
 		Phase:              "initializing",
 		StartedAt:          cloneTimePtr(&now),
 		UpdatedAt:          cloneTimePtr(&now),
@@ -168,6 +172,12 @@ func (s *Server) completeDeleteJob(jobID string, state model.InventoryDeleteJobS
 		if job.MatchedEndpoints > 0 && job.ProgressPct < 100 {
 			job.ProgressPct = 100
 		}
+		if state == model.InventoryDeleteJobStateCompleted {
+			etaZero := int64(0)
+			job.EtaSeconds = &etaZero
+		} else {
+			job.EtaSeconds = nil
+		}
 		now := time.Now().UTC()
 		job.CompletedAt = cloneTimePtr(&now)
 	})
@@ -178,6 +188,7 @@ func (s *Server) runDeleteJob(job *inventoryDeleteJobState, endpointIDs []int64)
 	s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
 		current.Phase = "stopping probe"
 		current.MatchedEndpoints = int64(len(endpointIDs))
+		current.EtaSeconds = nil
 		if len(endpointIDs) == 0 {
 			current.ProgressPct = 100
 		}
@@ -223,6 +234,7 @@ func (s *Server) runDeleteJob(job *inventoryDeleteJobState, endpointIDs []int64)
 						current.ProgressPct = 100
 					}
 				}
+				current.EtaSeconds = estimateDeleteJobETASeconds(current.MatchedEndpoints, processed, current.StartedAt)
 				current.Phase = "deleting endpoints"
 			})
 		},
@@ -250,9 +262,31 @@ func (s *Server) runDeleteJob(job *inventoryDeleteJobState, endpointIDs []int64)
 		current.DeletedEndpoints = deletedCount
 		current.ProcessedEndpoints = current.MatchedEndpoints
 		current.ProgressPct = 100
+		etaZero := int64(0)
+		current.EtaSeconds = &etaZero
 		current.Phase = "completed"
 	})
 	s.completeDeleteJob(jobID, model.InventoryDeleteJobStateCompleted, "")
+}
+
+func estimateDeleteJobETASeconds(matched int64, processed int64, startedAt *time.Time) *int64 {
+	if startedAt == nil || matched <= 0 || processed <= 0 || processed >= matched {
+		return nil
+	}
+	elapsedSeconds := time.Since(*startedAt).Seconds()
+	if elapsedSeconds <= 0 {
+		return nil
+	}
+	rate := float64(processed) / elapsedSeconds
+	if rate <= 0 {
+		return nil
+	}
+	remaining := float64(matched - processed)
+	eta := int64(math.Ceil(remaining / rate))
+	if eta < 0 {
+		eta = 0
+	}
+	return &eta
 }
 
 func (s *Server) Routes() http.Handler {

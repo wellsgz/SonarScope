@@ -264,6 +264,7 @@ type InventoryDeleteJobStatusResponse struct {
 	ProcessedEndpoints int64                   `json:"processed_endpoints"`
 	DeletedEndpoints   int64                   `json:"deleted_endpoints"`
 	ProgressPct        float64                 `json:"progress_pct"`
+	EtaSeconds         *int64                  `json:"eta_seconds,omitempty"`
 	Phase              string                  `json:"phase,omitempty"`
 	Error              string                  `json:"error,omitempty"`
 	StartedAt          *time.Time              `json:"started_at,omitempty"`

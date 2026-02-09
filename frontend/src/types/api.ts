@@ -170,6 +170,7 @@ export type InventoryDeleteJobStatus = {
   processed_endpoints?: number;
   deleted_endpoints?: number;
   progress_pct?: number;
+  eta_seconds?: number;
   phase?: string;
   error?: string;
   started_at?: string;

@@ -67,6 +67,24 @@ function badgeClass(action: ImportCandidate["action"]) {
   return "badge badge-unchanged";
 }
 
+function formatEta(seconds?: number): string {
+  if (seconds === undefined || seconds === null || !Number.isFinite(seconds) || seconds < 0) {
+    return "ETA: calculating...";
+  }
+  const rounded = Math.max(0, Math.ceil(seconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const secs = rounded % 60;
+
+  if (hours > 0) {
+    return `ETA: ${hours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `ETA: ${minutes}m ${secs}s`;
+  }
+  return `ETA: ${secs}s`;
+}
+
 export function InventoryPage() {
   const queryClient = useQueryClient();
 
@@ -287,6 +305,13 @@ export function InventoryPage() {
     const targetGroup = (groupsQuery.data || []).find((group) => group.id === deleteJobStatus.group_id);
     return `Target: ${targetGroup?.name || `Group ${deleteJobStatus.group_id}`}`;
   }, [deleteJobStatus, groupsQuery.data]);
+
+  const deleteJobEtaLabel = useMemo(() => {
+    if (!deleteInProgress) {
+      return "";
+    }
+    return formatEta(deleteJobStatus?.eta_seconds);
+  }, [deleteInProgress, deleteJobStatus?.eta_seconds]);
 
   const groupAssignmentInvalid =
     assignToGroup &&
@@ -913,7 +938,9 @@ export function InventoryPage() {
               <div className="inventory-delete-progress" role="status" aria-live="polite">
                 <div className="inventory-delete-progress-head">
                   <strong>Deletion in progress</strong>
-                  <span>{Math.round(deleteJobStatus?.progress_pct || 0)}%</span>
+                  <span>
+                    {Math.round(deleteJobStatus?.progress_pct || 0)}% · {deleteJobEtaLabel}
+                  </span>
                 </div>
                 <div className="inventory-delete-progress-track">
                   <div
