@@ -79,11 +79,11 @@ export function SidebarNav({
     return probeStatus.group_ids.reduce((total, groupID) => total + (groupEndpointCountMap.get(groupID) ?? 0), 0);
   }, [probeStatus.running, probeStatus.scope, probeStatus.group_ids, groupEndpointCountMap]);
 
-  const targetSummary = !probeStatus.running
-    ? "Target: —"
+  const targetValue = !probeStatus.running
+    ? "—"
     : probeStatus.scope === "groups"
-      ? `Target: Groups (${probeStatus.group_ids.length}) · Endpoints (${activeScopeEndpointCount})`
-      : "Target: All Endpoints";
+      ? `Groups (${probeStatus.group_ids.length}) · Endpoints (${activeScopeEndpointCount})`
+      : "All Endpoints";
 
   const footerSummary = probeStatus.running ? "Probing" : "Stopped";
 
@@ -222,7 +222,14 @@ export function SidebarNav({
           {deleteInProgress ? (
             <div className="sidebar-probe-lock-hint">Probing is disabled while inventory deletion is running.</div>
           ) : null}
-          <div className="sidebar-probe-target">{targetSummary}</div>
+          <div
+            className={`sidebar-probe-target ${probeStatus.running ? "sidebar-probe-target-live" : "sidebar-probe-target-idle"}`}
+            aria-live="polite"
+          >
+            <span className="sidebar-probe-target-indicator" aria-hidden />
+            <span className="sidebar-probe-target-label">Target:</span>
+            <span className="sidebar-probe-target-value">{targetValue}</span>
+          </div>
         </section>
 
         <div className="sidebar-footer">
