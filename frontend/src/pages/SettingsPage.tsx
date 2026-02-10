@@ -42,6 +42,8 @@ type CustomFieldValidationIssue = {
   slot: number;
   message: string;
 };
+type CustomFieldSlot = 1 | 2 | 3;
+type CustomFieldExpansionState = Record<CustomFieldSlot, boolean>;
 
 function normalizeCustomFieldName(value: string): string {
   return value
@@ -69,6 +71,20 @@ function normalizeCustomFields(fields?: CustomFieldConfig[]): CustomFieldConfig[
   });
 
   return [1, 2, 3].map((slot) => bySlot.get(slot) || { slot, enabled: false, name: "" });
+}
+
+function defaultCustomFieldExpansion(fields?: CustomFieldConfig[]): CustomFieldExpansionState {
+  const normalized = normalizeCustomFields(fields);
+  const expansion: CustomFieldExpansionState = {
+    1: false,
+    2: false,
+    3: false
+  };
+  normalized.forEach((field) => {
+    const slot = field.slot as CustomFieldSlot;
+    expansion[slot] = field.enabled || field.name.trim().length > 0;
+  });
+  return expansion;
 }
 
 function validateCustomFields(fields: CustomFieldConfig[]): CustomFieldValidationIssue[] {
@@ -132,6 +148,9 @@ export function SettingsPage() {
     }
     return window.localStorage.getItem(settingsCustomFieldsCollapsedKey) !== "1";
   });
+  const [customFieldExpansion, setCustomFieldExpansion] = useState<CustomFieldExpansionState>(
+    defaultCustomFieldExpansion()
+  );
 
   useEffect(() => {
     if (settingsQuery.data) {
@@ -139,6 +158,7 @@ export function SettingsPage() {
         ...settingsQuery.data,
         custom_fields: normalizeCustomFields(settingsQuery.data.custom_fields)
       });
+      setCustomFieldExpansion(defaultCustomFieldExpansion(settingsQuery.data.custom_fields));
     }
   }, [settingsQuery.data]);
   useEffect(() => {
@@ -226,7 +246,38 @@ export function SettingsPage() {
               <span className="settings-inline-help">Applies to monitor refresh cadence and live table updates.</span>
             </label>
           </div>
+        </div>
+      </section>
 
+      <section className="panel settings-page">
+        <div className="panel-header">
+          <h2 className="panel-title">Operational Guidance</h2>
+          <p className="panel-subtitle">Recommended defaults for stable high-volume monitoring.</p>
+        </div>
+
+        <div className="settings-panel-body settings-guidance-stack">
+          <div className="info-banner">
+            <strong>10,000 endpoints baseline</strong>
+            <p>Use intervals above 1s unless infrastructure is sized for sustained high PPS.</p>
+          </div>
+          <div className="info-banner">
+            <strong>Data quality</strong>
+            <p>Keep payload size consistent across environments for comparable latency trends.</p>
+          </div>
+          <div className="info-banner">
+            <strong>NOC readiness</strong>
+            <p>Pair monitor auto-refresh with websocket updates to reduce blind spots during incidents.</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="panel settings-page settings-panel-span-2">
+        <div className="panel-header">
+          <h2 className="panel-title">Inventory Policy</h2>
+          <p className="panel-subtitle">Configure custom endpoint metadata fields for inventory and monitor views.</p>
+        </div>
+
+        <div className="settings-panel-body">
           <section className={`settings-custom-fields ${customFieldsExpanded ? "is-expanded" : "is-collapsed"}`}>
             <div className="settings-section-header">
               <div className="settings-section-heading">
@@ -251,43 +302,66 @@ export function SettingsPage() {
 
             {customFieldsExpanded ? (
               <div id="settings-custom-fields-body" className="settings-custom-field-list">
-                {normalizedCustomFields.map((field) => (
-                  <div key={field.slot} className={`settings-custom-field-row ${field.enabled ? "is-enabled" : ""}`}>
-                    <div className="settings-custom-field-meta">
-                      <strong className="settings-custom-field-slot">Custom Field {field.slot}</strong>
-                      <label className="settings-toggle-row">
-                        <input
-                          type="checkbox"
-                          checked={field.enabled}
-                          onChange={(event) =>
-                            setDraft((prev) => ({
-                              ...prev,
-                              custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
-                                item.slot === field.slot ? { ...item, enabled: event.target.checked } : item
-                              )
-                            }))
-                          }
-                        />
-                        <span className="settings-toggle-label">Enabled</span>
-                      </label>
-                    </div>
-                    <label className="settings-custom-field-input">
-                      Field Name
-                      <input
-                        value={field.name}
-                        onChange={(event) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
-                              item.slot === field.slot ? { ...item, name: event.target.value } : item
-                            )
-                          }))
-                        }
-                        placeholder={`Custom Field ${field.slot}`}
-                      />
-                    </label>
-                  </div>
-                ))}
+                {normalizedCustomFields.map((field) => {
+                  const slot = field.slot as CustomFieldSlot;
+                  const configured = field.enabled && field.name.trim().length > 0;
+                  const nameMissing = field.enabled && field.name.trim().length === 0;
+                  const statusClass = configured
+                    ? "status-chip status-chip-live"
+                    : nameMissing
+                      ? "status-chip status-chip-stopped"
+                      : "status-chip";
+                  const statusLabel = configured ? "Configured" : nameMissing ? "Name required" : "Disabled";
+
+                  return (
+                    <details
+                      key={field.slot}
+                      className={`filter-card settings-custom-field-card ${configured ? "is-configured" : ""}`}
+                      open={customFieldExpansion[slot]}
+                      onToggle={(event) => {
+                        const open = (event.currentTarget as HTMLDetailsElement).open;
+                        setCustomFieldExpansion((prev) => ({ ...prev, [slot]: open }));
+                      }}
+                    >
+                      <summary className="filter-card-summary">
+                        <span>Custom Field {field.slot}</span>
+                        <span className={statusClass}>{statusLabel}</span>
+                      </summary>
+                      <div className="filter-card-body settings-custom-field-form">
+                        <label className="settings-toggle-row">
+                          <input
+                            type="checkbox"
+                            checked={field.enabled}
+                            onChange={(event) =>
+                              setDraft((prev) => ({
+                                ...prev,
+                                custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
+                                  item.slot === field.slot ? { ...item, enabled: event.target.checked } : item
+                                )
+                              }))
+                            }
+                          />
+                          Enabled
+                        </label>
+                        <label>
+                          Field Name
+                          <input
+                            value={field.name}
+                            onChange={(event) =>
+                              setDraft((prev) => ({
+                                ...prev,
+                                custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
+                                  item.slot === field.slot ? { ...item, name: event.target.value } : item
+                                )
+                              }))
+                            }
+                            placeholder={`Custom Field ${field.slot}`}
+                          />
+                        </label>
+                      </div>
+                    </details>
+                  );
+                })}
               </div>
             ) : null}
           </section>
@@ -326,28 +400,6 @@ export function SettingsPage() {
               Settings updated.
             </div>
           )}
-        </div>
-      </section>
-
-      <section className="panel settings-page">
-        <div className="panel-header">
-          <h2 className="panel-title">Operational Guidance</h2>
-          <p className="panel-subtitle">Recommended defaults for stable high-volume monitoring.</p>
-        </div>
-
-        <div className="settings-panel-body settings-guidance-stack">
-          <div className="info-banner">
-            <strong>10,000 endpoints baseline</strong>
-            <p>Use intervals above 1s unless infrastructure is sized for sustained high PPS.</p>
-          </div>
-          <div className="info-banner">
-            <strong>Data quality</strong>
-            <p>Keep payload size consistent across environments for comparable latency trends.</p>
-          </div>
-          <div className="info-banner">
-            <strong>NOC readiness</strong>
-            <p>Pair monitor auto-refresh with websocket updates to reduce blind spots during incidents.</p>
-          </div>
         </div>
       </section>
     </div>

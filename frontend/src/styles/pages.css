@@ -503,6 +503,10 @@
   flex-direction: column;
 }
 
+.settings-panel-span-2 {
+  grid-column: 1 / -1;
+}
+
 .settings-panel-body {
   padding: var(--space-4);
   display: grid;
@@ -564,34 +568,19 @@
   gap: var(--space-2);
 }
 
-.settings-custom-field-row {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-surface-elevated) 94%, transparent);
-  padding: var(--space-2);
+.settings-custom-field-card.is-configured {
+  border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent-soft) 94%, var(--color-surface));
+}
+
+.settings-custom-field-form {
   display: grid;
   grid-template-columns: minmax(170px, 0.45fr) minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: center;
+  gap: var(--space-3);
+  align-items: end;
 }
 
-.settings-custom-field-row.is-enabled {
-  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
-  background: color-mix(in srgb, var(--color-accent-soft) 94%, transparent);
-}
-
-.settings-custom-field-meta {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.settings-custom-field-slot {
-  font-family: var(--font-heading);
-  font-size: 0.82rem;
-  color: var(--color-text);
-}
-
-.settings-custom-field-input {
+.settings-custom-field-form > label {
   min-width: 0;
 }
 
@@ -601,18 +590,11 @@
   align-items: center;
   gap: var(--space-2);
   width: fit-content;
-  font-size: 0.76rem;
-  color: var(--color-text-muted);
 }
 
 .settings-toggle-row input[type="checkbox"] {
   width: 0.9rem;
   height: 0.9rem;
-}
-
-.settings-toggle-label {
-  font-weight: 600;
-  color: var(--color-text-muted);
 }
 
 .empty-chart-panel {
@@ -680,7 +662,7 @@
     grid-template-columns: 1fr;
   }
 
-  .settings-custom-field-row {
+  .settings-custom-field-form {
     grid-template-columns: 1fr;
   }
 
