@@ -187,7 +187,7 @@ function buildMetricSeries(
     }
 
     measured.push({
-      name: metric === "loss_rate" ? `Loss % · ${endpointID}` : `Latency · ${endpointID}`,
+      name: metric === "loss_rate" ? "Loss %" : "Latency",
       type: "line",
       smooth: true,
       connectNulls: false,
@@ -198,7 +198,7 @@ function buildMetricSeries(
     });
 
     noProbe.push({
-      name: metric === "loss_rate" ? `No probe loss · ${endpointID}` : `No probe latency · ${endpointID}`,
+      name: metric === "loss_rate" ? "No probe loss" : "No probe latency",
       type: "line",
       smooth: true,
       connectNulls: false,
@@ -238,8 +238,8 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
 
     const series = [...loss.measured, ...loss.noProbe, ...latency.measured, ...latency.noProbe];
     const measuredLossCount = loss.measured.length;
-    const lossLegendNames = loss.measured.map((item) => item.name as string);
-    const latencyLegendNames = latency.measured.map((item) => item.name as string);
+    const lossLegendNames = Array.from(new Set(loss.measured.map((item) => item.name as string)));
+    const latencyLegendNames = Array.from(new Set(latency.measured.map((item) => item.name as string)));
     const lossSeriesIndices = Array.from({ length: measuredLossCount }, (_, index) => index);
 
     return {
