@@ -4,12 +4,14 @@ import {
   applyInventoryPreview,
   createInventoryEndpoint,
   exportInventoryEndpointsCSV,
+  getProbeStatus,
   getSettings,
   getCurrentDeleteJobStatus,
   importInventoryPreview,
   listGroups,
   listInventoryEndpoints,
   listInventoryFilterOptions,
+  stopProbe,
   startDeleteAllJob,
   startDeleteByGroupJob,
   updateInventoryEndpoint
@@ -20,7 +22,8 @@ import type {
   ImportPreview,
   InventoryDeleteJobStatus,
   InventoryEndpoint,
-  InventoryEndpointCreateRequest
+  InventoryEndpointCreateRequest,
+  ProbeStatus
 } from "../types/api";
 
 type FilterState = {
@@ -238,6 +241,8 @@ export function InventoryPage() {
   const [groupAssignmentMode, setGroupAssignmentMode] = useState<"existing" | "create">("existing");
   const [selectedGroupID, setSelectedGroupID] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
+  const [isPreparingImportApply, setIsPreparingImportApply] = useState(false);
+  const [importGuardError, setImportGuardError] = useState<string | null>(null);
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [customSearch, setCustomSearch] = useState<CustomSearchState>(defaultCustomSearch);
@@ -372,6 +377,7 @@ export function InventoryPage() {
           })
         : Promise.reject(new Error("No preview available")),
     onSuccess: (data) => {
+      setImportGuardError(null);
       setLastImportSummary({
         added: data.added,
         updated: data.updated,
@@ -543,6 +549,40 @@ export function InventoryPage() {
     setDeleteJobNotice(null);
   };
 
+  const handleApplySelected = async () => {
+    if (!preview || Object.keys(selection).length === 0 || groupAssignmentInvalid || isPreparingImportApply || applyMutation.isPending) {
+      return;
+    }
+
+    setImportGuardError(null);
+    setIsPreparingImportApply(true);
+    try {
+      const status = await getProbeStatus();
+      if (status.running) {
+        const confirmed = window.confirm(
+          "Probing is running. SonarScope will stop probing before applying this import to avoid immediately probing newly imported endpoints. Continue?"
+        );
+        if (!confirmed) {
+          return;
+        }
+
+        await stopProbe();
+        queryClient.setQueryData<ProbeStatus>(["probe-status"], {
+          running: false,
+          scope: "",
+          group_ids: []
+        });
+        queryClient.invalidateQueries({ queryKey: ["probe-status"] });
+      }
+
+      applyMutation.mutate();
+    } catch (error) {
+      setImportGuardError((error as Error).message || "Failed to prepare import apply while probing is active.");
+    } finally {
+      setIsPreparingImportApply(false);
+    }
+  };
+
   return (
     <div className="inventory-page-v13">
       <section
@@ -582,10 +622,16 @@ export function InventoryPage() {
             <button
               className="btn"
               type="button"
-              onClick={() => applyMutation.mutate()}
-              disabled={!preview || Object.keys(selection).length === 0 || groupAssignmentInvalid}
+              onClick={handleApplySelected}
+              disabled={
+                !preview ||
+                Object.keys(selection).length === 0 ||
+                groupAssignmentInvalid ||
+                isPreparingImportApply ||
+                applyMutation.isPending
+              }
             >
-              Apply Selected
+              {isPreparingImportApply ? "Preparing..." : applyMutation.isPending ? "Applying..." : "Apply Selected"}
             </button>
           </div>
 
@@ -653,6 +699,11 @@ export function InventoryPage() {
           {applyMutation.error && (
             <div className="error-banner" role="alert" aria-live="assertive">
               {(applyMutation.error as Error).message}
+            </div>
+          )}
+          {importGuardError && (
+            <div className="error-banner" role="alert" aria-live="assertive">
+              {importGuardError}
             </div>
           )}
           {applyMutation.data && (

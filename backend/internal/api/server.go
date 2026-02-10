@@ -485,6 +485,11 @@ func (s *Server) handleInventoryImportPreview(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) handleInventoryImportApply(w http.ResponseWriter, r *http.Request) {
+	if s.probe.IsRunning() {
+		util.WriteError(w, http.StatusConflict, "probing is running; stop probing before import apply")
+		return
+	}
+
 	var req model.ImportApplyRequest
 	if err := util.DecodeJSON(r, &req); err != nil {
 		util.WriteError(w, http.StatusBadRequest, "invalid request payload")

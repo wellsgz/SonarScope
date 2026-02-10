@@ -21,6 +21,15 @@
 }
 ```
 
+- Precondition: probing must be stopped before apply.
+- If probing is running, API returns `409 Conflict`:
+
+```json
+{
+  "error": "probing is running; stop probing before import apply"
+}
+```
+
 ## Groups
 
 - `GET /api/groups/`
