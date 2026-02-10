@@ -129,16 +129,18 @@
 }
 
 .sidebar-probe-target-row {
-  display: inline-flex;
+  display: flex;
   align-items: baseline;
   gap: 0.3rem;
   min-width: 0;
+  width: 100%;
 }
 
 .sidebar-probe-target-label {
   color: var(--color-text-subtle);
   font-weight: 500;
   flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .sidebar-probe-target-status {
@@ -149,8 +151,12 @@
 .sidebar-probe-target-value {
   color: var(--color-text-muted);
   font-weight: 600;
+  flex: 1 1 auto;
+  display: block;
   min-width: 0;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-probe-target-live {
