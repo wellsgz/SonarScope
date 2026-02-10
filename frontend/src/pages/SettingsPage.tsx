@@ -224,37 +224,28 @@ export function SettingsPage() {
 
         <div className="settings-panel-body">
           <section className="settings-custom-fields">
-            <div className="settings-section-header">
-              <div className="settings-section-heading">
+            <div className="settings-custom-fields-head">
+              <div>
                 <h3 className="panel-title">Custom Fields</h3>
-                <p className="panel-subtitle">
+                <p className="settings-inline-help">
                   Enable up to three custom endpoint fields. Enabled fields require unique non-overlapping names.
                 </p>
               </div>
-              <div className="settings-section-actions">
-                <span className="status-chip">{enabledCustomFieldCount}/3 enabled</span>
-              </div>
+              <span className="status-chip">{enabledCustomFieldCount}/3 enabled</span>
             </div>
 
             <div className="settings-custom-field-list">
               {normalizedCustomFields.map((field) => {
-                const configured = field.enabled && field.name.trim().length > 0;
                 const nameMissing = field.enabled && field.name.trim().length === 0;
-                const statusClass = configured
-                  ? "status-chip status-chip-live"
-                  : nameMissing
-                    ? "status-chip status-chip-stopped"
-                    : "status-chip";
-                const statusLabel = configured ? "Configured" : nameMissing ? "Name required" : "Disabled";
 
                 return (
-                  <div key={field.slot} className={`filter-card settings-custom-field-card ${configured ? "is-configured" : ""}`}>
-                    <div className="filter-card-summary">
-                      <span>Custom Field {field.slot}</span>
-                      <span className={statusClass}>{statusLabel}</span>
-                    </div>
-                    <div className="filter-card-body settings-custom-field-form">
-                      <label className="settings-toggle-row">
+                  <div
+                    key={field.slot}
+                    className={`settings-custom-field-item ${field.enabled ? "is-enabled" : ""} ${nameMissing ? "is-invalid" : ""}`}
+                  >
+                    <div className="settings-custom-field-item-head">
+                      <span className="settings-custom-field-name">Custom Field {field.slot}</span>
+                      <label className="settings-custom-field-toggle">
                         <input
                           type="checkbox"
                           checked={field.enabled}
@@ -267,8 +258,12 @@ export function SettingsPage() {
                             }))
                           }
                         />
-                        Enabled
+                        <span className={`settings-custom-field-toggle-label ${field.enabled ? "is-enabled" : "is-disabled"}`}>
+                          {field.enabled ? "Enabled" : "Disabled"}
+                        </span>
                       </label>
+                    </div>
+                    <div className="settings-custom-field-form">
                       <label>
                         Field Name
                         <input
