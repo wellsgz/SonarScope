@@ -552,6 +552,36 @@ label {
   color: var(--color-text-muted);
 }
 
+.banner-dismissible {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.banner-close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  min-width: 1.25rem;
+  line-height: 1;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.banner-close:hover {
+  opacity: 0.8;
+}
+
+.banner-close:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: 0.2rem;
+}
+
 .state-panel {
   min-height: 180px;
   display: flex;

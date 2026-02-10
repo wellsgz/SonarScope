@@ -85,6 +85,26 @@ function formatEta(seconds?: number): string {
   return `ETA: ${secs}s`;
 }
 
+const deleteJobDismissedStorageKey = "inventory.deleteJobNotice.dismissed";
+
+function formatDateTime(value?: string): string {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
+}
+
+function completionNoticeKey(status?: InventoryDeleteJobStatus): string {
+  if (!status?.job_id || !status.state || status.active) {
+    return "";
+  }
+  return `${status.job_id}:${status.state}:${status.deleted_endpoints ?? 0}:${status.matched_endpoints ?? 0}:${status.completed_at ?? ""}`;
+}
+
 export function InventoryPage() {
   const queryClient = useQueryClient();
 
@@ -133,6 +153,12 @@ export function InventoryPage() {
     type: "success" | "error" | "info";
     message: string;
   } | null>(null);
+  const [dismissedDeleteJobKey, setDismissedDeleteJobKey] = useState<string>(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    return window.localStorage.getItem(deleteJobDismissedStorageKey) || "";
+  });
   const lastHandledDeleteJobRef = useRef<string>("");
 
   const filterCards: Array<{ key: keyof FilterState; label: string; options: string[] }> = [
@@ -284,11 +310,21 @@ export function InventoryPage() {
     if (!status || !status.job_id || status.active) {
       return;
     }
-    const completionKey = `${status.job_id}:${status.state}:${status.deleted_endpoints ?? 0}:${status.matched_endpoints ?? 0}`;
+    const completionKey = completionNoticeKey(status);
+    if (!completionKey) {
+      return;
+    }
     if (lastHandledDeleteJobRef.current === completionKey) {
       return;
     }
     lastHandledDeleteJobRef.current = completionKey;
+    if (dismissedDeleteJobKey === completionKey) {
+      invalidateInventoryAndMonitorQueries();
+      return;
+    }
+
+    const startedAt = formatDateTime(status.started_at);
+    const completedAt = formatDateTime(status.completed_at);
 
     if (status.state === "completed") {
       const matched = status.matched_endpoints ?? 0;
@@ -296,23 +332,23 @@ export function InventoryPage() {
       if (matched === 0) {
         setDeleteJobNotice({
           type: "info",
-          message: "Selected target has no endpoints to delete."
+          message: `Selected target has no endpoints to delete. Started: ${startedAt}. Completed: ${completedAt}.`
         });
       } else {
         setDeleteJobNotice({
           type: "success",
-          message: `Deletion completed: deleted ${deleted} endpoint(s) out of ${matched} matched endpoint(s).`
+          message: `Deletion completed: deleted ${deleted} endpoint(s) out of ${matched} matched endpoint(s). Started: ${startedAt}. Completed: ${completedAt}.`
         });
       }
     } else if (status.state === "failed") {
       setDeleteJobNotice({
         type: "error",
-        message: status.error || "Inventory deletion job failed."
+        message: `${status.error || "Inventory deletion job failed."} Started: ${startedAt}. Completed: ${completedAt}.`
       });
     }
 
     invalidateInventoryAndMonitorQueries();
-  }, [deleteJobStatus]);
+  }, [deleteJobStatus, dismissedDeleteJobKey]);
 
   const summary = useMemo(() => {
     if (!preview) {
@@ -358,6 +394,15 @@ export function InventoryPage() {
     assignToGroup &&
     ((groupAssignmentMode === "existing" && !selectedGroupID) ||
       (groupAssignmentMode === "create" && newGroupName.trim() === ""));
+
+  const dismissDeleteNotice = () => {
+    const key = completionNoticeKey(deleteJobStatus);
+    if (key && typeof window !== "undefined") {
+      window.localStorage.setItem(deleteJobDismissedStorageKey, key);
+      setDismissedDeleteJobKey(key);
+    }
+    setDeleteJobNotice(null);
+  };
 
   return (
     <div className="inventory-page-v13">
@@ -853,21 +898,29 @@ export function InventoryPage() {
               Inventory endpoint updated.
             </div>
           )}
-          {deleteJobNotice?.type === "success" && (
-            <div className="success-banner" role="status" aria-live="polite">
-              {deleteJobNotice.message}
+          {deleteJobNotice ? (
+            <div
+              className={
+                deleteJobNotice.type === "success"
+                  ? "success-banner banner-dismissible"
+                  : deleteJobNotice.type === "info"
+                    ? "info-banner banner-dismissible"
+                    : "error-banner banner-dismissible"
+              }
+              role={deleteJobNotice.type === "error" ? "alert" : "status"}
+              aria-live={deleteJobNotice.type === "error" ? "assertive" : "polite"}
+            >
+              <span>{deleteJobNotice.message}</span>
+              <button
+                className="banner-close"
+                type="button"
+                aria-label="Dismiss deletion message"
+                onClick={dismissDeleteNotice}
+              >
+                ×
+              </button>
             </div>
-          )}
-          {deleteJobNotice?.type === "info" && (
-            <div className="info-banner" role="status" aria-live="polite">
-              {deleteJobNotice.message}
-            </div>
-          )}
-          {deleteJobNotice?.type === "error" && (
-            <div className="error-banner" role="alert" aria-live="assertive">
-              {deleteJobNotice.message}
-            </div>
-          )}
+          ) : null}
 
           {inventoryQuery.isLoading ? (
             <div className="state-panel inventory-state-panel">

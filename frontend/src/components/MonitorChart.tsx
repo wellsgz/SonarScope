@@ -299,7 +299,6 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
     }, 0);
     const latencyAxisMax = Math.max(20, Math.ceil(maxLatency / 20) * 20);
 
-    const series = [...lossMeasured, ...loss.noProbe, ...latencyMeasured, ...latency.noProbe];
     const measuredLossCount = lossMeasured.length;
     const lossLegendNames = Array.from(
       new Set(loss.measured.map((item) => ((item as { name?: string }).name ?? "Loss %")))
@@ -307,7 +306,24 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
     const latencyLegendNames = Array.from(
       new Set(latency.measured.map((item) => ((item as { name?: string }).name ?? "Latency")))
     );
+    const noProbeLegendName = "No probe period (dotted)";
     const lossSeriesIndices = Array.from({ length: measuredLossCount }, (_, index) => index);
+    const noProbeLegendSeries = {
+      name: noProbeLegendName,
+      type: "line",
+      smooth: false,
+      connectNulls: false,
+      showSymbol: false,
+      symbol: "none",
+      yAxisIndex: 0,
+      silent: true,
+      tooltip: { show: false },
+      lineStyle: { type: "dotted", width: 2, color: palette.textSubtle, opacity: 0.85 },
+      itemStyle: { color: palette.textSubtle },
+      data: [[buckets[0] ?? rangeStart.getTime(), null]]
+    };
+
+    const series = [...lossMeasured, ...loss.noProbe, ...latencyMeasured, ...latency.noProbe, noProbeLegendSeries];
 
     return {
       backgroundColor: "transparent",
@@ -380,7 +396,7 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
         }
       },
       legend: {
-        data: [...lossLegendNames, ...latencyLegendNames],
+        data: [...lossLegendNames, ...latencyLegendNames, noProbeLegendName],
         textStyle: { color: palette.textMuted, fontSize: 11 }
       },
       visualMap: [
