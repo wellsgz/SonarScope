@@ -295,18 +295,6 @@
   justify-content: flex-end;
 }
 
-.inventory-subtitle-row {
-  margin-top: var(--stack-gap-tight);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.inventory-subtitle-row .panel-subtitle {
-  margin-top: 0;
-}
-
 .inventory-effective-count {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
@@ -317,6 +305,20 @@
   line-height: 1;
   padding: 0.26rem 0.62rem;
   white-space: nowrap;
+}
+
+.inventory-filter-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.inventory-filter-meta-label {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text-muted);
 }
 
 .inventory-import-panel,
@@ -751,11 +753,6 @@
   .inventory-header-actions {
     width: 100%;
     justify-content: flex-start;
-  }
-
-  .inventory-subtitle-row {
-    flex-direction: column;
-    align-items: flex-start;
   }
 
   .settings-custom-field-form {

@@ -1067,16 +1067,17 @@ export function InventoryPage() {
               </button>
             </div>
           </div>
-          <div className="inventory-subtitle-row">
-            <p className="panel-subtitle">Filter and maintain endpoint metadata (IP is immutable).</p>
-            <div className="inventory-effective-count" role="status" aria-live="polite">
-              {inventoryQuery.isLoading ? "Matching Endpoints: ..." : `Matching Endpoints: ${filteredEndpointCount}`}
-            </div>
-          </div>
+          <p className="panel-subtitle">Filter and maintain endpoint metadata (IP is immutable).</p>
         </div>
 
         <div className="inventory-panel-body">
           <div className="inventory-filter-section">
+            <div className="inventory-filter-meta-row">
+              <div className="inventory-filter-meta-label">Filters</div>
+              <div className="inventory-effective-count" role="status" aria-live="polite">
+                {inventoryQuery.isLoading ? "Matching: ..." : `${filteredEndpointCount} endpoints`}
+              </div>
+            </div>
             <div className="inventory-filter-grid">
               {filterCards.map((filterCard) => {
                 const selectedValues = filters[filterCard.key];
