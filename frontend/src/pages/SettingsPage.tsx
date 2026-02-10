@@ -8,7 +8,6 @@ const defaultCustomFields: CustomFieldConfig[] = [
   { slot: 2, enabled: false, name: "" },
   { slot: 3, enabled: false, name: "" }
 ];
-const settingsCustomFieldsCollapsedKey = "sonarscope.settings.custom_fields_collapsed";
 
 const reservedCustomFieldNames = new Set([
   "hostname",
@@ -42,8 +41,6 @@ type CustomFieldValidationIssue = {
   slot: number;
   message: string;
 };
-type CustomFieldSlot = 1 | 2 | 3;
-type CustomFieldExpansionState = Record<CustomFieldSlot, boolean>;
 
 function normalizeCustomFieldName(value: string): string {
   return value
@@ -71,20 +68,6 @@ function normalizeCustomFields(fields?: CustomFieldConfig[]): CustomFieldConfig[
   });
 
   return [1, 2, 3].map((slot) => bySlot.get(slot) || { slot, enabled: false, name: "" });
-}
-
-function defaultCustomFieldExpansion(fields?: CustomFieldConfig[]): CustomFieldExpansionState {
-  const normalized = normalizeCustomFields(fields);
-  const expansion: CustomFieldExpansionState = {
-    1: false,
-    2: false,
-    3: false
-  };
-  normalized.forEach((field) => {
-    const slot = field.slot as CustomFieldSlot;
-    expansion[slot] = field.enabled || field.name.trim().length > 0;
-  });
-  return expansion;
 }
 
 function validateCustomFields(fields: CustomFieldConfig[]): CustomFieldValidationIssue[] {
@@ -142,15 +125,6 @@ export function SettingsPage() {
     auto_refresh_sec: 10,
     custom_fields: normalizeCustomFields()
   });
-  const [customFieldsExpanded, setCustomFieldsExpanded] = useState(() => {
-    if (typeof window === "undefined") {
-      return true;
-    }
-    return window.localStorage.getItem(settingsCustomFieldsCollapsedKey) !== "1";
-  });
-  const [customFieldExpansion, setCustomFieldExpansion] = useState<CustomFieldExpansionState>(
-    defaultCustomFieldExpansion()
-  );
 
   useEffect(() => {
     if (settingsQuery.data) {
@@ -158,15 +132,8 @@ export function SettingsPage() {
         ...settingsQuery.data,
         custom_fields: normalizeCustomFields(settingsQuery.data.custom_fields)
       });
-      setCustomFieldExpansion(defaultCustomFieldExpansion(settingsQuery.data.custom_fields));
     }
   }, [settingsQuery.data]);
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.localStorage.setItem(settingsCustomFieldsCollapsedKey, customFieldsExpanded ? "0" : "1");
-  }, [customFieldsExpanded]);
 
   const normalizedCustomFields = useMemo(
     () => normalizeCustomFields(draft.custom_fields),
@@ -256,7 +223,7 @@ export function SettingsPage() {
         </div>
 
         <div className="settings-panel-body">
-          <section className={`settings-custom-fields ${customFieldsExpanded ? "is-expanded" : "is-collapsed"}`}>
+          <section className="settings-custom-fields">
             <div className="settings-section-header">
               <div className="settings-section-heading">
                 <h3 className="panel-title">Custom Fields</h3>
@@ -266,82 +233,62 @@ export function SettingsPage() {
               </div>
               <div className="settings-section-actions">
                 <span className="status-chip">{enabledCustomFieldCount}/3 enabled</span>
-                <button
-                  className="btn btn-small"
-                  type="button"
-                  aria-expanded={customFieldsExpanded}
-                  aria-controls="settings-custom-fields-body"
-                  onClick={() => setCustomFieldsExpanded((current) => !current)}
-                >
-                  {customFieldsExpanded ? "Collapse" : "Expand"}
-                </button>
               </div>
             </div>
 
-            {customFieldsExpanded ? (
-              <div id="settings-custom-fields-body" className="settings-custom-field-list">
-                {normalizedCustomFields.map((field) => {
-                  const slot = field.slot as CustomFieldSlot;
-                  const configured = field.enabled && field.name.trim().length > 0;
-                  const nameMissing = field.enabled && field.name.trim().length === 0;
-                  const statusClass = configured
-                    ? "status-chip status-chip-live"
-                    : nameMissing
-                      ? "status-chip status-chip-stopped"
-                      : "status-chip";
-                  const statusLabel = configured ? "Configured" : nameMissing ? "Name required" : "Disabled";
+            <div className="settings-custom-field-list">
+              {normalizedCustomFields.map((field) => {
+                const configured = field.enabled && field.name.trim().length > 0;
+                const nameMissing = field.enabled && field.name.trim().length === 0;
+                const statusClass = configured
+                  ? "status-chip status-chip-live"
+                  : nameMissing
+                    ? "status-chip status-chip-stopped"
+                    : "status-chip";
+                const statusLabel = configured ? "Configured" : nameMissing ? "Name required" : "Disabled";
 
-                  return (
-                    <details
-                      key={field.slot}
-                      className={`filter-card settings-custom-field-card ${configured ? "is-configured" : ""}`}
-                      open={customFieldExpansion[slot]}
-                      onToggle={(event) => {
-                        const open = (event.currentTarget as HTMLDetailsElement).open;
-                        setCustomFieldExpansion((prev) => ({ ...prev, [slot]: open }));
-                      }}
-                    >
-                      <summary className="filter-card-summary">
-                        <span>Custom Field {field.slot}</span>
-                        <span className={statusClass}>{statusLabel}</span>
-                      </summary>
-                      <div className="filter-card-body settings-custom-field-form">
-                        <label className="settings-toggle-row">
-                          <input
-                            type="checkbox"
-                            checked={field.enabled}
-                            onChange={(event) =>
-                              setDraft((prev) => ({
-                                ...prev,
-                                custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
-                                  item.slot === field.slot ? { ...item, enabled: event.target.checked } : item
-                                )
-                              }))
-                            }
-                          />
-                          Enabled
-                        </label>
-                        <label>
-                          Field Name
-                          <input
-                            value={field.name}
-                            onChange={(event) =>
-                              setDraft((prev) => ({
-                                ...prev,
-                                custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
-                                  item.slot === field.slot ? { ...item, name: event.target.value } : item
-                                )
-                              }))
-                            }
-                            placeholder={`Custom Field ${field.slot}`}
-                          />
-                        </label>
-                      </div>
-                    </details>
-                  );
-                })}
-              </div>
-            ) : null}
+                return (
+                  <div key={field.slot} className={`filter-card settings-custom-field-card ${configured ? "is-configured" : ""}`}>
+                    <div className="filter-card-summary">
+                      <span>Custom Field {field.slot}</span>
+                      <span className={statusClass}>{statusLabel}</span>
+                    </div>
+                    <div className="filter-card-body settings-custom-field-form">
+                      <label className="settings-toggle-row">
+                        <input
+                          type="checkbox"
+                          checked={field.enabled}
+                          onChange={(event) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
+                                item.slot === field.slot ? { ...item, enabled: event.target.checked } : item
+                              )
+                            }))
+                          }
+                        />
+                        Enabled
+                      </label>
+                      <label>
+                        Field Name
+                        <input
+                          value={field.name}
+                          onChange={(event) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
+                                item.slot === field.slot ? { ...item, name: event.target.value } : item
+                              )
+                            }))
+                          }
+                          placeholder={`Custom Field ${field.slot}`}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </section>
 
           <div className="button-row settings-save-row">

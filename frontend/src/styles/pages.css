@@ -490,23 +490,27 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
-  align-items: start;
+  align-items: stretch;
   min-width: 0;
 }
 
 .settings-layout .panel {
   padding: 0;
+  height: 100%;
 }
 
 .settings-page {
   display: flex;
   flex-direction: column;
+  min-height: 100%;
 }
 
 .settings-panel-body {
   padding: var(--space-4);
   display: grid;
   gap: var(--space-3);
+  align-content: start;
+  flex: 1 1 auto;
 }
 
 .settings-save-row {
@@ -523,10 +527,6 @@
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-surface) 92%, transparent);
   overflow: hidden;
-}
-
-.settings-custom-fields.is-collapsed .settings-section-header {
-  border-bottom: none;
 }
 
 .settings-section-header {
@@ -563,6 +563,10 @@
 .settings-custom-field-card.is-configured {
   border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-border));
   background: color-mix(in srgb, var(--color-accent-soft) 94%, var(--color-surface));
+}
+
+.settings-custom-field-card .filter-card-summary {
+  border-bottom-color: var(--color-border);
 }
 
 .settings-custom-field-form {
