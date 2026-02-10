@@ -92,7 +92,45 @@ export function GroupsPage() {
     return map;
   }, [endpointOptions]);
 
+  const endpointLabelByID = useMemo(() => {
+    const map = new Map<number, string>();
+    endpointOptions.forEach((option) => map.set(option.id, option.label));
+    return map;
+  }, [endpointOptions]);
+
+  const endpointCurrentGroupByID = useMemo(() => {
+    const map = new Map<number, { groupID: number; groupName: string }>();
+    (groupsQuery.data || []).forEach((group) => {
+      (group.endpoint_ids || []).forEach((endpointID) => {
+        map.set(endpointID, { groupID: group.id, groupName: group.name });
+      });
+    });
+    return map;
+  }, [groupsQuery.data]);
+
   const manualIPs = useMemo(() => parseManualIPList(manualIPList), [manualIPList]);
+
+  function resetEditorToCreate() {
+    setEditingID(null);
+    setName("");
+    setDescription("");
+    setEndpointIDs([]);
+    setManualIPList("");
+    setGroupUpdateNotice(null);
+  }
+
+  function loadGroupIntoEditor(groupID: number) {
+    const group = (groupsQuery.data || []).find((item) => item.id === groupID);
+    if (!group) {
+      return;
+    }
+    setEditingID(group.id);
+    setName(group.name);
+    setDescription(group.description);
+    setEndpointIDs(group.endpoint_ids || []);
+    setManualIPList("");
+    setGroupUpdateNotice(null);
+  }
 
   const resolveSaveRequest = () => {
     const groupID = editingID;
@@ -138,6 +176,40 @@ export function GroupsPage() {
     };
   };
 
+  const saveRequest = resolveSaveRequest();
+  const effectiveEndpointPreviews = saveRequest.endpointIDs
+    .map((id) => ({
+      id,
+      label: endpointLabelByID.get(id) || endpointIPByID.get(id) || `endpoint_id:${id}`
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+
+  const reassignmentByGroup = new Map<string, { groupName: string; count: number }>();
+  saveRequest.endpointIDs.forEach((endpointID) => {
+    const currentGroup = endpointCurrentGroupByID.get(endpointID);
+    if (!currentGroup) {
+      return;
+    }
+    if (editingID !== null && currentGroup.groupID === editingID) {
+      return;
+    }
+    if (isReservedGroupName(currentGroup.groupName)) {
+      return;
+    }
+    const key = `${currentGroup.groupID}:${currentGroup.groupName}`;
+    const existing = reassignmentByGroup.get(key);
+    if (existing) {
+      existing.count += 1;
+      return;
+    }
+    reassignmentByGroup.set(key, { groupName: currentGroup.groupName, count: 1 });
+  });
+  const reassignmentImpact = Array.from(reassignmentByGroup.values()).sort((a, b) =>
+    a.groupName.localeCompare(b.groupName, undefined, { sensitivity: "base" })
+  );
+  const reassignmentCount = reassignmentImpact.reduce((total, item) => total + item.count, 0);
+  const targetGroupLabel = editingID ? (name.trim() || "this group") : "the new group";
+
   const editingGroup = editingID ? (groupsQuery.data || []).find((group) => group.id === editingID) : null;
   const reservedGroupName = isReservedGroupName(name);
 
@@ -150,6 +222,51 @@ export function GroupsPage() {
         </div>
 
         <div className="group-form">
+          <label>
+            Group Selection
+            <select
+              value={editingID === null ? "__new__" : String(editingID)}
+              onChange={(event) => {
+                if (event.target.value === "__new__") {
+                  resetEditorToCreate();
+                  return;
+                }
+                loadGroupIntoEditor(Number(event.target.value));
+              }}
+              disabled={groupsQuery.isLoading}
+            >
+              <option value="__new__">Create New Group</option>
+              {(groupsQuery.data || []).map((group) => (
+                <option key={group.id} value={String(group.id)}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+            <span className="field-help">
+              Select an existing group to edit and inspect members, or keep "Create New Group" selected.
+            </span>
+          </label>
+
+          <div className="group-membership-preview">
+            <div className="group-membership-preview-head">
+              <span>{editingID ? "Included Endpoints" : "Selected Endpoints"}</span>
+              <span className="count-badge">{effectiveEndpointPreviews.length}</span>
+            </div>
+            {effectiveEndpointPreviews.length > 0 ? (
+              <div className="group-membership-preview-list">
+                {effectiveEndpointPreviews.map((item) => (
+                  <span key={item.id} className="status-chip">
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span className="field-help">
+                {editingID ? "No endpoints currently included in this group." : "No endpoints selected yet."}
+              </span>
+            )}
+          </div>
+
           <label>
             Group Name
             <input
@@ -210,6 +327,15 @@ export function GroupsPage() {
             </span>
           </label>
 
+          {reassignmentCount > 0 && (
+            <div className="info-banner group-impact-warning" role="status" aria-live="polite">
+              Warning: {reassignmentCount} selected endpoint{reassignmentCount === 1 ? "" : "s"} currently belong
+              {reassignmentCount === 1 ? "s" : ""} to other groups and will be moved to "{targetGroupLabel}". Each
+              endpoint can belong to only one group. Affected groups:{" "}
+              {reassignmentImpact.map((item) => `${item.groupName} (${item.count})`).join(", ")}.
+            </div>
+          )}
+
           {groupUpdateNotice && (
             <div className="info-banner" role="status" aria-live="polite">
               {groupUpdateNotice}
@@ -231,8 +357,7 @@ export function GroupsPage() {
               className="btn btn-primary"
               type="button"
               onClick={() => {
-                const payload = resolveSaveRequest();
-                saveMutation.mutate(payload);
+                saveMutation.mutate(saveRequest);
               }}
               disabled={!name.trim() || reservedGroupName || Boolean(editingGroup?.is_system)}
             >
@@ -243,12 +368,7 @@ export function GroupsPage() {
                 className="btn"
                 type="button"
                 onClick={() => {
-                  setEditingID(null);
-                  setName("");
-                  setDescription("");
-                  setEndpointIDs([]);
-                  setManualIPList("");
-                  setGroupUpdateNotice(null);
+                  resetEditorToCreate();
                 }}
               >
                 Cancel
@@ -310,12 +430,7 @@ export function GroupsPage() {
                               className="btn"
                               type="button"
                               onClick={() => {
-                                setEditingID(group.id);
-                                setName(group.name);
-                                setDescription(group.description);
-                                setEndpointIDs(group.endpoint_ids || []);
-                                setManualIPList("");
-                                setGroupUpdateNotice(null);
+                                loadGroupIntoEditor(group.id);
                               }}
                             >
                               Edit

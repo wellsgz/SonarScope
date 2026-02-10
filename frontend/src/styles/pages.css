@@ -484,6 +484,39 @@
   gap: var(--space-3);
 }
 
+.group-membership-preview {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.group-membership-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.group-membership-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  max-height: 8.8rem;
+  overflow-y: auto;
+}
+
+.group-impact-warning {
+  border-color: color-mix(in srgb, var(--color-warning) 44%, var(--color-border));
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-surface-elevated));
+  color: var(--color-text-muted);
+}
+
 .settings-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
