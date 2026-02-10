@@ -1021,41 +1021,6 @@ export function InventoryPage() {
         <div className="inventory-panel-body">
           <div className="inventory-filter-section">
             <div className="inventory-filter-grid">
-              {enabledCustomFields.map((field) => {
-                const currentValue = customSearchValueBySlot(customSearch, field.slot);
-                const hasValue = currentValue.trim().length > 0;
-                return (
-                  <details key={`inventory-custom-search-${field.slot}`} className="filter-card" open={hasValue}>
-                    <summary className="filter-card-summary">
-                      <span>{field.name} Search</span>
-                      <span className="count-badge">{hasValue ? 1 : 0}</span>
-                    </summary>
-                    <div className="filter-card-body">
-                      <div className="filter-card-actions">
-                        <span>{hasValue ? "Contains match active" : "Contains match"}</span>
-                        <button
-                          className="btn-link"
-                          type="button"
-                          onClick={() => setCustomSearch((prev) => setCustomSearchBySlot(prev, field.slot, ""))}
-                        >
-                          Clear
-                        </button>
-                      </div>
-                      <label>
-                        Contains match
-                        <input
-                          type="text"
-                          value={currentValue}
-                          onChange={(event) =>
-                            setCustomSearch((prev) => setCustomSearchBySlot(prev, field.slot, event.target.value))
-                          }
-                          placeholder={`Search ${field.name}`}
-                        />
-                      </label>
-                    </div>
-                  </details>
-                );
-              })}
               {filterCards.map((filterCard) => {
                 const selectedValues = filters[filterCard.key];
                 return (
@@ -1088,6 +1053,41 @@ export function InventoryPage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+                  </details>
+                );
+              })}
+              {enabledCustomFields.map((field) => {
+                const currentValue = customSearchValueBySlot(customSearch, field.slot);
+                const hasValue = currentValue.trim().length > 0;
+                return (
+                  <details key={`inventory-custom-search-${field.slot}`} className="filter-card" open={hasValue}>
+                    <summary className="filter-card-summary">
+                      <span>{field.name} Search</span>
+                      <span className="count-badge">{hasValue ? 1 : 0}</span>
+                    </summary>
+                    <div className="filter-card-body">
+                      <div className="filter-card-actions">
+                        <span>{hasValue ? "Contains match active" : "Contains match"}</span>
+                        <button
+                          className="btn-link"
+                          type="button"
+                          onClick={() => setCustomSearch((prev) => setCustomSearchBySlot(prev, field.slot, ""))}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      <label>
+                        Contains match
+                        <input
+                          type="text"
+                          value={currentValue}
+                          onChange={(event) =>
+                            setCustomSearch((prev) => setCustomSearchBySlot(prev, field.slot, event.target.value))
+                          }
+                          placeholder={`Search ${field.name}`}
+                        />
+                      </label>
                     </div>
                   </details>
                 );
