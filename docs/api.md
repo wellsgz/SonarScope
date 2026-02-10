@@ -93,6 +93,14 @@ Monitor endpoint payloads (`/api/monitor/endpoints` and `/api/monitor/endpoints-
 - `custom_field_2_value`
 - `custom_field_3_value`
 
+For `GET /api/monitor/endpoints-page` with `stats_scope=range`:
+- `consecutive_failed_count` is the trailing failed streak at the end of the selected time window.
+- `max_consecutive_failed_count` is the largest failed streak within the selected window.
+- `max_consecutive_failed_count_time` is the timestamp of the last failed probe in that largest streak (latest timestamp on ties).
+- If raw per-probe rows are unavailable for the selected window (for example older than raw retention), SonarScope uses deterministic fallback:
+  - all-failed aggregate windows (`success_count=0` and `failed_count>0`) => both streak counts equal `total_sent_ping` and time equals `last_failed_on`;
+  - otherwise streak counts/time return `0 / 0 / null`.
+
 ## Inventory
 
 - `GET /api/inventory/endpoints?vlan=100&group=DB-Core&custom_1=rack-a&custom_2=critical&custom_3=core`

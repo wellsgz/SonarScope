@@ -49,6 +49,12 @@ type MonitorPageQuery struct {
 	End        time.Time
 }
 
+type rangeFailureStreakStats struct {
+	ConsecutiveFailedCount      int64
+	MaxConsecutiveFailedCount   int64
+	MaxConsecutiveFailedCountAt *time.Time
+}
+
 type InventoryListQuery struct {
 	Filters MonitorFilters
 	Custom1 string
@@ -1097,7 +1103,165 @@ func (s *Store) listMonitorEndpointsPageRange(ctx context.Context, query Monitor
 		items = append(items, item)
 	}
 
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(items) == 0 {
+		return items, nil
+	}
+
+	endpointIDs := make([]int64, 0, len(items))
+	for _, item := range items {
+		endpointIDs = append(endpointIDs, item.EndpointID)
+	}
+
+	streakByEndpoint, err := s.loadRangeFailureStreakStats(ctx, endpointIDs, query.Start, query.End)
+	if err != nil {
+		return nil, err
+	}
+
+	for index := range items {
+		streakStats, ok := streakByEndpoint[items[index].EndpointID]
+		if ok {
+			items[index].ConsecutiveFailedCount = streakStats.ConsecutiveFailedCount
+			items[index].MaxConsecutiveFailed = streakStats.MaxConsecutiveFailedCount
+			items[index].MaxConsecutiveFailedAt = streakStats.MaxConsecutiveFailedCountAt
+			continue
+		}
+
+		// If per-probe raw rows are unavailable for the selected range, retain
+		// deterministic fallback behavior for all-failed aggregates only.
+		if items[index].SuccessCount == 0 && items[index].FailedCount > 0 {
+			items[index].ConsecutiveFailedCount = items[index].TotalSentPing
+			items[index].MaxConsecutiveFailed = items[index].TotalSentPing
+			items[index].MaxConsecutiveFailedAt = items[index].LastFailedOn
+			continue
+		}
+
+		items[index].ConsecutiveFailedCount = 0
+		items[index].MaxConsecutiveFailed = 0
+		items[index].MaxConsecutiveFailedAt = nil
+	}
+
+	return items, nil
+}
+
+func (s *Store) loadRangeFailureStreakStats(
+	ctx context.Context,
+	endpointIDs []int64,
+	start time.Time,
+	end time.Time,
+) (map[int64]rangeFailureStreakStats, error) {
+	if len(endpointIDs) == 0 {
+		return map[int64]rangeFailureStreakStats{}, nil
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		WITH scoped AS (
+			SELECT
+				endpoint_id,
+				ts,
+				success
+			FROM ping_raw
+			WHERE endpoint_id = ANY($1::bigint[])
+			  AND ts >= $2::timestamptz
+			  AND ts <= $3::timestamptz
+		),
+		last_markers AS (
+			SELECT
+				endpoint_id,
+				MAX(ts) AS last_ts,
+				MAX(ts) FILTER (WHERE success) AS last_success_ts
+			FROM scoped
+			GROUP BY endpoint_id
+		),
+		current_streak AS (
+			SELECT
+				lm.endpoint_id,
+				CASE
+					WHEN EXISTS (
+						SELECT 1
+						FROM scoped s
+						WHERE s.endpoint_id = lm.endpoint_id
+						  AND s.ts = lm.last_ts
+						  AND s.success = TRUE
+					) THEN 0::bigint
+					ELSE (
+						SELECT COUNT(*)::bigint
+						FROM scoped s
+						WHERE s.endpoint_id = lm.endpoint_id
+						  AND s.success = FALSE
+						  AND s.ts > COALESCE(lm.last_success_ts, '-infinity'::timestamptz)
+					)
+				END AS consecutive_failed_count
+			FROM last_markers lm
+		),
+		failed_points AS (
+			SELECT
+				endpoint_id,
+				ts,
+				ROW_NUMBER() OVER (PARTITION BY endpoint_id ORDER BY ts) -
+					ROW_NUMBER() OVER (PARTITION BY endpoint_id, success ORDER BY ts) AS run_key
+			FROM scoped
+			WHERE success = FALSE
+		),
+		failed_runs AS (
+			SELECT
+				endpoint_id,
+				COUNT(*)::bigint AS run_len,
+				MAX(ts) AS run_end
+			FROM failed_points
+			GROUP BY endpoint_id, run_key
+		),
+		max_runs_ranked AS (
+			SELECT
+				endpoint_id,
+				run_len,
+				run_end,
+				ROW_NUMBER() OVER (PARTITION BY endpoint_id ORDER BY run_len DESC, run_end DESC) AS run_rank
+			FROM failed_runs
+		),
+		max_runs AS (
+			SELECT
+				endpoint_id,
+				run_len AS max_consecutive_failed_count,
+				run_end AS max_consecutive_failed_count_time
+			FROM max_runs_ranked
+			WHERE run_rank = 1
+		)
+		SELECT
+			cs.endpoint_id,
+			cs.consecutive_failed_count,
+			COALESCE(mr.max_consecutive_failed_count, 0)::bigint AS max_consecutive_failed_count,
+			mr.max_consecutive_failed_count_time
+		FROM current_streak cs
+		LEFT JOIN max_runs mr ON mr.endpoint_id = cs.endpoint_id
+	`, endpointIDs, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	byEndpoint := make(map[int64]rangeFailureStreakStats, len(endpointIDs))
+	for rows.Next() {
+		var endpointID int64
+		var streak rangeFailureStreakStats
+		if err := rows.Scan(
+			&endpointID,
+			&streak.ConsecutiveFailedCount,
+			&streak.MaxConsecutiveFailedCount,
+			&streak.MaxConsecutiveFailedCountAt,
+		); err != nil {
+			return nil, err
+		}
+		byEndpoint[endpointID] = streak
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return byEndpoint, nil
 }
 
 func (s *Store) ListInventoryEndpoints(ctx context.Context, listQuery InventoryListQuery) ([]model.InventoryEndpointView, error) {
