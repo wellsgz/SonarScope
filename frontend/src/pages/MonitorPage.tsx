@@ -396,6 +396,9 @@ export function MonitorPage() {
           ) : (
             <MonitorChart
               points={timeSeriesQuery.data?.series || []}
+              rollup={timeSeriesQuery.data?.rollup || "1m"}
+              rangeStart={effectiveStart}
+              rangeEnd={effectiveEnd}
               endpointLabel={selectedEndpoint ? `${selectedEndpoint.hostname || selectedEndpoint.ip_address} (${selectedEndpoint.ip_address})` : `ID ${selectedEndpointID}`}
             />
           )}
