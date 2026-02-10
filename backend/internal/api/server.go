@@ -52,7 +52,10 @@ func NewServer(cfg config.Config, st *store.Store, p *probe.Engine, hub *telemet
 	}
 }
 
-const deleteJobBatchSize = 100
+const (
+	deleteJobBatchSize    = 500
+	deleteJobPingRowBatch = 25000
+)
 
 type inventoryDeleteJobState struct {
 	Active             bool
@@ -63,6 +66,8 @@ type inventoryDeleteJobState struct {
 	MatchedEndpoints   int64
 	ProcessedEndpoints int64
 	DeletedEndpoints   int64
+	TotalPingRows      int64
+	DeletedPingRows    int64
 	ProgressPct        float64
 	EtaSeconds         *int64
 	Phase              string
@@ -106,6 +111,8 @@ func (s *Server) deleteJobSnapshot() model.InventoryDeleteJobStatusResponse {
 		MatchedEndpoints:   job.MatchedEndpoints,
 		ProcessedEndpoints: job.ProcessedEndpoints,
 		DeletedEndpoints:   job.DeletedEndpoints,
+		TotalPingRows:      job.TotalPingRows,
+		DeletedPingRows:    job.DeletedPingRows,
 		ProgressPct:        job.ProgressPct,
 		EtaSeconds:         cloneInt64Ptr(job.EtaSeconds),
 		Phase:              job.Phase,
@@ -140,6 +147,8 @@ func (s *Server) beginDeleteJob(mode model.InventoryDeleteJobMode, groupID *int6
 		MatchedEndpoints:   0,
 		ProcessedEndpoints: 0,
 		DeletedEndpoints:   0,
+		TotalPingRows:      0,
+		DeletedPingRows:    0,
 		ProgressPct:        0,
 		EtaSeconds:         nil,
 		Phase:              "initializing",
@@ -188,6 +197,11 @@ func (s *Server) runDeleteJob(job *inventoryDeleteJobState, endpointIDs []int64)
 	s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
 		current.Phase = "stopping probe"
 		current.MatchedEndpoints = int64(len(endpointIDs))
+		current.ProcessedEndpoints = 0
+		current.DeletedEndpoints = 0
+		current.TotalPingRows = 0
+		current.DeletedPingRows = 0
+		current.ProgressPct = 0
 		current.EtaSeconds = nil
 		if len(endpointIDs) == 0 {
 			current.ProgressPct = 100
@@ -200,9 +214,9 @@ func (s *Server) runDeleteJob(job *inventoryDeleteJobState, endpointIDs []int64)
 		current.Phase = "pausing maintenance jobs"
 	})
 
-	pausedJobs, err := s.store.PauseContinuousAggregateRefreshJobs(context.Background())
+	pausedJobs, err := s.store.PauseMaintenanceJobs(context.Background())
 	if err != nil {
-		log.Printf("delete job %s: failed to pause continuous aggregate refresh jobs: %v", jobID, err)
+		log.Printf("delete job %s: failed to pause maintenance jobs: %v", jobID, err)
 		pausedJobs = nil
 	}
 
@@ -220,22 +234,21 @@ func (s *Server) runDeleteJob(job *inventoryDeleteJobState, endpointIDs []int64)
 		current.Phase = "deleting endpoints"
 	})
 
-	deletedCount, err := s.store.DeleteInventoryEndpointsByIDs(
+	deletedCount, totalPingRows, err := s.store.DeleteInventoryEndpointsByIDsWithProgress(
 		context.Background(),
 		endpointIDs,
 		deleteJobBatchSize,
-		func(processed int64, deleted int64) {
+		deleteJobPingRowBatch,
+		func(progress store.InventoryDeleteProgress) {
 			s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
-				current.ProcessedEndpoints = processed
-				current.DeletedEndpoints = deleted
-				if current.MatchedEndpoints > 0 {
-					current.ProgressPct = float64(processed) * 100 / float64(current.MatchedEndpoints)
-					if current.ProgressPct > 100 {
-						current.ProgressPct = 100
-					}
-				}
-				current.EtaSeconds = estimateDeleteJobETASeconds(current.MatchedEndpoints, processed, current.StartedAt)
-				current.Phase = "deleting endpoints"
+				current.Phase = progress.Phase
+				current.MatchedEndpoints = progress.MatchedEndpoints
+				current.ProcessedEndpoints = progress.ProcessedEndpoints
+				current.DeletedEndpoints = progress.DeletedEndpoints
+				current.TotalPingRows = progress.TotalPingRows
+				current.DeletedPingRows = progress.DeletedPingRows
+				current.ProgressPct = computeDeleteJobProgressPct(progress)
+				current.EtaSeconds = estimateDeleteJobETAFromProgress(current.ProgressPct, current.StartedAt)
 			})
 		},
 	)
@@ -260,6 +273,8 @@ func (s *Server) runDeleteJob(job *inventoryDeleteJobState, endpointIDs []int64)
 
 	s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
 		current.DeletedEndpoints = deletedCount
+		current.TotalPingRows = totalPingRows
+		current.DeletedPingRows = totalPingRows
 		current.ProcessedEndpoints = current.MatchedEndpoints
 		current.ProgressPct = 100
 		etaZero := int64(0)
@@ -269,20 +284,54 @@ func (s *Server) runDeleteJob(job *inventoryDeleteJobState, endpointIDs []int64)
 	s.completeDeleteJob(jobID, model.InventoryDeleteJobStateCompleted, "")
 }
 
-func estimateDeleteJobETASeconds(matched int64, processed int64, startedAt *time.Time) *int64 {
-	if startedAt == nil || matched <= 0 || processed <= 0 || processed >= matched {
+func computeDeleteJobProgressPct(progress store.InventoryDeleteProgress) float64 {
+	endpointPct := 0.0
+	if progress.MatchedEndpoints > 0 {
+		endpointPct = float64(progress.ProcessedEndpoints) / float64(progress.MatchedEndpoints)
+	}
+	if endpointPct < 0 {
+		endpointPct = 0
+	} else if endpointPct > 1 {
+		endpointPct = 1
+	}
+
+	if progress.TotalPingRows <= 0 {
+		return endpointPct * 100
+	}
+
+	pingPct := float64(progress.DeletedPingRows) / float64(progress.TotalPingRows)
+	if pingPct < 0 {
+		pingPct = 0
+	} else if pingPct > 1 {
+		pingPct = 1
+	}
+
+	// ping history deletion dominates runtime for large inventory purges.
+	const pingWeight = 0.85
+	const endpointWeight = 0.15
+	overall := (pingPct * pingWeight) + (endpointPct * endpointWeight)
+	if overall < 0 {
+		overall = 0
+	} else if overall > 1 {
+		overall = 1
+	}
+	return overall * 100
+}
+
+func estimateDeleteJobETAFromProgress(progressPct float64, startedAt *time.Time) *int64 {
+	if startedAt == nil || progressPct <= 0 || progressPct >= 100 {
 		return nil
 	}
 	elapsedSeconds := time.Since(*startedAt).Seconds()
 	if elapsedSeconds <= 0 {
 		return nil
 	}
-	rate := float64(processed) / elapsedSeconds
-	if rate <= 0 {
+	totalEstimatedSeconds := elapsedSeconds * (100.0 / progressPct)
+	remainingSeconds := totalEstimatedSeconds - elapsedSeconds
+	if remainingSeconds <= 0 {
 		return nil
 	}
-	remaining := float64(matched - processed)
-	eta := int64(math.Ceil(remaining / rate))
+	eta := int64(math.Ceil(remainingSeconds))
 	if eta < 0 {
 		eta = 0
 	}
@@ -595,6 +644,20 @@ func (s *Server) handleInventoryEndpointCreate(w http.ResponseWriter, r *http.Re
 	if req.PortType != "" && req.PortType != "access" && req.PortType != "trunk" {
 		util.WriteError(w, http.StatusBadRequest, "port_type must be access, trunk, or empty")
 		return
+	}
+	if req.GroupID != nil {
+		if *req.GroupID < 1 {
+			util.WriteError(w, http.StatusBadRequest, "group_id must be a positive integer")
+			return
+		}
+		if _, err := s.store.GetGroupByID(r.Context(), *req.GroupID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				util.WriteError(w, http.StatusNotFound, "group not found")
+				return
+			}
+			util.WriteError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 
 	item, err := s.store.CreateInventoryEndpoint(r.Context(), req)

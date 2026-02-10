@@ -52,6 +52,15 @@ type ProbeTarget struct {
 	Hostname   string `json:"hostname"`
 }
 
+type InventoryDeleteProgress struct {
+	Phase              string
+	MatchedEndpoints   int64
+	ProcessedEndpoints int64
+	DeletedEndpoints   int64
+	TotalPingRows      int64
+	DeletedPingRows    int64
+}
+
 func New(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
@@ -1148,8 +1157,14 @@ func (s *Store) GetInventoryEndpointByID(ctx context.Context, endpointID int64) 
 }
 
 func (s *Store) CreateInventoryEndpoint(ctx context.Context, payload model.InventoryEndpointCreate) (model.InventoryEndpointView, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return model.InventoryEndpointView{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	var endpointID int64
-	err := s.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO inventory_endpoint(ip, hostname, mac, vlan, switch_name, port, port_type, description, updated_at)
 		VALUES ($1::inet, $2, $3, $4, $5, $6, $7, $8, now())
 		ON CONFLICT (ip) DO NOTHING
@@ -1168,6 +1183,22 @@ func (s *Store) CreateInventoryEndpoint(ctx context.Context, payload model.Inven
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.InventoryEndpointView{}, ErrEndpointIPExists
 		}
+		return model.InventoryEndpointView{}, err
+	}
+
+	if payload.GroupID != nil {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO group_member(group_id, endpoint_id)
+			VALUES ($1, $2)
+			ON CONFLICT (endpoint_id) DO UPDATE
+			SET group_id = EXCLUDED.group_id
+			WHERE group_member.group_id IS DISTINCT FROM EXCLUDED.group_id
+		`, *payload.GroupID, endpointID); err != nil {
+			return model.InventoryEndpointView{}, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return model.InventoryEndpointView{}, err
 	}
 
@@ -1239,19 +1270,122 @@ func (s *Store) DeleteInventoryEndpointsByIDs(
 	batchSize int,
 	onBatch func(processed int64, deleted int64),
 ) (int64, error) {
+	deletedCount, _, err := s.DeleteInventoryEndpointsByIDsWithProgress(ctx, endpointIDs, batchSize, 0, func(progress InventoryDeleteProgress) {
+		if onBatch != nil {
+			onBatch(progress.ProcessedEndpoints, progress.DeletedEndpoints)
+		}
+	})
+	return deletedCount, err
+}
+
+func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
+	ctx context.Context,
+	endpointIDs []int64,
+	endpointBatchSize int,
+	pingRowBatchSize int,
+	onProgress func(progress InventoryDeleteProgress),
+) (int64, int64, error) {
 	endpointIDs = uniqueInt64(endpointIDs)
 	if len(endpointIDs) == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
-	if batchSize <= 0 {
-		batchSize = 100
+	if endpointBatchSize <= 0 {
+		endpointBatchSize = 500
+	}
+	if pingRowBatchSize <= 0 {
+		pingRowBatchSize = 25000
+	}
+
+	matchedEndpoints := int64(len(endpointIDs))
+	totalPingRows := int64(0)
+	err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM ping_raw
+		WHERE endpoint_id = ANY($1)
+	`, endpointIDs).Scan(&totalPingRows)
+	if err != nil {
+		return 0, 0, err
 	}
 
 	var processedCount int64
+	var deletedPingRows int64
 	var deletedCount int64
 
-	for start := 0; start < len(endpointIDs); start += batchSize {
-		end := start + batchSize
+	if onProgress != nil {
+		onProgress(InventoryDeleteProgress{
+			Phase:            "deleting ping history",
+			MatchedEndpoints: matchedEndpoints,
+			TotalPingRows:    totalPingRows,
+		})
+	}
+
+	for totalPingRows > 0 {
+		if err := ctx.Err(); err != nil {
+			return deletedCount, totalPingRows, err
+		}
+
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			return deletedCount, totalPingRows, err
+		}
+
+		if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, totalPingRows, err
+		}
+		if _, err := tx.Exec(ctx, `SET LOCAL synchronous_commit = OFF`); err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, totalPingRows, err
+		}
+
+		pingDeleteCmd, err := tx.Exec(ctx, `
+			WITH doomed AS (
+				SELECT ctid
+				FROM ping_raw
+				WHERE endpoint_id = ANY($1::BIGINT[])
+				ORDER BY endpoint_id, ts DESC
+				LIMIT $2
+			)
+			DELETE FROM ping_raw pr
+			USING doomed d
+			WHERE pr.ctid = d.ctid
+		`, endpointIDs, pingRowBatchSize)
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, totalPingRows, err
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return deletedCount, totalPingRows, err
+		}
+
+		deletedRows := pingDeleteCmd.RowsAffected()
+		if deletedRows == 0 {
+			break
+		}
+
+		deletedPingRows += deletedRows
+		if deletedPingRows > totalPingRows {
+			deletedPingRows = totalPingRows
+		}
+
+		if onProgress != nil {
+			onProgress(InventoryDeleteProgress{
+				Phase:              "deleting ping history",
+				MatchedEndpoints:   matchedEndpoints,
+				ProcessedEndpoints: processedCount,
+				DeletedEndpoints:   deletedCount,
+				TotalPingRows:      totalPingRows,
+				DeletedPingRows:    deletedPingRows,
+			})
+		}
+	}
+
+	for start := 0; start < len(endpointIDs); start += endpointBatchSize {
+		if err := ctx.Err(); err != nil {
+			return deletedCount, totalPingRows, err
+		}
+		end := start + endpointBatchSize
 		if end > len(endpointIDs) {
 			end = len(endpointIDs)
 		}
@@ -1259,68 +1393,77 @@ func (s *Store) DeleteInventoryEndpointsByIDs(
 
 		tx, err := s.pool.Begin(ctx)
 		if err != nil {
-			return deletedCount, err
+			return deletedCount, totalPingRows, err
 		}
 
 		if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, err
+			return deletedCount, totalPingRows, err
 		}
 		if _, err := tx.Exec(ctx, `SET LOCAL synchronous_commit = OFF`); err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, err
+			return deletedCount, totalPingRows, err
 		}
 
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM endpoint_stats_current
+			WHERE endpoint_id = ANY($1::BIGINT[])
+		`, batchIDs); err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, totalPingRows, err
+		}
+
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM group_member
+			WHERE endpoint_id = ANY($1::BIGINT[])
+		`, batchIDs); err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, totalPingRows, err
+		}
 		cmd, err := tx.Exec(ctx, `
-			WITH doomed AS (
-				SELECT DISTINCT UNNEST($1::BIGINT[]) AS endpoint_id
-			),
-			deleted_ping_raw AS (
-				DELETE FROM ping_raw pr
-				USING doomed d
-				WHERE pr.endpoint_id = d.endpoint_id
-			),
-			deleted_stats AS (
-				DELETE FROM endpoint_stats_current esc
-				USING doomed d
-				WHERE esc.endpoint_id = d.endpoint_id
-			),
-			deleted_group_member AS (
-				DELETE FROM group_member gm
-				USING doomed d
-				WHERE gm.endpoint_id = d.endpoint_id
-			)
-			DELETE FROM inventory_endpoint ie
-			USING doomed d
-			WHERE ie.id = d.endpoint_id
+			DELETE FROM inventory_endpoint
+			WHERE id = ANY($1::BIGINT[])
 		`, batchIDs)
 		if err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, err
+			return deletedCount, totalPingRows, err
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			return deletedCount, err
+			return deletedCount, totalPingRows, err
 		}
 
 		processedCount += int64(len(batchIDs))
 		deletedCount += cmd.RowsAffected()
-		if onBatch != nil {
-			onBatch(processedCount, deletedCount)
+		if onProgress != nil {
+			onProgress(InventoryDeleteProgress{
+				Phase:              "deleting endpoints",
+				MatchedEndpoints:   matchedEndpoints,
+				ProcessedEndpoints: processedCount,
+				DeletedEndpoints:   deletedCount,
+				TotalPingRows:      totalPingRows,
+				DeletedPingRows:    deletedPingRows,
+			})
 		}
 	}
 
-	return deletedCount, nil
+	return deletedCount, totalPingRows, nil
 }
 
-func (s *Store) PauseContinuousAggregateRefreshJobs(ctx context.Context) ([]int64, error) {
+func (s *Store) PauseMaintenanceJobs(ctx context.Context) ([]int64, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT job_id
 		FROM timescaledb_information.jobs
 		WHERE scheduled = true
-		  AND proc_name = 'policy_refresh_continuous_aggregate'
+		  AND proc_name = ANY($1::TEXT[])
 		ORDER BY job_id
-	`)
+	`, []string{
+		"policy_refresh_continuous_aggregate",
+		"policy_compression",
+		"policy_recompression",
+		"policy_retention",
+		"policy_reorder",
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1344,14 +1487,20 @@ func (s *Store) PauseContinuousAggregateRefreshJobs(ctx context.Context) ([]int6
 		}
 	}
 
-	// Best-effort cancellation of currently running refresh workers so delete jobs
-	// do not compete with heavy aggregate refresh I/O while purge is active.
+	// Best-effort cancellation of currently running maintenance workers so delete
+	// jobs do not compete with heavy background I/O while purge is active.
 	_, _ = s.pool.Exec(ctx, `
 		SELECT pg_cancel_backend(pid)
 		FROM pg_stat_activity
 		WHERE datname = current_database()
 		  AND pid <> pg_backend_pid()
-		  AND query ILIKE 'CALL _timescaledb_functions.policy_refresh_continuous_aggregate%'
+		  AND (
+		    query ILIKE 'CALL _timescaledb_functions.policy_refresh_continuous_aggregate%'
+		    OR query ILIKE 'CALL _timescaledb_functions.policy_compression%'
+		    OR query ILIKE 'CALL _timescaledb_functions.policy_recompression%'
+		    OR query ILIKE 'CALL _timescaledb_functions.policy_retention%'
+		    OR query ILIKE 'CALL _timescaledb_functions.policy_reorder%'
+		  )
 	`)
 
 	return jobIDs, nil

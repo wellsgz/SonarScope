@@ -71,6 +71,7 @@ export type InventoryEndpointCreateRequest = {
   port?: string;
   port_type?: string;
   description?: string;
+  group_id?: number;
 };
 
 export type Group = {
@@ -169,6 +170,8 @@ export type InventoryDeleteJobStatus = {
   matched_endpoints?: number;
   processed_endpoints?: number;
   deleted_endpoints?: number;
+  total_ping_rows?: number;
+  deleted_ping_rows?: number;
   progress_pct?: number;
   eta_seconds?: number;
   phase?: string;

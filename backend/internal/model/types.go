@@ -111,6 +111,7 @@ type InventoryEndpointCreate struct {
 	Port        string `json:"port"`
 	PortType    string `json:"port_type"`
 	Description string `json:"description"`
+	GroupID     *int64 `json:"group_id,omitempty"`
 }
 
 type Group struct {
@@ -263,6 +264,8 @@ type InventoryDeleteJobStatusResponse struct {
 	MatchedEndpoints   int64                   `json:"matched_endpoints"`
 	ProcessedEndpoints int64                   `json:"processed_endpoints"`
 	DeletedEndpoints   int64                   `json:"deleted_endpoints"`
+	TotalPingRows      int64                   `json:"total_ping_rows"`
+	DeletedPingRows    int64                   `json:"deleted_ping_rows"`
 	ProgressPct        float64                 `json:"progress_pct"`
 	EtaSeconds         *int64                  `json:"eta_seconds,omitempty"`
 	Phase              string                  `json:"phase,omitempty"`

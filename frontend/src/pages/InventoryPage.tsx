@@ -96,7 +96,8 @@ export function InventoryPage() {
     switch: "",
     port: "",
     port_type: "",
-    description: ""
+    description: "",
+    group_id: undefined
   };
 
   const [file, setFile] = useState<File | null>(null);
@@ -343,6 +344,15 @@ export function InventoryPage() {
     }
     return formatEta(deleteJobStatus?.eta_seconds);
   }, [deleteInProgress, deleteJobStatus?.eta_seconds]);
+
+  const deleteJobPingLabel = useMemo(() => {
+    const totalPingRows = deleteJobStatus?.total_ping_rows || 0;
+    if (totalPingRows <= 0) {
+      return "";
+    }
+    const deletedPingRows = deleteJobStatus?.deleted_ping_rows || 0;
+    return `${deletedPingRows}/${totalPingRows} ping rows purged`;
+  }, [deleteJobStatus?.total_ping_rows, deleteJobStatus?.deleted_ping_rows]);
 
   const groupAssignmentInvalid =
     assignToGroup &&
@@ -619,6 +629,26 @@ export function InventoryPage() {
                 placeholder="server-a-01"
               />
             </label>
+            <label>
+              Group (optional)
+              <select
+                value={singleEndpoint.group_id ? String(singleEndpoint.group_id) : ""}
+                onChange={(event) =>
+                  setSingleEndpoint((prev) => ({
+                    ...prev,
+                    group_id: event.target.value ? Number(event.target.value) : undefined
+                  }))
+                }
+                disabled={groupsQuery.isLoading}
+              >
+                <option value="">Default (no group)</option>
+                {(groupsQuery.data || []).map((group) => (
+                  <option key={group.id} value={String(group.id)}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <details
@@ -740,7 +770,8 @@ export function InventoryPage() {
                   switch: singleEndpoint.switch?.trim() || "",
                   port: singleEndpoint.port?.trim() || "",
                   port_type: singleEndpoint.port_type?.trim() || "",
-                  description: singleEndpoint.description?.trim() || ""
+                  description: singleEndpoint.description?.trim() || "",
+                  group_id: singleEndpoint.group_id
                 })
               }
             >
@@ -1017,8 +1048,11 @@ export function InventoryPage() {
                   />
                 </div>
                 <div className="field-help">
-                  {deleteJobTargetLabel} · {(deleteJobStatus?.phase || "processing")} · {deleteJobStatus?.processed_endpoints || 0}/
-                  {deleteJobStatus?.matched_endpoints || 0} processed · {deleteJobStatus?.deleted_endpoints || 0} deleted
+                  {deleteJobTargetLabel} · {(deleteJobStatus?.phase || "processing")}
+                  {deleteJobPingLabel ? ` · ${deleteJobPingLabel}` : ""}
+                  {" · "}
+                  {deleteJobStatus?.processed_endpoints || 0}/{deleteJobStatus?.matched_endpoints || 0} endpoints processed ·{" "}
+                  {deleteJobStatus?.deleted_endpoints || 0} deleted
                 </div>
               </div>
             ) : null}
