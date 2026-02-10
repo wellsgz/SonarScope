@@ -30,6 +30,10 @@ function formatLatency(value: number): string {
   return `${value.toFixed(2)} ms`;
 }
 
+function formatLatencyAxis(value: number): string {
+  return `${value.toFixed(0)} ms`;
+}
+
 function metricMeta(metric: Metric): "loss" | "latency" {
   return metric === "loss_rate" ? "loss" : "latency";
 }
@@ -221,6 +225,41 @@ function readToken(name: string, fallback: string): string {
   return value || fallback;
 }
 
+function resolveLossColor(lossValue: number | null, palette: { success: string; warning: string; danger: string; textSubtle: string }): string {
+  if (lossValue === null) {
+    return palette.textSubtle;
+  }
+  if (lossValue <= 0) {
+    return palette.success;
+  }
+  if (lossValue <= 1) {
+    return palette.warning;
+  }
+  if (lossValue <= 10) {
+    return "#f97316";
+  }
+  return palette.danger;
+}
+
+function getLatestLossValue(points: TimeSeriesPoint[]): number | null {
+  let latestTs = Number.NEGATIVE_INFINITY;
+  let latestLoss: number | null = null;
+  for (const point of points) {
+    if (point.sent_count <= 0 || point.loss_rate === null || point.loss_rate === undefined) {
+      continue;
+    }
+    const ts = new Date(point.bucket).getTime();
+    if (Number.isNaN(ts)) {
+      continue;
+    }
+    if (ts >= latestTs) {
+      latestTs = ts;
+      latestLoss = point.loss_rate;
+    }
+  }
+  return latestLoss;
+}
+
 export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeEnd }: Props) {
   const palette = {
     textMuted: readToken("--color-text-muted", "#b4c3db"),
@@ -235,11 +274,33 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
     const buckets = buildBuckets(rangeStart, rangeEnd, toStepMs(rollup));
     const loss = buildMetricSeries(points, "loss_rate", buckets, rollup, palette.textSubtle, palette.success);
     const latency = buildMetricSeries(points, "avg_latency_ms", buckets, rollup, palette.textSubtle, palette.success);
+    const latestLossValue = getLatestLossValue(points);
+    const lossLegendColor = resolveLossColor(latestLossValue, palette);
+    const lossMeasured = loss.measured.map((seriesDef) => ({
+      ...seriesDef,
+      color: lossLegendColor,
+      lineStyle: { ...(seriesDef.lineStyle as Record<string, unknown>), color: lossLegendColor },
+      itemStyle: { color: lossLegendColor }
+    }));
+    const latencyMeasured = latency.measured.map((seriesDef) => ({
+      ...seriesDef,
+      color: palette.success,
+      lineStyle: { ...(seriesDef.lineStyle as Record<string, unknown>), color: palette.success },
+      itemStyle: { color: palette.success }
+    }));
 
-    const series = [...loss.measured, ...loss.noProbe, ...latency.measured, ...latency.noProbe];
-    const measuredLossCount = loss.measured.length;
-    const lossLegendNames = Array.from(new Set(loss.measured.map((item) => item.name as string)));
-    const latencyLegendNames = Array.from(new Set(latency.measured.map((item) => item.name as string)));
+    const maxLatency = points.reduce((acc, point) => {
+      if (point.avg_latency_ms === null || point.avg_latency_ms === undefined) {
+        return acc;
+      }
+      return Math.max(acc, point.avg_latency_ms);
+    }, 0);
+    const latencyAxisMax = Math.max(20, Math.ceil(maxLatency / 20) * 20);
+
+    const series = [...lossMeasured, ...loss.noProbe, ...latencyMeasured, ...latency.noProbe];
+    const measuredLossCount = lossMeasured.length;
+    const lossLegendNames = Array.from(new Set(lossMeasured.map((item) => item.name as string)));
+    const latencyLegendNames = Array.from(new Set(latencyMeasured.map((item) => item.name as string)));
     const lossSeriesIndices = Array.from({ length: measuredLossCount }, (_, index) => index);
 
     return {
@@ -346,6 +407,9 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
         {
           type: "value",
           name: "Loss Rate (%)",
+          min: 0,
+          max: 100,
+          interval: 10,
           axisLabel: {
             color: palette.textSubtle,
             formatter: (value: number) => formatPercent(value)
@@ -356,9 +420,12 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
         {
           type: "value",
           name: "Latency (ms)",
+          min: 0,
+          max: latencyAxisMax,
+          interval: 20,
           axisLabel: {
             color: palette.textSubtle,
-            formatter: (value: number) => formatLatency(value)
+            formatter: (value: number) => formatLatencyAxis(value)
           },
           nameTextStyle: { color: palette.textMuted },
           splitLine: { show: false }
