@@ -347,7 +347,7 @@ label {
   overflow-y: auto;
   max-height: 100%;
   max-width: 100%;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
 }
 
 .monitor-table {
