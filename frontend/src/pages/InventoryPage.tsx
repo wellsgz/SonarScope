@@ -100,8 +100,21 @@ export function InventoryPage() {
   };
 
   const [file, setFile] = useState<File | null>(null);
+  const [importFileInputKey, setImportFileInputKey] = useState(0);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [selection, setSelection] = useState<Record<string, "add" | "update">>({});
+  const [importExpanded, setImportExpanded] = useState(false);
+  const [singleEndpointExpanded, setSingleEndpointExpanded] = useState(false);
+  const [lastImportSummary, setLastImportSummary] = useState<{
+    added: number;
+    updated: number;
+    errors: number;
+    group_name?: string;
+    assigned_added?: number;
+    resolved_endpoints?: number;
+    valid_upload_ips?: number;
+    unresolved_ips?: number;
+  } | null>(null);
   const [assignToGroup, setAssignToGroup] = useState(false);
   const [groupAssignmentMode, setGroupAssignmentMode] = useState<"existing" | "create">("existing");
   const [selectedGroupID, setSelectedGroupID] = useState("");
@@ -194,7 +207,25 @@ export function InventoryPage() {
               : undefined
           })
         : Promise.reject(new Error("No preview available")),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      setLastImportSummary({
+        added: data.added,
+        updated: data.updated,
+        errors: data.errors.length,
+        group_name: data.group_assignment?.group_name,
+        assigned_added: data.group_assignment?.assigned_added,
+        resolved_endpoints: data.group_assignment?.resolved_endpoints,
+        valid_upload_ips: data.group_assignment?.valid_upload_ips,
+        unresolved_ips: data.group_assignment?.unresolved_ips
+      });
+      setPreview(null);
+      setSelection({});
+      setFile(null);
+      setImportFileInputKey((value) => value + 1);
+      setAssignToGroup(false);
+      setGroupAssignmentMode("existing");
+      setSelectedGroupID("");
+      setNewGroupName("");
       invalidateInventoryAndMonitorQueries();
     }
   });
@@ -320,15 +351,37 @@ export function InventoryPage() {
 
   return (
     <div className="inventory-page-v13">
-      <section className="panel inventory-import-panel">
-        <div className="panel-header">
-          <h2 className="panel-title">Inventory Import</h2>
-          <p className="panel-subtitle">Upload CSV/XLSX, review diff, and apply selected Add/Update actions.</p>
+      <section
+        className={`panel inventory-import-panel inventory-collapsible ${importExpanded ? "is-expanded" : "is-collapsed"}`}
+      >
+        <div className="panel-header inventory-section-header">
+          <div className="inventory-section-heading">
+            <h2 className="panel-title">Inventory Import</h2>
+            <p className="panel-subtitle">Upload CSV/XLSX, review diff, and apply selected Add/Update actions.</p>
+            {lastImportSummary ? (
+              <div className="inventory-inline-summary" role="status" aria-live="polite">
+                Last import: Added {lastImportSummary.added}, Updated {lastImportSummary.updated}, Errors{" "}
+                {lastImportSummary.errors}
+                {lastImportSummary.group_name ? (
+                  <> · Group "{lastImportSummary.group_name}" assigned {lastImportSummary.assigned_added || 0}</>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          <button className="btn btn-small" type="button" onClick={() => setImportExpanded((current) => !current)}>
+            {importExpanded ? "Collapse" : "Expand"}
+          </button>
         </div>
 
-        <div className="inventory-panel-body">
+        {importExpanded ? (
+          <div className="inventory-panel-body">
           <div className="inventory-actions">
-            <input type="file" accept=".csv,.xlsx,.xls,.xlsm" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            <input
+              key={importFileInputKey}
+              type="file"
+              accept=".csv,.xlsx,.xls,.xlsm"
+              onChange={(event) => setFile(event.target.files?.[0] || null)}
+            />
             <button className="btn btn-primary" type="button" onClick={() => file && previewMutation.mutate(file)} disabled={!file}>
               Preview
             </button>
@@ -515,16 +568,30 @@ export function InventoryPage() {
               </table>
             </div>
           )}
-        </div>
+          </div>
+        ) : null}
       </section>
 
-      <section className="panel inventory-single-add-panel">
-        <div className="panel-header">
-          <h2 className="panel-title">Add Single Endpoint</h2>
-          <p className="panel-subtitle">Quickly add one endpoint. If hostname is blank, IP will be used.</p>
+      <section
+        className={`panel inventory-single-add-panel inventory-collapsible ${singleEndpointExpanded ? "is-expanded" : "is-collapsed"}`}
+      >
+        <div className="panel-header inventory-section-header">
+          <div className="inventory-section-heading">
+            <h2 className="panel-title">Add Single Endpoint</h2>
+            <p className="panel-subtitle">Quickly add one endpoint. If hostname is blank, IP will be used.</p>
+            {createSingleEndpointMutation.data ? (
+              <div className="inventory-inline-summary" role="status" aria-live="polite">
+                Last added: {createSingleEndpointMutation.data.ip_address} ({createSingleEndpointMutation.data.hostname})
+              </div>
+            ) : null}
+          </div>
+          <button className="btn btn-small" type="button" onClick={() => setSingleEndpointExpanded((current) => !current)}>
+            {singleEndpointExpanded ? "Collapse" : "Expand"}
+          </button>
         </div>
 
-        <div className="inventory-panel-body">
+        {singleEndpointExpanded ? (
+          <div className="inventory-panel-body">
           <div className="inventory-single-grid">
             <label>
               IP Address (required)
@@ -680,7 +747,8 @@ export function InventoryPage() {
               Add Endpoint
             </button>
           </div>
-        </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="panel inventory-list-panel">

@@ -263,6 +263,28 @@
   min-width: 0;
 }
 
+.inventory-collapsible.is-collapsed .panel-header {
+  border-bottom: none;
+  padding-bottom: var(--space-4);
+}
+
+.inventory-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.inventory-section-heading {
+  min-width: 0;
+}
+
+.inventory-inline-summary {
+  margin-top: var(--space-2);
+  font-size: 0.77rem;
+  color: var(--color-text-muted);
+}
+
 .inventory-import-panel,
 .inventory-list-panel {
   padding: 0;
