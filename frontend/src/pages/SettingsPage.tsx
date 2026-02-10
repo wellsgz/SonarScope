@@ -251,28 +251,6 @@ export function SettingsPage() {
 
       <section className="panel settings-page">
         <div className="panel-header">
-          <h2 className="panel-title">Operational Guidance</h2>
-          <p className="panel-subtitle">Recommended defaults for stable high-volume monitoring.</p>
-        </div>
-
-        <div className="settings-panel-body settings-guidance-stack">
-          <div className="info-banner">
-            <strong>10,000 endpoints baseline</strong>
-            <p>Use intervals above 1s unless infrastructure is sized for sustained high PPS.</p>
-          </div>
-          <div className="info-banner">
-            <strong>Data quality</strong>
-            <p>Keep payload size consistent across environments for comparable latency trends.</p>
-          </div>
-          <div className="info-banner">
-            <strong>NOC readiness</strong>
-            <p>Pair monitor auto-refresh with websocket updates to reduce blind spots during incidents.</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="panel settings-page settings-panel-span-2">
-        <div className="panel-header">
           <h2 className="panel-title">Inventory Policy</h2>
           <p className="panel-subtitle">Configure custom endpoint metadata fields for inventory and monitor views.</p>
         </div>

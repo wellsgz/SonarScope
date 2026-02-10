@@ -503,18 +503,10 @@
   flex-direction: column;
 }
 
-.settings-panel-span-2 {
-  grid-column: 1 / -1;
-}
-
 .settings-panel-body {
   padding: var(--space-4);
   display: grid;
   gap: var(--space-3);
-}
-
-.settings-guidance-stack {
-  align-content: start;
 }
 
 .settings-save-row {
