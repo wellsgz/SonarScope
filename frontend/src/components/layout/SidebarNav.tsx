@@ -84,8 +84,7 @@ export function SidebarNav({
     : probeStatus.scope === "groups"
       ? `Groups (${probeStatus.group_ids.length}) · Endpoints (${activeScopeEndpointCount})`
       : "All Endpoints";
-
-  const footerSummary = probeStatus.running ? "Probing" : "Stopped";
+  const probeStatusValue = probeStatus.running ? "Probing" : "Stopped";
 
   function toggleDraftGroup(groupID: number) {
     setDraftGroupIDs((current) => {
@@ -227,16 +226,20 @@ export function SidebarNav({
             aria-live="polite"
           >
             <span className="sidebar-probe-target-indicator" aria-hidden />
-            <span className="sidebar-probe-target-label">Target:</span>
-            <span className="sidebar-probe-target-value">{targetValue}</span>
+            <div className="sidebar-probe-target-content">
+              <div className="sidebar-probe-target-row">
+                <span className="sidebar-probe-target-label">Status:</span>
+                <span className="sidebar-probe-target-status">{probeStatusValue}</span>
+              </div>
+              <div className="sidebar-probe-target-row">
+                <span className="sidebar-probe-target-label">Target:</span>
+                <span className="sidebar-probe-target-value">{targetValue}</span>
+              </div>
+            </div>
           </div>
         </section>
 
         <div className="sidebar-footer">
-          <div className={`sidebar-footer-status ${probeStatus.running ? "sidebar-footer-status-live" : "sidebar-footer-status-stopped"}`}>
-            <span className={`status-dot ${probeStatus.running ? "status-dot-live" : "status-dot-stopped"}`} aria-hidden />
-            {footerSummary}
-          </div>
           <ThemeToggle mode={mode} onToggle={onToggleTheme} />
         </div>
       </div>

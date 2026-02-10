@@ -139,23 +139,6 @@
   background: color-mix(in srgb, var(--color-danger) 11%, var(--color-surface-elevated));
 }
 
-.status-dot {
-  display: inline-block;
-  width: 0.44rem;
-  height: 0.44rem;
-  border-radius: 50%;
-}
-
-.status-dot-live {
-  background: var(--color-success);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-success) 18%, transparent);
-}
-
-.status-dot-stopped {
-  background: var(--color-danger);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-danger) 18%, transparent);
-}
-
 input,
 select,
 textarea {
