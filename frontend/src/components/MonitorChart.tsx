@@ -299,8 +299,12 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
 
     const series = [...lossMeasured, ...loss.noProbe, ...latencyMeasured, ...latency.noProbe];
     const measuredLossCount = lossMeasured.length;
-    const lossLegendNames = Array.from(new Set(lossMeasured.map((item) => item.name as string)));
-    const latencyLegendNames = Array.from(new Set(latencyMeasured.map((item) => item.name as string)));
+    const lossLegendNames = Array.from(
+      new Set(loss.measured.map((item) => ((item as { name?: string }).name ?? "Loss %")))
+    );
+    const latencyLegendNames = Array.from(
+      new Set(latency.measured.map((item) => ((item as { name?: string }).name ?? "Latency")))
+    );
     const lossSeriesIndices = Array.from({ length: measuredLossCount }, (_, index) => index);
 
     return {
