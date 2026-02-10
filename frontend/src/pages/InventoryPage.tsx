@@ -539,6 +539,7 @@ export function InventoryPage() {
       (groupAssignmentMode === "create" && newGroupName.trim() === ""));
   const exportDisabled =
     exportCSVMutation.isPending || inventoryQuery.isLoading || (inventoryQuery.data?.length || 0) === 0;
+  const filteredEndpointCount = inventoryQuery.data?.length ?? 0;
 
   const dismissDeleteNotice = () => {
     const key = completionNoticeKey(deleteJobStatus);
@@ -1066,7 +1067,12 @@ export function InventoryPage() {
               </button>
             </div>
           </div>
-          <p className="panel-subtitle">Filter and maintain endpoint metadata (IP is immutable).</p>
+          <div className="inventory-subtitle-row">
+            <p className="panel-subtitle">Filter and maintain endpoint metadata (IP is immutable).</p>
+            <div className="inventory-effective-count" role="status" aria-live="polite">
+              {inventoryQuery.isLoading ? "Matching Endpoints: ..." : `Matching Endpoints: ${filteredEndpointCount}`}
+            </div>
+          </div>
         </div>
 
         <div className="inventory-panel-body">
