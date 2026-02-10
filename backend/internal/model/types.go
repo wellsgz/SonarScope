@@ -46,6 +46,9 @@ type MonitorEndpoint struct {
 	LastFailedOn           *time.Time `json:"last_failed_on"`
 	IPAddress              string     `json:"ip_address"`
 	MACAddress             string     `json:"mac_address"`
+	CustomField1Value      string     `json:"custom_field_1_value"`
+	CustomField2Value      string     `json:"custom_field_2_value"`
+	CustomField3Value      string     `json:"custom_field_3_value"`
 	ReplyIPAddress         *string    `json:"reply_ip_address"`
 	LastSuccessOn          *time.Time `json:"last_success_on"`
 	SuccessCount           int64      `json:"success_count"`
@@ -79,39 +82,48 @@ type MonitorEndpointsPageResponse struct {
 }
 
 type InventoryEndpointView struct {
-	EndpointID  int64     `json:"endpoint_id"`
-	Hostname    string    `json:"hostname"`
-	IPAddress   string    `json:"ip_address"`
-	MACAddress  string    `json:"mac_address"`
-	VLAN        string    `json:"vlan"`
-	Switch      string    `json:"switch"`
-	Port        string    `json:"port"`
-	PortType    string    `json:"port_type"`
-	Description string    `json:"description"`
-	Groups      []string  `json:"group"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	EndpointID        int64     `json:"endpoint_id"`
+	Hostname          string    `json:"hostname"`
+	IPAddress         string    `json:"ip_address"`
+	MACAddress        string    `json:"mac_address"`
+	CustomField1Value string    `json:"custom_field_1_value"`
+	CustomField2Value string    `json:"custom_field_2_value"`
+	CustomField3Value string    `json:"custom_field_3_value"`
+	VLAN              string    `json:"vlan"`
+	Switch            string    `json:"switch"`
+	Port              string    `json:"port"`
+	PortType          string    `json:"port_type"`
+	Description       string    `json:"description"`
+	Groups            []string  `json:"group"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type InventoryEndpointUpdate struct {
-	Hostname    string `json:"hostname"`
-	MACAddress  string `json:"mac_address"`
-	VLAN        string `json:"vlan"`
-	Switch      string `json:"switch"`
-	Port        string `json:"port"`
-	PortType    string `json:"port_type"`
-	Description string `json:"description"`
+	Hostname          string `json:"hostname"`
+	MACAddress        string `json:"mac_address"`
+	CustomField1Value string `json:"custom_field_1_value"`
+	CustomField2Value string `json:"custom_field_2_value"`
+	CustomField3Value string `json:"custom_field_3_value"`
+	VLAN              string `json:"vlan"`
+	Switch            string `json:"switch"`
+	Port              string `json:"port"`
+	PortType          string `json:"port_type"`
+	Description       string `json:"description"`
 }
 
 type InventoryEndpointCreate struct {
-	IPAddress   string `json:"ip_address"`
-	Hostname    string `json:"hostname"`
-	MACAddress  string `json:"mac_address"`
-	VLAN        string `json:"vlan"`
-	Switch      string `json:"switch"`
-	Port        string `json:"port"`
-	PortType    string `json:"port_type"`
-	Description string `json:"description"`
-	GroupID     *int64 `json:"group_id,omitempty"`
+	IPAddress         string `json:"ip_address"`
+	Hostname          string `json:"hostname"`
+	MACAddress        string `json:"mac_address"`
+	CustomField1Value string `json:"custom_field_1_value"`
+	CustomField2Value string `json:"custom_field_2_value"`
+	CustomField3Value string `json:"custom_field_3_value"`
+	VLAN              string `json:"vlan"`
+	Switch            string `json:"switch"`
+	Port              string `json:"port"`
+	PortType          string `json:"port_type"`
+	Description       string `json:"description"`
+	GroupID           *int64 `json:"group_id,omitempty"`
 }
 
 type Group struct {
@@ -124,11 +136,18 @@ type Group struct {
 	EndpointIDs []int64   `json:"endpoint_ids,omitempty"`
 }
 
+type CustomFieldConfig struct {
+	Slot    int    `json:"slot"`
+	Enabled bool   `json:"enabled"`
+	Name    string `json:"name"`
+}
+
 type Settings struct {
-	PingIntervalSec int `json:"ping_interval_sec"`
-	ICMPPayloadSize int `json:"icmp_payload_bytes"`
-	ICMPTimeoutMs   int `json:"icmp_timeout_ms"`
-	AutoRefreshSec  int `json:"auto_refresh_sec"`
+	PingIntervalSec int                 `json:"ping_interval_sec"`
+	ICMPPayloadSize int                 `json:"icmp_payload_bytes"`
+	ICMPTimeoutMs   int                 `json:"icmp_timeout_ms"`
+	AutoRefreshSec  int                 `json:"auto_refresh_sec"`
+	CustomFields    []CustomFieldConfig `json:"custom_fields"`
 }
 
 type TimeSeriesPoint struct {

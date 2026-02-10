@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
   createInventoryEndpoint,
+  getSettings,
   getCurrentDeleteJobStatus,
   importInventoryPreview,
   listGroups,
@@ -13,6 +14,7 @@ import {
   updateInventoryEndpoint
 } from "../api/client";
 import type {
+  CustomFieldConfig,
   ImportCandidate,
   ImportPreview,
   InventoryDeleteJobStatus,
@@ -30,6 +32,9 @@ type FilterState = {
 type InventoryPatch = {
   hostname: string;
   mac_address: string;
+  custom_field_1_value: string;
+  custom_field_2_value: string;
+  custom_field_3_value: string;
   vlan: string;
   switch: string;
   port: string;
@@ -44,10 +49,99 @@ const defaultFilters: FilterState = {
   groups: []
 };
 
+type CustomFieldSlot = 1 | 2 | 3;
+
+type EnabledCustomField = {
+  slot: CustomFieldSlot;
+  name: string;
+};
+
+type CustomSearchState = {
+  custom1: string;
+  custom2: string;
+  custom3: string;
+};
+
+const defaultCustomSearch: CustomSearchState = {
+  custom1: "",
+  custom2: "",
+  custom3: ""
+};
+
+function normalizeEnabledCustomFields(fields?: CustomFieldConfig[]): EnabledCustomField[] {
+  const bySlot: Record<CustomFieldSlot, EnabledCustomField | null> = {
+    1: null,
+    2: null,
+    3: null
+  };
+  (fields || []).forEach((field) => {
+    if (field.slot < 1 || field.slot > 3) {
+      return;
+    }
+    if (!field.enabled || !field.name.trim()) {
+      return;
+    }
+    const slot = field.slot as CustomFieldSlot;
+    bySlot[slot] = {
+      slot,
+      name: field.name.trim()
+    };
+  });
+  return [bySlot[1], bySlot[2], bySlot[3]].filter((field): field is EnabledCustomField => field !== null);
+}
+
+function customFieldValueBySlot(
+  values: {
+    custom_field_1_value: string;
+    custom_field_2_value: string;
+    custom_field_3_value: string;
+  },
+  slot: CustomFieldSlot
+): string {
+  if (slot === 1) return values.custom_field_1_value;
+  if (slot === 2) return values.custom_field_2_value;
+  return values.custom_field_3_value;
+}
+
+function customSearchValueBySlot(values: CustomSearchState, slot: CustomFieldSlot): string {
+  if (slot === 1) return values.custom1;
+  if (slot === 2) return values.custom2;
+  return values.custom3;
+}
+
+function setCustomSearchBySlot(values: CustomSearchState, slot: CustomFieldSlot, next: string): CustomSearchState {
+  if (slot === 1) return { ...values, custom1: next };
+  if (slot === 2) return { ...values, custom2: next };
+  return { ...values, custom3: next };
+}
+
+function setInventoryPatchCustomFieldValue(
+  values: InventoryPatch,
+  slot: CustomFieldSlot,
+  next: string
+): InventoryPatch {
+  if (slot === 1) return { ...values, custom_field_1_value: next };
+  if (slot === 2) return { ...values, custom_field_2_value: next };
+  return { ...values, custom_field_3_value: next };
+}
+
+function setCreateRequestCustomFieldValue(
+  values: InventoryEndpointCreateRequest,
+  slot: CustomFieldSlot,
+  next: string
+): InventoryEndpointCreateRequest {
+  if (slot === 1) return { ...values, custom_field_1_value: next };
+  if (slot === 2) return { ...values, custom_field_2_value: next };
+  return { ...values, custom_field_3_value: next };
+}
+
 function toPatch(row: InventoryEndpoint): InventoryPatch {
   return {
     hostname: row.hostname,
     mac_address: row.mac_address,
+    custom_field_1_value: row.custom_field_1_value || "",
+    custom_field_2_value: row.custom_field_2_value || "",
+    custom_field_3_value: row.custom_field_3_value || "",
     vlan: row.vlan,
     switch: row.switch,
     port: row.port,
@@ -112,6 +206,9 @@ export function InventoryPage() {
     ip_address: "",
     hostname: "",
     mac_address: "",
+    custom_field_1_value: "",
+    custom_field_2_value: "",
+    custom_field_3_value: "",
     vlan: "",
     switch: "",
     port: "",
@@ -142,6 +239,7 @@ export function InventoryPage() {
   const [newGroupName, setNewGroupName] = useState("");
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
+  const [customSearch, setCustomSearch] = useState<CustomSearchState>(defaultCustomSearch);
   const [editingEndpointID, setEditingEndpointID] = useState<number | null>(null);
   const [editingPatch, setEditingPatch] = useState<InventoryPatch | null>(null);
   const [singleEndpoint, setSingleEndpoint] = useState<InventoryEndpointCreateRequest>(initialSingleEndpoint);
@@ -176,6 +274,10 @@ export function InventoryPage() {
     queryKey: ["groups"],
     queryFn: listGroups
   });
+  const settingsQuery = useQuery({
+    queryKey: ["settings"],
+    queryFn: getSettings
+  });
   const deleteJobStatusQuery = useQuery({
     queryKey: ["inventory-delete-job-current"],
     queryFn: getCurrentDeleteJobStatus,
@@ -187,14 +289,26 @@ export function InventoryPage() {
   filterCards[2].options = filterOptionsQuery.data?.port || [];
   filterCards[3].options = filterOptionsQuery.data?.group || [];
 
+  const enabledCustomFields = useMemo(
+    () => normalizeEnabledCustomFields(settingsQuery.data?.custom_fields),
+    [settingsQuery.data?.custom_fields]
+  );
+  const enabledCustomFieldKey = useMemo(
+    () => enabledCustomFields.map((field) => `${field.slot}:${field.name}`).join("|"),
+    [enabledCustomFields]
+  );
+
   const inventoryQuery = useQuery({
-    queryKey: ["inventory-endpoints", filters],
+    queryKey: ["inventory-endpoints", filters, customSearch, enabledCustomFieldKey],
     queryFn: () =>
       listInventoryEndpoints({
         vlan: filters.vlan,
         switches: filters.switches,
         ports: filters.ports,
-        groups: filters.groups
+        groups: filters.groups,
+        custom1: customSearch.custom1,
+        custom2: customSearch.custom2,
+        custom3: customSearch.custom3
       })
   });
 
@@ -784,6 +898,27 @@ export function InventoryPage() {
                   placeholder="Core uplink"
                 />
               </label>
+              {enabledCustomFields.map((field) => (
+                <label key={`single-custom-field-${field.slot}`}>
+                  {field.name}
+                  <input
+                    value={customFieldValueBySlot(
+                      {
+                        custom_field_1_value: singleEndpoint.custom_field_1_value || "",
+                        custom_field_2_value: singleEndpoint.custom_field_2_value || "",
+                        custom_field_3_value: singleEndpoint.custom_field_3_value || ""
+                      },
+                      field.slot
+                    )}
+                    onChange={(event) =>
+                      setSingleEndpoint((prev) =>
+                        setCreateRequestCustomFieldValue(prev, field.slot, event.target.value)
+                      )
+                    }
+                    placeholder={`Value for ${field.name}`}
+                  />
+                </label>
+              ))}
             </div>
           </details>
 
@@ -811,6 +946,9 @@ export function InventoryPage() {
                   ip_address: singleEndpoint.ip_address?.trim() || "",
                   hostname: singleEndpoint.hostname?.trim() || "",
                   mac_address: singleEndpoint.mac_address?.trim() || "",
+                  custom_field_1_value: singleEndpoint.custom_field_1_value?.trim() || "",
+                  custom_field_2_value: singleEndpoint.custom_field_2_value?.trim() || "",
+                  custom_field_3_value: singleEndpoint.custom_field_3_value?.trim() || "",
                   vlan: singleEndpoint.vlan?.trim() || "",
                   switch: singleEndpoint.switch?.trim() || "",
                   port: singleEndpoint.port?.trim() || "",
@@ -831,7 +969,14 @@ export function InventoryPage() {
         <div className="panel-header">
           <div className="inventory-title-row">
             <h2 className="panel-title">Current Inventory</h2>
-            <button className="btn btn-small" type="button" onClick={() => setFilters(defaultFilters)}>
+            <button
+              className="btn btn-small"
+              type="button"
+              onClick={() => {
+                setFilters(defaultFilters);
+                setCustomSearch(defaultCustomSearch);
+              }}
+            >
               Clear All Filters
             </button>
           </div>
@@ -840,6 +985,23 @@ export function InventoryPage() {
 
         <div className="inventory-panel-body">
           <div className="inventory-filter-section">
+            {enabledCustomFields.length > 0 ? (
+              <div className="inventory-custom-search-grid">
+                {enabledCustomFields.map((field) => (
+                  <label key={`inventory-custom-search-${field.slot}`}>
+                    {field.name} Search
+                    <input
+                      type="text"
+                      value={customSearchValueBySlot(customSearch, field.slot)}
+                      onChange={(event) =>
+                        setCustomSearch((prev) => setCustomSearchBySlot(prev, field.slot, event.target.value))
+                      }
+                      placeholder="Contains match"
+                    />
+                  </label>
+                ))}
+              </div>
+            ) : null}
             <div className="inventory-filter-grid">
               {filterCards.map((filterCard) => {
                 const selectedValues = filters[filterCard.key];
@@ -884,12 +1046,14 @@ export function InventoryPage() {
             updateMutation.error ||
             startDeleteByGroupJobMutation.error ||
             startDeleteAllJobMutation.error ||
+            settingsQuery.error ||
             deleteJobStatusQuery.error) && (
             <div className="error-banner" role="alert" aria-live="assertive">
               {(inventoryQuery.error as Error | undefined)?.message ||
                 (updateMutation.error as Error | undefined)?.message ||
                 (startDeleteByGroupJobMutation.error as Error | undefined)?.message ||
                 (startDeleteAllJobMutation.error as Error | undefined)?.message ||
+                (settingsQuery.error as Error | undefined)?.message ||
                 (deleteJobStatusQuery.error as Error | undefined)?.message}
             </div>
           )}
@@ -939,6 +1103,9 @@ export function InventoryPage() {
                     <th>Hostname</th>
                     <th>IP Address</th>
                     <th>MAC</th>
+                    {enabledCustomFields.map((field) => (
+                      <th key={`inventory-column-custom-${field.slot}`}>{field.name}</th>
+                    ))}
                     <th>VLAN</th>
                     <th>Switch</th>
                     <th>Port</th>
@@ -979,6 +1146,36 @@ export function InventoryPage() {
                             row.mac_address || "-"
                           )}
                         </td>
+                        {enabledCustomFields.map((field) => (
+                          <td key={`inventory-row-${row.endpoint_id}-custom-${field.slot}`}>
+                            {isEditing ? (
+                              <input
+                                value={customFieldValueBySlot(
+                                  {
+                                    custom_field_1_value: editingPatch.custom_field_1_value,
+                                    custom_field_2_value: editingPatch.custom_field_2_value,
+                                    custom_field_3_value: editingPatch.custom_field_3_value
+                                  },
+                                  field.slot
+                                )}
+                                onChange={(event) =>
+                                  setEditingPatch((prev) =>
+                                    prev ? setInventoryPatchCustomFieldValue(prev, field.slot, event.target.value) : prev
+                                  )
+                                }
+                              />
+                            ) : (
+                              customFieldValueBySlot(
+                                {
+                                  custom_field_1_value: row.custom_field_1_value || "",
+                                  custom_field_2_value: row.custom_field_2_value || "",
+                                  custom_field_3_value: row.custom_field_3_value || ""
+                                },
+                                field.slot
+                              ) || "-"
+                            )}
+                          </td>
+                        ))}
                         <td>
                           {isEditing ? (
                             <input

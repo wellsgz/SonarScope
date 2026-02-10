@@ -11,8 +11,14 @@ export type FilterState = {
 
 type Props = {
   filters: FilterState;
+  customFields: Array<{ slot: 1 | 2 | 3; name: string }>;
   hostnameSearch: string;
   macSearch: string;
+  customSearch: {
+    custom1: string;
+    custom2: string;
+    custom3: string;
+  };
   ipListSearch: string;
   options?: FilterOptions;
   quickRange: QuickRange;
@@ -25,9 +31,11 @@ type Props = {
   onClearAllFilters: () => void;
   onHostnameSearchChange: (next: string) => void;
   onMACSearchChange: (next: string) => void;
+  onCustomSearchChange: (slot: 1 | 2 | 3, next: string) => void;
   onIPListSearchChange: (next: string) => void;
   onClearHostnameSearch: () => void;
   onClearMACSearch: () => void;
+  onClearCustomSearch: (slot: 1 | 2 | 3) => void;
   onClearIPListSearch: () => void;
   onQuickRangeChange: (next: QuickRange) => void;
   onCustomStartChange: (value: string) => void;
@@ -40,10 +48,21 @@ function multiSelectValue(event: ChangeEvent<HTMLSelectElement>): string[] {
   return Array.from(event.target.selectedOptions).map((option) => option.value);
 }
 
+function customSearchValueBySlot(
+  customSearch: { custom1: string; custom2: string; custom3: string },
+  slot: 1 | 2 | 3
+): string {
+  if (slot === 1) return customSearch.custom1;
+  if (slot === 2) return customSearch.custom2;
+  return customSearch.custom3;
+}
+
 export function MonitorToolbar({
   filters,
+  customFields,
   hostnameSearch,
   macSearch,
+  customSearch,
   ipListSearch,
   options,
   quickRange,
@@ -56,9 +75,11 @@ export function MonitorToolbar({
   onClearAllFilters,
   onHostnameSearchChange,
   onMACSearchChange,
+  onCustomSearchChange,
   onIPListSearchChange,
   onClearHostnameSearch,
   onClearMACSearch,
+  onClearCustomSearch,
   onClearIPListSearch,
   onQuickRangeChange,
   onCustomStartChange,
@@ -191,6 +212,33 @@ export function MonitorToolbar({
                 </div>
               </label>
             </div>
+            {customFields.length > 0 ? (
+              <div className="search-dual-row">
+                {customFields.map((field) => {
+                  const slot = field.slot as 1 | 2 | 3;
+                  const value = customSearchValueBySlot(customSearch, slot);
+                  return (
+                    <label key={`monitor-custom-search-${field.slot}`}>
+                      {field.name} Search
+                      <div className="search-input-row search-input-row-compact">
+                        <input
+                          type="text"
+                          value={value}
+                          onChange={(event) => onCustomSearchChange(slot, event.target.value)}
+                          placeholder="Contains match"
+                          aria-label={`Search ${field.name}`}
+                        />
+                        {value.trim() ? (
+                          <button className="btn btn-small btn-icon" type="button" onClick={() => onClearCustomSearch(slot)}>
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : null}
             <details className="filter-card filter-ip-details" open={ipListCount > 0}>
               <summary className="filter-card-summary">
                 <span>IP Search List</span>
@@ -205,7 +253,7 @@ export function MonitorToolbar({
                   aria-label="Search by IP list"
                 />
                 <div className="search-input-row">
-                  <span className="field-help">IP list overrides hostname and MAC search when provided.</span>
+                  <span className="field-help">IP list overrides hostname, MAC, and custom field searches when provided.</span>
                   <button className="btn btn-small" type="button" onClick={onClearIPListSearch}>
                     Clear
                   </button>

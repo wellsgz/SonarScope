@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -56,6 +57,40 @@ const (
 	deleteJobBatchSize    = 500
 	deleteJobPingRowBatch = 25000
 )
+
+var reservedCustomFieldNames = map[string]struct{}{
+	"hostname":               {},
+	"ip address":             {},
+	"mac":                    {},
+	"mac address":            {},
+	"vlan":                   {},
+	"switch":                 {},
+	"port":                   {},
+	"port type":              {},
+	"description":            {},
+	"group":                  {},
+	"updated at":             {},
+	"last failed on":         {},
+	"reply ip":               {},
+	"last success on":        {},
+	"success count":          {},
+	"failed count":           {},
+	"consecutive failed":     {},
+	"max consecutive failed": {},
+	"max consec failed time": {},
+	"failed":                 {},
+	"failed pct":             {},
+	"total sent ping":        {},
+	"last ping status":       {},
+	"last ping latency":      {},
+	"average latency":        {},
+}
+
+type customFieldPatch struct {
+	Slot    int     `json:"slot"`
+	Enabled *bool   `json:"enabled"`
+	Name    *string `json:"name"`
+}
 
 type inventoryDeleteJobState struct {
 	Active             bool
@@ -629,6 +664,9 @@ func (s *Server) handleInventoryEndpointCreate(w http.ResponseWriter, r *http.Re
 	req.Port = strings.TrimSpace(req.Port)
 	req.PortType = strings.ToLower(strings.TrimSpace(req.PortType))
 	req.Description = strings.TrimSpace(req.Description)
+	req.CustomField1Value = strings.TrimSpace(req.CustomField1Value)
+	req.CustomField2Value = strings.TrimSpace(req.CustomField2Value)
+	req.CustomField3Value = strings.TrimSpace(req.CustomField3Value)
 
 	if req.IPAddress == "" {
 		util.WriteError(w, http.StatusBadRequest, "ip_address is required")
@@ -681,7 +719,23 @@ func (s *Server) handleInventoryEndpoints(w http.ResponseWriter, r *http.Request
 		GroupNames: parseCSVQuery(r, "group"),
 	}
 
-	items, err := s.store.ListInventoryEndpoints(r.Context(), filters)
+	custom1 := strings.TrimSpace(r.URL.Query().Get("custom_1"))
+	custom2 := strings.TrimSpace(r.URL.Query().Get("custom_2"))
+	custom3 := strings.TrimSpace(r.URL.Query().Get("custom_3"))
+
+	settings, err := s.store.GetSettings(r.Context())
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	custom1, custom2, custom3 = filterCustomSearchesBySettings(settings.CustomFields, custom1, custom2, custom3)
+
+	items, err := s.store.ListInventoryEndpoints(r.Context(), store.InventoryListQuery{
+		Filters: filters,
+		Custom1: custom1,
+		Custom2: custom2,
+		Custom3: custom3,
+	})
 	if err != nil {
 		util.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -709,6 +763,9 @@ func (s *Server) handleInventoryEndpointUpdate(w http.ResponseWriter, r *http.Re
 	patch.Port = strings.TrimSpace(patch.Port)
 	patch.PortType = strings.ToLower(strings.TrimSpace(patch.PortType))
 	patch.Description = strings.TrimSpace(patch.Description)
+	patch.CustomField1Value = strings.TrimSpace(patch.CustomField1Value)
+	patch.CustomField2Value = strings.TrimSpace(patch.CustomField2Value)
+	patch.CustomField3Value = strings.TrimSpace(patch.CustomField3Value)
 
 	item, err := s.store.UpdateInventoryEndpoint(r.Context(), endpointID, patch)
 	if err != nil {
@@ -1016,10 +1073,11 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	type settingsPatch struct {
-		PingIntervalSec *int `json:"ping_interval_sec"`
-		ICMPPayloadSize *int `json:"icmp_payload_bytes"`
-		ICMPTimeoutMs   *int `json:"icmp_timeout_ms"`
-		AutoRefreshSec  *int `json:"auto_refresh_sec"`
+		PingIntervalSec *int                `json:"ping_interval_sec"`
+		ICMPPayloadSize *int                `json:"icmp_payload_bytes"`
+		ICMPTimeoutMs   *int                `json:"icmp_timeout_ms"`
+		AutoRefreshSec  *int                `json:"auto_refresh_sec"`
+		CustomFields    *[]customFieldPatch `json:"custom_fields"`
 	}
 
 	var patch settingsPatch
@@ -1044,6 +1102,19 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.AutoRefreshSec != nil {
 		settings.AutoRefreshSec = *patch.AutoRefreshSec
+	}
+	settings.CustomFields = normalizeCustomFieldConfigs(settings.CustomFields)
+	if patch.CustomFields != nil {
+		mergedCustomFields, err := mergeCustomFieldPatch(settings.CustomFields, *patch.CustomFields)
+		if err != nil {
+			util.WriteError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		settings.CustomFields = mergedCustomFields
+	}
+	if err := validateCustomFieldConfigs(settings.CustomFields); err != nil {
+		util.WriteError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	if err := config.ValidateSettings(
@@ -1141,11 +1212,20 @@ func (s *Server) handleMonitorEndpointsPage(w http.ResponseWriter, r *http.Reque
 
 	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
 	mac := strings.TrimSpace(r.URL.Query().Get("mac"))
+	custom1 := strings.TrimSpace(r.URL.Query().Get("custom_1"))
+	custom2 := strings.TrimSpace(r.URL.Query().Get("custom_2"))
+	custom3 := strings.TrimSpace(r.URL.Query().Get("custom_3"))
 	ipList, err := parseIPListQuery(r, "ip_list")
 	if err != nil {
 		util.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	settings, err := s.store.GetSettings(r.Context())
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	custom1, custom2, custom3 = filterCustomSearchesBySettings(settings.CustomFields, custom1, custom2, custom3)
 
 	var start time.Time
 	var end time.Time
@@ -1177,6 +1257,9 @@ func (s *Server) handleMonitorEndpointsPage(w http.ResponseWriter, r *http.Reque
 		Filters:    filters,
 		Hostname:   hostname,
 		MAC:        mac,
+		Custom1:    custom1,
+		Custom2:    custom2,
+		Custom3:    custom3,
 		IPList:     ipList,
 		Page:       page,
 		PageSize:   pageSize,
@@ -1448,6 +1531,140 @@ func parseTimeQuery(r *http.Request, key string, fallback time.Time) time.Time {
 		return t.UTC()
 	}
 	return fallback
+}
+
+func normalizeCustomFieldConfigs(fields []model.CustomFieldConfig) []model.CustomFieldConfig {
+	bySlot := map[int]model.CustomFieldConfig{
+		1: {Slot: 1, Enabled: false, Name: ""},
+		2: {Slot: 2, Enabled: false, Name: ""},
+		3: {Slot: 3, Enabled: false, Name: ""},
+	}
+	for _, field := range fields {
+		if field.Slot < 1 || field.Slot > 3 {
+			continue
+		}
+		bySlot[field.Slot] = model.CustomFieldConfig{
+			Slot:    field.Slot,
+			Enabled: field.Enabled,
+			Name:    strings.TrimSpace(field.Name),
+		}
+	}
+	return []model.CustomFieldConfig{
+		bySlot[1],
+		bySlot[2],
+		bySlot[3],
+	}
+}
+
+func mergeCustomFieldPatch(
+	current []model.CustomFieldConfig,
+	patches []customFieldPatch,
+) ([]model.CustomFieldConfig, error) {
+	merged := normalizeCustomFieldConfigs(current)
+	bySlot := map[int]model.CustomFieldConfig{
+		1: merged[0],
+		2: merged[1],
+		3: merged[2],
+	}
+
+	seenSlots := map[int]struct{}{}
+	for _, patch := range patches {
+		if patch.Slot < 1 || patch.Slot > 3 {
+			return nil, errors.New("custom_fields slot must be between 1 and 3")
+		}
+		if _, exists := seenSlots[patch.Slot]; exists {
+			return nil, fmt.Errorf("custom_fields contains duplicate slot %d", patch.Slot)
+		}
+		seenSlots[patch.Slot] = struct{}{}
+
+		next := bySlot[patch.Slot]
+		if patch.Enabled != nil {
+			next.Enabled = *patch.Enabled
+		}
+		if patch.Name != nil {
+			next.Name = strings.TrimSpace(*patch.Name)
+		}
+		bySlot[patch.Slot] = next
+	}
+
+	return []model.CustomFieldConfig{
+		bySlot[1],
+		bySlot[2],
+		bySlot[3],
+	}, nil
+}
+
+func normalizeCustomFieldName(value string) string {
+	raw := strings.TrimSpace(strings.ToLower(value))
+	if raw == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	prevWasSpace := false
+	for _, r := range raw {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			builder.WriteRune(r)
+			prevWasSpace = false
+			continue
+		}
+		if !prevWasSpace {
+			builder.WriteByte(' ')
+			prevWasSpace = true
+		}
+	}
+	return strings.TrimSpace(builder.String())
+}
+
+func validateCustomFieldConfigs(fields []model.CustomFieldConfig) error {
+	normalized := normalizeCustomFieldConfigs(fields)
+	usedNames := map[string]int{}
+
+	for _, field := range normalized {
+		if !field.Enabled {
+			continue
+		}
+		if strings.TrimSpace(field.Name) == "" {
+			return fmt.Errorf("custom field %d name is required when enabled", field.Slot)
+		}
+
+		normalizedName := normalizeCustomFieldName(field.Name)
+		if normalizedName == "" {
+			return fmt.Errorf("custom field %d name is required when enabled", field.Slot)
+		}
+		if _, reserved := reservedCustomFieldNames[normalizedName]; reserved {
+			return fmt.Errorf("custom field %d name %q conflicts with a reserved field name", field.Slot, field.Name)
+		}
+		if existingSlot, exists := usedNames[normalizedName]; exists {
+			return fmt.Errorf("custom field %d name %q duplicates enabled custom field %d", field.Slot, field.Name, existingSlot)
+		}
+		usedNames[normalizedName] = field.Slot
+	}
+	return nil
+}
+
+func filterCustomSearchesBySettings(
+	fields []model.CustomFieldConfig,
+	custom1 string,
+	custom2 string,
+	custom3 string,
+) (string, string, string) {
+	normalized := normalizeCustomFieldConfigs(fields)
+	enabledBySlot := map[int]bool{}
+	for _, field := range normalized {
+		enabledBySlot[field.Slot] = field.Enabled && strings.TrimSpace(field.Name) != ""
+	}
+
+	if !enabledBySlot[1] {
+		custom1 = ""
+	}
+	if !enabledBySlot[2] {
+		custom2 = ""
+	}
+	if !enabledBySlot[3] {
+		custom3 = ""
+	}
+	return custom1, custom2, custom3
 }
 
 func newPreviewID() string {

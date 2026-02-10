@@ -3,6 +3,7 @@ import type { MonitorEndpoint, MonitorSortField } from "../types/api";
 
 type Props = {
   rows: MonitorEndpoint[];
+  customFields: Array<{ slot: 1 | 2 | 3; name: string }>;
   selectedEndpointID: number | null;
   onSelectionChange: (id: number | null) => void;
   page: number;
@@ -38,7 +39,13 @@ function formatPercent(value: number): string {
   return `${value.toFixed(2)}%`;
 }
 
-const columns: MonitorColumn[] = [
+function customFieldValueBySlot(row: MonitorEndpoint, slot: 1 | 2 | 3): string {
+  if (slot === 1) return row.custom_field_1_value || "-";
+  if (slot === 2) return row.custom_field_2_value || "-";
+  return row.custom_field_3_value || "-";
+}
+
+const baseColumns: MonitorColumn[] = [
   { key: "hostname", header: "Hostname", render: (row) => row.hostname || "-" },
   { key: "last_failed_on", header: "Last Failed On", render: (row) => formatDate(row.last_failed_on) },
   { key: "ip_address", header: "IP Address", render: (row) => row.ip_address },
@@ -94,6 +101,7 @@ const columns: MonitorColumn[] = [
 
 export function MonitorTable({
   rows,
+  customFields,
   selectedEndpointID,
   onSelectionChange,
   page,
@@ -108,6 +116,14 @@ export function MonitorTable({
   onSortChange
 }: Props) {
   const sortableSet = useMemo(() => new Set<MonitorSortField>(sortableFields), [sortableFields]);
+  const columns = useMemo(() => {
+    const dynamicCustomColumns: MonitorColumn[] = customFields.map((field) => ({
+      key: `custom_field_${field.slot}_value`,
+      header: field.name,
+      render: (row) => customFieldValueBySlot(row, field.slot)
+    }));
+    return [...baseColumns.slice(0, 4), ...dynamicCustomColumns, ...baseColumns.slice(4)];
+  }, [customFields]);
 
   const pageOptions = useMemo(() => {
     if (totalPages < 1) {

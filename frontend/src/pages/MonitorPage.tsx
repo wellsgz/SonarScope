@@ -12,7 +12,7 @@ import { MonitorTable } from "../components/MonitorTable";
 import { MonitorToolbar, type FilterState } from "../components/MonitorToolbar";
 import { rangeToDatesAt, toApiTime, type QuickRange } from "../hooks/time";
 import { useMonitorSocket } from "../hooks/useMonitorSocket";
-import type { MonitorDataScope, MonitorSortField, Settings } from "../types/api";
+import type { CustomFieldConfig, MonitorDataScope, MonitorSortField, Settings } from "../types/api";
 
 function toDateTimeLocal(value: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -49,6 +49,59 @@ const rangeSortableFields: MonitorSortField[] = [
 ];
 const monitorControlsCollapsedKey = "sonarscope.monitor.controls_collapsed";
 
+type CustomFieldSlot = 1 | 2 | 3;
+
+type EnabledCustomField = {
+  slot: CustomFieldSlot;
+  name: string;
+};
+
+type CustomSearchState = {
+  custom1: string;
+  custom2: string;
+  custom3: string;
+};
+
+const defaultCustomSearch: CustomSearchState = {
+  custom1: "",
+  custom2: "",
+  custom3: ""
+};
+
+function normalizeEnabledCustomFields(fields?: CustomFieldConfig[]): EnabledCustomField[] {
+  const bySlot: Record<CustomFieldSlot, EnabledCustomField | null> = {
+    1: null,
+    2: null,
+    3: null
+  };
+  (fields || []).forEach((field) => {
+    if (field.slot < 1 || field.slot > 3) {
+      return;
+    }
+    if (!field.enabled || !field.name.trim()) {
+      return;
+    }
+    const slot = field.slot as CustomFieldSlot;
+    bySlot[slot] = {
+      slot,
+      name: field.name.trim()
+    };
+  });
+  return [bySlot[1], bySlot[2], bySlot[3]].filter((field): field is EnabledCustomField => field !== null);
+}
+
+function customSearchValueBySlot(values: CustomSearchState, slot: CustomFieldSlot): string {
+  if (slot === 1) return values.custom1;
+  if (slot === 2) return values.custom2;
+  return values.custom3;
+}
+
+function setCustomSearchBySlot(values: CustomSearchState, slot: CustomFieldSlot, next: string): CustomSearchState {
+  if (slot === 1) return { ...values, custom1: next };
+  if (slot === 2) return { ...values, custom2: next };
+  return { ...values, custom3: next };
+}
+
 function normalizeIPList(raw: string): string[] {
   const seen = new Set<string>();
   return raw
@@ -74,6 +127,7 @@ export function MonitorPage() {
   const [selectedEndpointID, setSelectedEndpointID] = useState<number | null>(null);
   const [hostnameSearch, setHostnameSearch] = useState("");
   const [macSearch, setMACSearch] = useState("");
+  const [customSearch, setCustomSearch] = useState<CustomSearchState>(defaultCustomSearch);
   const [ipListSearch, setIPListSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<50 | 100 | 200>(50);
@@ -91,6 +145,14 @@ export function MonitorPage() {
 
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: getSettings });
   const filterOptionsQuery = useQuery({ queryKey: ["filter-options"], queryFn: listFilterOptions });
+  const enabledCustomFields = useMemo(
+    () => normalizeEnabledCustomFields(settingsQuery.data?.custom_fields),
+    [settingsQuery.data?.custom_fields]
+  );
+  const enabledCustomFieldKey = useMemo(
+    () => enabledCustomFields.map((field) => `${field.slot}:${field.name}`).join("|"),
+    [enabledCustomFields]
+  );
 
   const autoRefreshMs = Math.max(1000, (settingsQuery.data?.auto_refresh_sec ?? 10) * 1000);
 
@@ -132,6 +194,14 @@ export function MonitorPage() {
   });
 
   const ipListValues = useMemo(() => normalizeIPList(ipListSearch), [ipListSearch]);
+  const activeCustomSearchCount = useMemo(
+    () =>
+      enabledCustomFields.reduce((count, field) => {
+        const value = customSearchValueBySlot(customSearch, field.slot);
+        return count + (value.trim() ? 1 : 0);
+      }, 0),
+    [enabledCustomFields, customSearch]
+  );
   const activeFilterCount =
     filters.vlan.length +
     filters.switches.length +
@@ -139,6 +209,7 @@ export function MonitorPage() {
     filters.groups.length +
     (hostnameSearch.trim() ? 1 : 0) +
     (macSearch.trim() ? 1 : 0) +
+    activeCustomSearchCount +
     (ipListValues.length > 0 ? 1 : 0);
 
   const { effectiveStart, effectiveEnd } = useMemo(() => {
@@ -165,6 +236,10 @@ export function MonitorPage() {
       filters,
       hostnameSearch,
       macSearch,
+      customSearch.custom1,
+      customSearch.custom2,
+      customSearch.custom3,
+      enabledCustomFieldKey,
       ipListSearch,
       dataScope,
       dataScope === "range" ? effectiveStart.toISOString() : "",
@@ -182,6 +257,9 @@ export function MonitorPage() {
         groups: filters.groups,
         hostname: hostnameSearch,
         mac: macSearch,
+        custom1: customSearch.custom1,
+        custom2: customSearch.custom2,
+        custom3: customSearch.custom3,
         ipList: ipListValues,
         page,
         pageSize,
@@ -262,8 +340,10 @@ export function MonitorPage() {
         ) : (
           <MonitorToolbar
             filters={filters}
+            customFields={enabledCustomFields}
             hostnameSearch={hostnameSearch}
             macSearch={macSearch}
+            customSearch={customSearch}
             ipListSearch={ipListSearch}
             options={filterOptionsQuery.data}
             quickRange={quickRange}
@@ -286,6 +366,7 @@ export function MonitorPage() {
               setFilters({ vlan: [], switches: [], ports: [], groups: [] });
               setHostnameSearch("");
               setMACSearch("");
+              setCustomSearch(defaultCustomSearch);
               setIPListSearch("");
               setPage(1);
             }}
@@ -295,6 +376,10 @@ export function MonitorPage() {
             }}
             onMACSearchChange={(next) => {
               setMACSearch(next);
+              setPage(1);
+            }}
+            onCustomSearchChange={(slot, next) => {
+              setCustomSearch((prev) => setCustomSearchBySlot(prev, slot, next));
               setPage(1);
             }}
             onIPListSearchChange={(next) => {
@@ -307,6 +392,10 @@ export function MonitorPage() {
             }}
             onClearMACSearch={() => {
               setMACSearch("");
+              setPage(1);
+            }}
+            onClearCustomSearch={(slot) => {
+              setCustomSearch((prev) => setCustomSearchBySlot(prev, slot, ""));
               setPage(1);
             }}
             onClearIPListSearch={() => {
@@ -363,6 +452,7 @@ export function MonitorPage() {
           ) : (
             <MonitorTable
               rows={monitorRows}
+              customFields={enabledCustomFields}
               selectedEndpointID={selectedEndpointID}
               onSelectionChange={setSelectedEndpointID}
               page={monitorQuery.data?.page ?? page}

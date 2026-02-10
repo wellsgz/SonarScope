@@ -4,6 +4,9 @@ export type MonitorEndpoint = {
   last_failed_on: string | null;
   ip_address: string;
   mac_address: string;
+  custom_field_1_value: string;
+  custom_field_2_value: string;
+  custom_field_3_value: string;
   reply_ip_address: string | null;
   last_success_on: string | null;
   success_count: number;
@@ -53,6 +56,9 @@ export type InventoryEndpoint = {
   hostname: string;
   ip_address: string;
   mac_address: string;
+  custom_field_1_value: string;
+  custom_field_2_value: string;
+  custom_field_3_value: string;
   vlan: string;
   switch: string;
   port: string;
@@ -66,6 +72,9 @@ export type InventoryEndpointCreateRequest = {
   ip_address: string;
   hostname?: string;
   mac_address?: string;
+  custom_field_1_value?: string;
+  custom_field_2_value?: string;
+  custom_field_3_value?: string;
   vlan?: string;
   switch?: string;
   port?: string;
@@ -84,11 +93,18 @@ export type Group = {
   endpoint_ids?: number[];
 };
 
+export type CustomFieldConfig = {
+  slot: number;
+  enabled: boolean;
+  name: string;
+};
+
 export type Settings = {
   ping_interval_sec: number;
   icmp_payload_bytes: number;
   icmp_timeout_ms: number;
   auto_refresh_sec: number;
+  custom_fields: CustomFieldConfig[];
 };
 
 export type ProbeStatus = {

@@ -134,6 +134,9 @@ export async function listMonitorEndpointsPage(filters: {
   groups?: string[];
   hostname?: string;
   mac?: string;
+  custom1?: string;
+  custom2?: string;
+  custom3?: string;
   ipList?: string[];
   page: number;
   pageSize: 50 | 100 | 200;
@@ -150,6 +153,9 @@ export async function listMonitorEndpointsPage(filters: {
     group: filters.groups?.join(","),
     hostname: filters.hostname?.trim() || undefined,
     mac: filters.mac?.trim() || undefined,
+    custom_1: filters.custom1?.trim() || undefined,
+    custom_2: filters.custom2?.trim() || undefined,
+    custom_3: filters.custom3?.trim() || undefined,
     ip_list: filters.ipList?.join(","),
     page: String(filters.page),
     page_size: String(filters.pageSize),
@@ -188,12 +194,18 @@ export async function listInventoryEndpoints(filters: {
   switches?: string[];
   ports?: string[];
   groups?: string[];
+  custom1?: string;
+  custom2?: string;
+  custom3?: string;
 }): Promise<InventoryEndpoint[]> {
   const path = buildQuery("/api/inventory/endpoints", {
     vlan: filters.vlan?.join(","),
     switch: filters.switches?.join(","),
     port: filters.ports?.join(","),
-    group: filters.groups?.join(",")
+    group: filters.groups?.join(","),
+    custom_1: filters.custom1?.trim() || undefined,
+    custom_2: filters.custom2?.trim() || undefined,
+    custom_3: filters.custom3?.trim() || undefined
   });
   return request<InventoryEndpoint[]>(path);
 }
@@ -210,6 +222,9 @@ export async function updateInventoryEndpoint(
   payload: {
     hostname: string;
     mac_address: string;
+    custom_field_1_value: string;
+    custom_field_2_value: string;
+    custom_field_3_value: string;
     vlan: string;
     switch: string;
     port: string;

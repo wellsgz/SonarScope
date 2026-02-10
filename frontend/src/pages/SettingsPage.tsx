@@ -1,7 +1,119 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSettings, updateSettings } from "../api/client";
-import type { Settings } from "../types/api";
+import type { CustomFieldConfig, Settings } from "../types/api";
+
+const defaultCustomFields: CustomFieldConfig[] = [
+  { slot: 1, enabled: false, name: "" },
+  { slot: 2, enabled: false, name: "" },
+  { slot: 3, enabled: false, name: "" }
+];
+
+const reservedCustomFieldNames = new Set([
+  "hostname",
+  "ip address",
+  "mac",
+  "mac address",
+  "vlan",
+  "switch",
+  "port",
+  "port type",
+  "description",
+  "group",
+  "updated at",
+  "last failed on",
+  "reply ip",
+  "last success on",
+  "success count",
+  "failed count",
+  "consecutive failed",
+  "max consecutive failed",
+  "max consec failed time",
+  "failed",
+  "failed pct",
+  "total sent ping",
+  "last ping status",
+  "last ping latency",
+  "average latency"
+]);
+
+type CustomFieldValidationIssue = {
+  slot: number;
+  message: string;
+};
+
+function normalizeCustomFieldName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeCustomFields(fields?: CustomFieldConfig[]): CustomFieldConfig[] {
+  const bySlot = new Map<number, CustomFieldConfig>();
+  defaultCustomFields.forEach((field) => {
+    bySlot.set(field.slot, { ...field });
+  });
+  (fields || []).forEach((field) => {
+    if (field.slot < 1 || field.slot > 3) {
+      return;
+    }
+    bySlot.set(field.slot, {
+      slot: field.slot,
+      enabled: Boolean(field.enabled),
+      name: (field.name || "").trim()
+    });
+  });
+
+  return [1, 2, 3].map((slot) => bySlot.get(slot) || { slot, enabled: false, name: "" });
+}
+
+function validateCustomFields(fields: CustomFieldConfig[]): CustomFieldValidationIssue[] {
+  const issues: CustomFieldValidationIssue[] = [];
+  const usedNames = new Map<string, number>();
+
+  normalizeCustomFields(fields).forEach((field) => {
+    if (!field.enabled) {
+      return;
+    }
+    if (!field.name.trim()) {
+      issues.push({
+        slot: field.slot,
+        message: `Custom Field ${field.slot}: field name is required when enabled.`
+      });
+      return;
+    }
+
+    const normalizedName = normalizeCustomFieldName(field.name);
+    if (!normalizedName) {
+      issues.push({
+        slot: field.slot,
+        message: `Custom Field ${field.slot}: field name is required when enabled.`
+      });
+      return;
+    }
+    if (reservedCustomFieldNames.has(normalizedName)) {
+      issues.push({
+        slot: field.slot,
+        message: `Custom Field ${field.slot}: "${field.name}" conflicts with a reserved built-in field name.`
+      });
+      return;
+    }
+    if (usedNames.has(normalizedName)) {
+      const existingSlot = usedNames.get(normalizedName);
+      issues.push({
+        slot: field.slot,
+        message: `Custom Field ${field.slot}: "${field.name}" duplicates Custom Field ${existingSlot}.`
+      });
+      return;
+    }
+    usedNames.set(normalizedName, field.slot);
+  });
+
+  return issues;
+}
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
@@ -10,14 +122,23 @@ export function SettingsPage() {
     ping_interval_sec: 1,
     icmp_payload_bytes: 56,
     icmp_timeout_ms: 500,
-    auto_refresh_sec: 10
+    auto_refresh_sec: 10,
+    custom_fields: normalizeCustomFields()
   });
 
   useEffect(() => {
     if (settingsQuery.data) {
-      setDraft(settingsQuery.data);
+      setDraft({
+        ...settingsQuery.data,
+        custom_fields: normalizeCustomFields(settingsQuery.data.custom_fields)
+      });
     }
   }, [settingsQuery.data]);
+
+  const customFieldIssues = useMemo(
+    () => validateCustomFields(draft.custom_fields),
+    [draft.custom_fields]
+  );
 
   const saveMutation = useMutation({
     mutationFn: (payload: Settings) => updateSettings(payload),
@@ -85,8 +206,64 @@ export function SettingsPage() {
             </label>
           </div>
 
+          <section className="settings-custom-fields">
+            <h3 className="panel-title settings-section-title">Custom Fields</h3>
+            <p className="panel-subtitle">
+              Enable up to three custom endpoint fields. Enabled fields require unique non-overlapping names.
+            </p>
+            <div className="settings-custom-field-list">
+              {normalizeCustomFields(draft.custom_fields).map((field) => (
+                <div key={field.slot} className="settings-custom-field-row">
+                  <div className="settings-custom-field-meta">
+                    <strong>Custom Field {field.slot}</strong>
+                    <label className="settings-toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={field.enabled}
+                        onChange={(event) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
+                              item.slot === field.slot ? { ...item, enabled: event.target.checked } : item
+                            )
+                          }))
+                        }
+                      />
+                      Enabled
+                    </label>
+                  </div>
+                  <label>
+                    Field Name
+                    <input
+                      value={field.name}
+                      onChange={(event) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
+                            item.slot === field.slot ? { ...item, name: event.target.value } : item
+                          )
+                        }))
+                      }
+                      placeholder={`Custom Field ${field.slot}`}
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+          </section>
+
           <div className="button-row settings-save-row">
-            <button className="btn btn-primary" type="button" onClick={() => saveMutation.mutate(draft)}>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() =>
+                saveMutation.mutate({
+                  ...draft,
+                  custom_fields: normalizeCustomFields(draft.custom_fields)
+                })
+              }
+              disabled={saveMutation.isPending || customFieldIssues.length > 0}
+            >
               Save Settings
             </button>
           </div>
@@ -95,6 +272,13 @@ export function SettingsPage() {
             <div className="error-banner" role="alert" aria-live="assertive">
               {(settingsQuery.error as Error | undefined)?.message ||
                 (saveMutation.error as Error | undefined)?.message}
+            </div>
+          )}
+          {customFieldIssues.length > 0 && (
+            <div className="error-banner" role="alert" aria-live="assertive">
+              {customFieldIssues.map((issue) => (
+                <div key={`${issue.slot}-${issue.message}`}>{issue.message}</div>
+              ))}
             </div>
           )}
           {saveMutation.isSuccess && (
