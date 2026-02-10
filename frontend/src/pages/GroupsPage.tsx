@@ -215,13 +215,14 @@ export function GroupsPage() {
 
   return (
     <div className="groups-layout">
-      <section className="panel">
-        <div className="panel-header" style={{ margin: "-1rem -1rem 0" }}>
+      <section className="panel groups-panel">
+        <div className="panel-header">
           <h2 className="panel-title">Group Editor</h2>
           <p className="panel-subtitle">Create or update endpoint groups for selective probing workflows.</p>
         </div>
 
-        <div className="group-form">
+        <div className="groups-panel-body">
+          <div className="group-form">
           <label>
             Group Selection
             <select
@@ -375,79 +376,82 @@ export function GroupsPage() {
               </button>
             )}
           </div>
+          </div>
         </div>
       </section>
 
-      <section className="panel">
-        <div className="panel-header" style={{ margin: "-1rem -1rem 0" }}>
+      <section className="panel groups-panel">
+        <div className="panel-header">
           <h2 className="panel-title">Group List</h2>
           <p className="panel-subtitle">Manage existing groups and membership counts.</p>
         </div>
 
-        {(groupsQuery.error || saveMutation.error || deleteMutation.error) && (
-          <div className="error-banner" role="alert" aria-live="assertive">
-            {(groupsQuery.error as Error | undefined)?.message ||
-              (saveMutation.error as Error | undefined)?.message ||
-              (deleteMutation.error as Error | undefined)?.message}
-          </div>
-        )}
-
-        {groupsQuery.isLoading ? (
-          <div className="state-panel">
-            <div>
-              <span className="skeleton-bar" style={{ width: 180 }} />
-              <p style={{ marginTop: 10 }}>Loading groups…</p>
+        <div className="groups-panel-body">
+          {(groupsQuery.error || saveMutation.error || deleteMutation.error) && (
+            <div className="error-banner" role="alert" aria-live="assertive">
+              {(groupsQuery.error as Error | undefined)?.message ||
+                (saveMutation.error as Error | undefined)?.message ||
+                (deleteMutation.error as Error | undefined)?.message}
             </div>
-          </div>
-        ) : (groupsQuery.data || []).length === 0 ? (
-          <div className="state-panel">No groups defined yet. Create your first group from the editor.</div>
-        ) : (
-          <div className="table-scroll">
-            <table className="monitor-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Description</th>
-                  <th>Members</th>
-                  <th>Updated</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(groupsQuery.data || []).map((group) => (
-                  <tr key={group.id} className={editingID === group.id ? "row-selected" : ""}>
-                    <td>{group.name}</td>
-                    <td>{group.description || "-"}</td>
-                    <td>{group.endpoint_ids?.length || 0}</td>
-                    <td>{new Date(group.updated_at).toLocaleString()}</td>
-                    <td>
-                      <div className="button-row">
-                        {group.is_system ? (
-                          <span className="status-chip">System</span>
-                        ) : (
-                          <>
-                            <button
-                              className="btn"
-                              type="button"
-                              onClick={() => {
-                                loadGroupIntoEditor(group.id);
-                              }}
-                            >
-                              Edit
-                            </button>
-                            <button className="btn btn-danger" type="button" onClick={() => deleteMutation.mutate(group.id)}>
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
+          )}
+
+          {groupsQuery.isLoading ? (
+            <div className="state-panel">
+              <div>
+                <span className="skeleton-bar" style={{ width: 180 }} />
+                <p className="state-loading-copy">Loading groups…</p>
+              </div>
+            </div>
+          ) : (groupsQuery.data || []).length === 0 ? (
+            <div className="state-panel">No groups defined yet. Create your first group from the editor.</div>
+          ) : (
+            <div className="table-scroll">
+              <table className="monitor-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th>Members</th>
+                    <th>Updated</th>
+                    <th>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {(groupsQuery.data || []).map((group) => (
+                    <tr key={group.id} className={editingID === group.id ? "row-selected" : ""}>
+                      <td>{group.name}</td>
+                      <td>{group.description || "-"}</td>
+                      <td>{group.endpoint_ids?.length || 0}</td>
+                      <td>{new Date(group.updated_at).toLocaleString()}</td>
+                      <td>
+                        <div className="button-row">
+                          {group.is_system ? (
+                            <span className="status-chip">System</span>
+                          ) : (
+                            <>
+                              <button
+                                className="btn"
+                                type="button"
+                                onClick={() => {
+                                  loadGroupIntoEditor(group.id);
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button className="btn btn-danger" type="button" onClick={() => deleteMutation.mutate(group.id)}>
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );

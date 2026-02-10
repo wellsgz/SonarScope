@@ -42,14 +42,14 @@
 
 .brand-name {
   font-family: var(--font-heading);
-  font-size: 1.05rem;
+  font-size: var(--text-2xl);
   font-weight: 700;
   line-height: 1.1;
 }
 
 .brand-subtitle {
-  margin-top: 0.2rem;
-  font-size: 0.74rem;
+  margin-top: var(--stack-gap-tight);
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -81,7 +81,7 @@
 
 .sidebar-probe-actions-title {
   font-family: var(--font-heading);
-  font-size: 0.86rem;
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--color-text);
 }
@@ -101,12 +101,12 @@
 }
 
 .sidebar-probe-target {
-  font-size: 0.74rem;
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
 }
 
 .sidebar-probe-lock-hint {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--color-warning);
 }
 
@@ -120,7 +120,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-3);
-  font-size: 0.88rem;
+  font-size: var(--text-lg);
   font-weight: 600;
   text-align: left;
 }
@@ -153,7 +153,7 @@
 }
 
 .sidebar-footer-status {
-  font-size: 0.8rem;
+  font-size: var(--text-base);
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -219,7 +219,7 @@
   flex-direction: row;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.78rem;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-text-muted);
 }
@@ -234,13 +234,13 @@
 }
 
 .topbar-title {
-  font-size: 1.15rem;
+  font-size: var(--text-3xl);
   font-weight: 700;
 }
 
 .topbar-subtitle {
-  margin-top: 0.2rem;
-  font-size: 0.84rem;
+  margin-top: var(--stack-gap-tight);
+  font-size: var(--text-lg);
 }
 
 .mobile-nav-toggle {

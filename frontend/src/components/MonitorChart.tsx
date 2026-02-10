@@ -227,6 +227,36 @@ function readToken(name: string, fallback: string): string {
   return value || fallback;
 }
 
+function readTokenFontSizePx(name: string, fallbackRem: number): number {
+  if (typeof window === "undefined") {
+    return fallbackRem * 16;
+  }
+  const rootStyles = getComputedStyle(document.documentElement);
+  const rawValue = rootStyles.getPropertyValue(name).trim();
+  const rootFontSizePx = Number.parseFloat(rootStyles.fontSize) || 16;
+  const candidate = rawValue || `${fallbackRem}rem`;
+
+  if (candidate.endsWith("rem")) {
+    const rem = Number.parseFloat(candidate);
+    if (Number.isFinite(rem)) {
+      return rem * rootFontSizePx;
+    }
+  }
+
+  if (candidate.endsWith("px")) {
+    const px = Number.parseFloat(candidate);
+    if (Number.isFinite(px)) {
+      return px;
+    }
+  }
+
+  const parsed = Number.parseFloat(candidate);
+  if (Number.isFinite(parsed)) {
+    return parsed;
+  }
+  return fallbackRem * rootFontSizePx;
+}
+
 function resolveLossColor(lossValue: number | null, palette: { success: string; warning: string; danger: string; textSubtle: string }): string {
   if (lossValue === null) {
     return palette.textSubtle;
@@ -271,6 +301,7 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
     warning: readToken("--color-warning", "#f59e0b"),
     danger: readToken("--color-danger", "#ef4444")
   };
+  const legendFontSizePx = readTokenFontSizePx("--text-sm", 0.74);
 
   const option = useMemo(() => {
     const buckets = buildBuckets(rangeStart, rangeEnd, toStepMs(rollup));
@@ -397,7 +428,7 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
       },
       legend: {
         data: [...lossLegendNames, ...latencyLegendNames, noProbeLegendName],
-        textStyle: { color: palette.textMuted, fontSize: 11 }
+        textStyle: { color: palette.textMuted, fontSize: legendFontSizePx }
       },
       visualMap: [
         {
@@ -455,7 +486,19 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
       ],
       series
     };
-  }, [palette.border, palette.danger, palette.success, palette.textMuted, palette.textSubtle, palette.warning, points, rangeEnd, rangeStart, rollup]);
+  }, [
+    legendFontSizePx,
+    palette.border,
+    palette.danger,
+    palette.success,
+    palette.textMuted,
+    palette.textSubtle,
+    palette.warning,
+    points,
+    rangeEnd,
+    rangeStart,
+    rollup
+  ]);
 
   return (
     <div className="panel chart-panel">

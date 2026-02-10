@@ -1145,7 +1145,7 @@ export function InventoryPage() {
             <div className="state-panel inventory-state-panel">
               <div>
                 <span className="skeleton-bar" style={{ width: 220 }} />
-                <p style={{ marginTop: 10 }}>Loading inventory records…</p>
+                <p className="state-loading-copy">Loading inventory records…</p>
               </div>
             </div>
           ) : (inventoryQuery.data || []).length === 0 ? (

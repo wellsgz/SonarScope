@@ -444,7 +444,7 @@ export function MonitorPage() {
             <div className="panel state-panel">
               <div>
                 <span className="skeleton-bar" style={{ width: 240 }} />
-                <p style={{ marginTop: 10 }}>Loading endpoint telemetry…</p>
+                <p className="state-loading-copy">Loading endpoint telemetry…</p>
               </div>
             </div>
           ) : monitorRows.length === 0 ? (
