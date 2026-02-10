@@ -285,6 +285,10 @@
   color: var(--color-text-muted);
 }
 
+.inventory-header-actions {
+  justify-content: flex-end;
+}
+
 .inventory-import-panel,
 .inventory-list-panel {
   padding: 0;
@@ -682,6 +686,11 @@
   .inventory-filter-grid,
   .custom-time-row {
     grid-template-columns: 1fr;
+  }
+
+  .inventory-header-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .settings-custom-field-form {

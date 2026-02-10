@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/csv"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -388,6 +390,7 @@ func (s *Server) Routes() http.Handler {
 		r.Route("/inventory", func(r chi.Router) {
 			r.Post("/endpoints", s.handleInventoryEndpointCreate)
 			r.Get("/endpoints", s.handleInventoryEndpoints)
+			r.Get("/endpoints/export.csv", s.handleInventoryEndpointsExportCSV)
 			r.Put("/endpoints/{endpointID}", s.handleInventoryEndpointUpdate)
 			r.Delete("/endpoints/by-group/{groupID}", s.handleInventoryDeleteByGroup)
 			r.Post("/endpoints/delete-all", s.handleInventoryDeleteAll)
@@ -711,7 +714,21 @@ func (s *Server) handleInventoryEndpointCreate(w http.ResponseWriter, r *http.Re
 	util.WriteJSON(w, http.StatusCreated, item)
 }
 
-func (s *Server) handleInventoryEndpoints(w http.ResponseWriter, r *http.Request) {
+func inventoryCustomFieldValueBySlot(item model.InventoryEndpointView, slot int) string {
+	switch slot {
+	case 1:
+		return item.CustomField1Value
+	case 2:
+		return item.CustomField2Value
+	default:
+		return item.CustomField3Value
+	}
+}
+
+func (s *Server) inventoryListQueryFromRequest(
+	ctx context.Context,
+	r *http.Request,
+) (store.InventoryListQuery, []model.CustomFieldConfig, error) {
 	filters := store.MonitorFilters{
 		VLANs:      parseCSVQuery(r, "vlan"),
 		Switches:   parseCSVQuery(r, "switch"),
@@ -723,24 +740,121 @@ func (s *Server) handleInventoryEndpoints(w http.ResponseWriter, r *http.Request
 	custom2 := strings.TrimSpace(r.URL.Query().Get("custom_2"))
 	custom3 := strings.TrimSpace(r.URL.Query().Get("custom_3"))
 
-	settings, err := s.store.GetSettings(r.Context())
+	settings, err := s.store.GetSettings(ctx)
 	if err != nil {
-		util.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
+		return store.InventoryListQuery{}, nil, err
 	}
 	custom1, custom2, custom3 = filterCustomSearchesBySettings(settings.CustomFields, custom1, custom2, custom3)
 
-	items, err := s.store.ListInventoryEndpoints(r.Context(), store.InventoryListQuery{
+	return store.InventoryListQuery{
 		Filters: filters,
 		Custom1: custom1,
 		Custom2: custom2,
 		Custom3: custom3,
-	})
+	}, normalizeCustomFieldConfigs(settings.CustomFields), nil
+}
+
+func (s *Server) handleInventoryEndpoints(w http.ResponseWriter, r *http.Request) {
+	listQuery, _, err := s.inventoryListQueryFromRequest(r.Context(), r)
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	items, err := s.store.ListInventoryEndpoints(r.Context(), listQuery)
 	if err != nil {
 		util.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	util.WriteJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleInventoryEndpointsExportCSV(w http.ResponseWriter, r *http.Request) {
+	listQuery, customFields, err := s.inventoryListQueryFromRequest(r.Context(), r)
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	items, err := s.store.ListInventoryEndpoints(r.Context(), listQuery)
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	enabledCustomFields := make([]model.CustomFieldConfig, 0, 3)
+	for _, field := range customFields {
+		name := strings.TrimSpace(field.Name)
+		if !field.Enabled || name == "" {
+			continue
+		}
+		enabledCustomFields = append(enabledCustomFields, model.CustomFieldConfig{
+			Slot:    field.Slot,
+			Enabled: true,
+			Name:    name,
+		})
+	}
+
+	var csvBuffer bytes.Buffer
+	csvWriter := csv.NewWriter(&csvBuffer)
+
+	header := []string{
+		"Hostname",
+		"IP Address",
+		"MAC",
+		"VLAN",
+		"Switch",
+		"Port",
+		"Port Type",
+		"Description",
+		"Group",
+	}
+	for _, field := range enabledCustomFields {
+		header = append(header, field.Name)
+	}
+	header = append(header, "Updated At")
+
+	if err := csvWriter.Write(header); err != nil {
+		util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("write csv header: %v", err))
+		return
+	}
+
+	for _, item := range items {
+		record := []string{
+			item.Hostname,
+			item.IPAddress,
+			item.MACAddress,
+			item.VLAN,
+			item.Switch,
+			item.Port,
+			item.PortType,
+			item.Description,
+			strings.Join(item.Groups, ", "),
+		}
+		for _, field := range enabledCustomFields {
+			record = append(record, inventoryCustomFieldValueBySlot(item, field.Slot))
+		}
+		record = append(record, item.UpdatedAt.UTC().Format(time.RFC3339))
+
+		if err := csvWriter.Write(record); err != nil {
+			util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("write csv row: %v", err))
+			return
+		}
+	}
+
+	csvWriter.Flush()
+	if err := csvWriter.Error(); err != nil {
+		util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("flush csv: %v", err))
+		return
+	}
+
+	filename := fmt.Sprintf("inventory-export-%s.csv", time.Now().UTC().Format("20060102-150405"))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(csvBuffer.Bytes()); err != nil {
+		log.Printf("inventory export write response: %v", err)
+	}
 }
 
 func (s *Server) handleInventoryEndpointUpdate(w http.ResponseWriter, r *http.Request) {

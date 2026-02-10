@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
   createInventoryEndpoint,
+  exportInventoryEndpointsCSV,
   getSettings,
   getCurrentDeleteJobStatus,
   importInventoryPreview,
@@ -311,6 +312,28 @@ export function InventoryPage() {
         custom3: customSearch.custom3
       })
   });
+  const exportCSVMutation = useMutation({
+    mutationFn: () =>
+      exportInventoryEndpointsCSV({
+        vlan: filters.vlan,
+        switches: filters.switches,
+        ports: filters.ports,
+        groups: filters.groups,
+        custom1: customSearch.custom1,
+        custom2: customSearch.custom2,
+        custom3: customSearch.custom3
+      }),
+    onSuccess: ({ blob, filename }) => {
+      const downloadURL = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = downloadURL;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadURL), 0);
+    }
+  });
 
   function invalidateInventoryAndMonitorQueries() {
     queryClient.invalidateQueries({ queryKey: ["inventory-endpoints"] });
@@ -508,6 +531,8 @@ export function InventoryPage() {
     assignToGroup &&
     ((groupAssignmentMode === "existing" && !selectedGroupID) ||
       (groupAssignmentMode === "create" && newGroupName.trim() === ""));
+  const exportDisabled =
+    exportCSVMutation.isPending || inventoryQuery.isLoading || (inventoryQuery.data?.length || 0) === 0;
 
   const dismissDeleteNotice = () => {
     const key = completionNoticeKey(deleteJobStatus);
@@ -969,16 +994,26 @@ export function InventoryPage() {
         <div className="panel-header">
           <div className="inventory-title-row">
             <h2 className="panel-title">Current Inventory</h2>
-            <button
-              className="btn btn-small"
-              type="button"
-              onClick={() => {
-                setFilters(defaultFilters);
-                setCustomSearch(defaultCustomSearch);
-              }}
-            >
-              Clear All Filters
-            </button>
+            <div className="button-row inventory-header-actions">
+              <button
+                className="btn btn-small"
+                type="button"
+                disabled={exportDisabled}
+                onClick={() => exportCSVMutation.mutate()}
+              >
+                {exportCSVMutation.isPending ? "Exporting..." : "Export CSV"}
+              </button>
+              <button
+                className="btn btn-small"
+                type="button"
+                onClick={() => {
+                  setFilters(defaultFilters);
+                  setCustomSearch(defaultCustomSearch);
+                }}
+              >
+                Clear All Filters
+              </button>
+            </div>
           </div>
           <p className="panel-subtitle">Filter and maintain endpoint metadata (IP is immutable).</p>
         </div>
@@ -1043,6 +1078,7 @@ export function InventoryPage() {
           </div>
 
           {(inventoryQuery.error ||
+            exportCSVMutation.error ||
             updateMutation.error ||
             startDeleteByGroupJobMutation.error ||
             startDeleteAllJobMutation.error ||
@@ -1050,6 +1086,7 @@ export function InventoryPage() {
             deleteJobStatusQuery.error) && (
             <div className="error-banner" role="alert" aria-live="assertive">
               {(inventoryQuery.error as Error | undefined)?.message ||
+                (exportCSVMutation.error as Error | undefined)?.message ||
                 (updateMutation.error as Error | undefined)?.message ||
                 (startDeleteByGroupJobMutation.error as Error | undefined)?.message ||
                 (startDeleteAllJobMutation.error as Error | undefined)?.message ||

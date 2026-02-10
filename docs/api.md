@@ -87,6 +87,7 @@ Monitor endpoint payloads (`/api/monitor/endpoints` and `/api/monitor/endpoints-
 ## Inventory
 
 - `GET /api/inventory/endpoints?vlan=100&group=DB-Core&custom_1=rack-a&custom_2=critical&custom_3=core`
+- `GET /api/inventory/endpoints/export.csv?vlan=100&group=DB-Core&custom_1=rack-a&custom_2=critical&custom_3=core`
 - `POST /api/inventory/endpoints`
 - `PUT /api/inventory/endpoints/{endpointID}`
 
@@ -94,6 +95,11 @@ Inventory endpoint payloads include:
 - `custom_field_1_value`
 - `custom_field_2_value`
 - `custom_field_3_value`
+
+Inventory CSV export:
+- Query params mirror `GET /api/inventory/endpoints` filters (`vlan`, `switch`, `port`, `group`, `custom_1`, `custom_2`, `custom_3`).
+- Response is `text/csv` with attachment filename `inventory-export-<timestamp>.csv`.
+- CSV columns follow inventory view order and include enabled/configured custom fields by configured names.
 
 ## WebSocket
 

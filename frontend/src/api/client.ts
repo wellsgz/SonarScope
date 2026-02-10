@@ -70,6 +70,38 @@ function buildQuery(path: string, query: Record<string, string | undefined>): st
   return raw ? `${path}?${raw}` : path;
 }
 
+function fallbackInventoryExportFilename(): string {
+  const now = new Date();
+  const yyyy = String(now.getFullYear());
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mi = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `inventory-export-${yyyy}${mm}${dd}-${hh}${mi}${ss}.csv`;
+}
+
+function parseDownloadFilename(contentDisposition: string | null): string | null {
+  if (!contentDisposition) {
+    return null;
+  }
+
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim().replace(/^["']|["']$/g, ""));
+    } catch {
+      // ignore malformed filename* and try regular filename
+    }
+  }
+
+  const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  if (filenameMatch?.[1]) {
+    return filenameMatch[1].trim();
+  }
+  return null;
+}
+
 export async function getSettings(): Promise<Settings> {
   return request<Settings>("/api/settings/");
 }
@@ -208,6 +240,44 @@ export async function listInventoryEndpoints(filters: {
     custom_3: filters.custom3?.trim() || undefined
   });
   return request<InventoryEndpoint[]>(path);
+}
+
+export async function exportInventoryEndpointsCSV(filters: {
+  vlan?: string[];
+  switches?: string[];
+  ports?: string[];
+  groups?: string[];
+  custom1?: string;
+  custom2?: string;
+  custom3?: string;
+}): Promise<{ blob: Blob; filename: string }> {
+  const path = buildQuery("/api/inventory/endpoints/export.csv", {
+    vlan: filters.vlan?.join(","),
+    switch: filters.switches?.join(","),
+    port: filters.ports?.join(","),
+    group: filters.groups?.join(","),
+    custom_1: filters.custom1?.trim() || undefined,
+    custom_2: filters.custom2?.trim() || undefined,
+    custom_3: filters.custom3?.trim() || undefined
+  });
+
+  const response = await fetch(buildURL(path), { method: "GET" });
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) {
+        message = body.error;
+      }
+    } catch {
+      // ignore parse errors and keep default status text
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const filename = parseDownloadFilename(response.headers.get("Content-Disposition")) || fallbackInventoryExportFilename();
+  return { blob, filename };
 }
 
 export async function createInventoryEndpoint(payload: InventoryEndpointCreateRequest): Promise<InventoryEndpoint> {
