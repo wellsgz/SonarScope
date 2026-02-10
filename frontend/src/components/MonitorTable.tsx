@@ -122,7 +122,7 @@ export function MonitorTable({
       header: field.name,
       render: (row) => customFieldValueBySlot(row, field.slot)
     }));
-    return [...baseColumns.slice(0, 4), ...dynamicCustomColumns, ...baseColumns.slice(4)];
+    return [...baseColumns, ...dynamicCustomColumns];
   }, [customFields]);
 
   const pageOptions = useMemo(() => {

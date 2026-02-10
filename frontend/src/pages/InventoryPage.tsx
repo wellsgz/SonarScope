@@ -1103,15 +1103,15 @@ export function InventoryPage() {
                     <th>Hostname</th>
                     <th>IP Address</th>
                     <th>MAC</th>
-                    {enabledCustomFields.map((field) => (
-                      <th key={`inventory-column-custom-${field.slot}`}>{field.name}</th>
-                    ))}
                     <th>VLAN</th>
                     <th>Switch</th>
                     <th>Port</th>
                     <th>Port Type</th>
                     <th>Description</th>
                     <th>Group</th>
+                    {enabledCustomFields.map((field) => (
+                      <th key={`inventory-column-custom-${field.slot}`}>{field.name}</th>
+                    ))}
                     <th>Updated At</th>
                     <th>Actions</th>
                   </tr>
@@ -1146,36 +1146,6 @@ export function InventoryPage() {
                             row.mac_address || "-"
                           )}
                         </td>
-                        {enabledCustomFields.map((field) => (
-                          <td key={`inventory-row-${row.endpoint_id}-custom-${field.slot}`}>
-                            {isEditing ? (
-                              <input
-                                value={customFieldValueBySlot(
-                                  {
-                                    custom_field_1_value: editingPatch.custom_field_1_value,
-                                    custom_field_2_value: editingPatch.custom_field_2_value,
-                                    custom_field_3_value: editingPatch.custom_field_3_value
-                                  },
-                                  field.slot
-                                )}
-                                onChange={(event) =>
-                                  setEditingPatch((prev) =>
-                                    prev ? setInventoryPatchCustomFieldValue(prev, field.slot, event.target.value) : prev
-                                  )
-                                }
-                              />
-                            ) : (
-                              customFieldValueBySlot(
-                                {
-                                  custom_field_1_value: row.custom_field_1_value || "",
-                                  custom_field_2_value: row.custom_field_2_value || "",
-                                  custom_field_3_value: row.custom_field_3_value || ""
-                                },
-                                field.slot
-                              ) || "-"
-                            )}
-                          </td>
-                        ))}
                         <td>
                           {isEditing ? (
                             <input
@@ -1237,6 +1207,36 @@ export function InventoryPage() {
                           )}
                         </td>
                         <td>{row.group.join(", ") || "-"}</td>
+                        {enabledCustomFields.map((field) => (
+                          <td key={`inventory-row-${row.endpoint_id}-custom-${field.slot}`}>
+                            {isEditing ? (
+                              <input
+                                value={customFieldValueBySlot(
+                                  {
+                                    custom_field_1_value: editingPatch.custom_field_1_value,
+                                    custom_field_2_value: editingPatch.custom_field_2_value,
+                                    custom_field_3_value: editingPatch.custom_field_3_value
+                                  },
+                                  field.slot
+                                )}
+                                onChange={(event) =>
+                                  setEditingPatch((prev) =>
+                                    prev ? setInventoryPatchCustomFieldValue(prev, field.slot, event.target.value) : prev
+                                  )
+                                }
+                              />
+                            ) : (
+                              customFieldValueBySlot(
+                                {
+                                  custom_field_1_value: row.custom_field_1_value || "",
+                                  custom_field_2_value: row.custom_field_2_value || "",
+                                  custom_field_3_value: row.custom_field_3_value || ""
+                                },
+                                field.slot
+                              ) || "-"
+                            )}
+                          </td>
+                        ))}
                         <td>{new Date(row.updated_at).toLocaleString()}</td>
                         <td>
                           <div className="button-row">

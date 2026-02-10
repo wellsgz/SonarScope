@@ -8,6 +8,7 @@ const defaultCustomFields: CustomFieldConfig[] = [
   { slot: 2, enabled: false, name: "" },
   { slot: 3, enabled: false, name: "" }
 ];
+const settingsCustomFieldsCollapsedKey = "sonarscope.settings.custom_fields_collapsed";
 
 const reservedCustomFieldNames = new Set([
   "hostname",
@@ -125,6 +126,12 @@ export function SettingsPage() {
     auto_refresh_sec: 10,
     custom_fields: normalizeCustomFields()
   });
+  const [customFieldsExpanded, setCustomFieldsExpanded] = useState(() => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+    return window.localStorage.getItem(settingsCustomFieldsCollapsedKey) !== "1";
+  });
 
   useEffect(() => {
     if (settingsQuery.data) {
@@ -134,10 +141,24 @@ export function SettingsPage() {
       });
     }
   }, [settingsQuery.data]);
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(settingsCustomFieldsCollapsedKey, customFieldsExpanded ? "0" : "1");
+  }, [customFieldsExpanded]);
 
-  const customFieldIssues = useMemo(
-    () => validateCustomFields(draft.custom_fields),
+  const normalizedCustomFields = useMemo(
+    () => normalizeCustomFields(draft.custom_fields),
     [draft.custom_fields]
+  );
+  const customFieldIssues = useMemo(
+    () => validateCustomFields(normalizedCustomFields),
+    [normalizedCustomFields]
+  );
+  const enabledCustomFieldCount = useMemo(
+    () => normalizedCustomFields.filter((field) => field.enabled && field.name.trim().length > 0).length,
+    [normalizedCustomFields]
   );
 
   const saveMutation = useMutation({
@@ -206,50 +227,69 @@ export function SettingsPage() {
             </label>
           </div>
 
-          <section className="settings-custom-fields">
-            <h3 className="panel-title settings-section-title">Custom Fields</h3>
-            <p className="panel-subtitle">
-              Enable up to three custom endpoint fields. Enabled fields require unique non-overlapping names.
-            </p>
-            <div className="settings-custom-field-list">
-              {normalizeCustomFields(draft.custom_fields).map((field) => (
-                <div key={field.slot} className="settings-custom-field-row">
-                  <div className="settings-custom-field-meta">
-                    <strong>Custom Field {field.slot}</strong>
-                    <label className="settings-toggle-row">
+          <section className={`settings-custom-fields ${customFieldsExpanded ? "is-expanded" : "is-collapsed"}`}>
+            <div className="settings-section-header">
+              <div className="settings-section-heading">
+                <h3 className="panel-title">Custom Fields</h3>
+                <p className="panel-subtitle">
+                  Enable up to three custom endpoint fields. Enabled fields require unique non-overlapping names.
+                </p>
+              </div>
+              <div className="settings-section-actions">
+                <span className="status-chip">{enabledCustomFieldCount}/3 enabled</span>
+                <button
+                  className="btn btn-small"
+                  type="button"
+                  aria-expanded={customFieldsExpanded}
+                  aria-controls="settings-custom-fields-body"
+                  onClick={() => setCustomFieldsExpanded((current) => !current)}
+                >
+                  {customFieldsExpanded ? "Collapse" : "Expand"}
+                </button>
+              </div>
+            </div>
+
+            {customFieldsExpanded ? (
+              <div id="settings-custom-fields-body" className="settings-custom-field-list">
+                {normalizedCustomFields.map((field) => (
+                  <div key={field.slot} className={`settings-custom-field-row ${field.enabled ? "is-enabled" : ""}`}>
+                    <div className="settings-custom-field-meta">
+                      <strong className="settings-custom-field-slot">Custom Field {field.slot}</strong>
+                      <label className="settings-toggle-row">
+                        <input
+                          type="checkbox"
+                          checked={field.enabled}
+                          onChange={(event) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
+                                item.slot === field.slot ? { ...item, enabled: event.target.checked } : item
+                              )
+                            }))
+                          }
+                        />
+                        <span className="settings-toggle-label">Enabled</span>
+                      </label>
+                    </div>
+                    <label className="settings-custom-field-input">
+                      Field Name
                       <input
-                        type="checkbox"
-                        checked={field.enabled}
+                        value={field.name}
                         onChange={(event) =>
                           setDraft((prev) => ({
                             ...prev,
                             custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
-                              item.slot === field.slot ? { ...item, enabled: event.target.checked } : item
+                              item.slot === field.slot ? { ...item, name: event.target.value } : item
                             )
                           }))
                         }
+                        placeholder={`Custom Field ${field.slot}`}
                       />
-                      Enabled
                     </label>
                   </div>
-                  <label>
-                    Field Name
-                    <input
-                      value={field.name}
-                      onChange={(event) =>
-                        setDraft((prev) => ({
-                          ...prev,
-                          custom_fields: normalizeCustomFields(prev.custom_fields).map((item) =>
-                            item.slot === field.slot ? { ...item, name: event.target.value } : item
-                          )
-                        }))
-                      }
-                      placeholder={`Custom Field ${field.slot}`}
-                    />
-                  </label>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : null}
           </section>
 
           <div className="button-row settings-save-row">
@@ -259,7 +299,7 @@ export function SettingsPage() {
               onClick={() =>
                 saveMutation.mutate({
                   ...draft,
-                  custom_fields: normalizeCustomFields(draft.custom_fields)
+                  custom_fields: normalizedCustomFields
                 })
               }
               disabled={saveMutation.isPending || customFieldIssues.length > 0}
