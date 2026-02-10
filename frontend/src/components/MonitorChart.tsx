@@ -22,6 +22,8 @@ type ChartPoint = {
   };
 };
 
+const LATENCY_SERIES_COLOR = "#2563EB";
+
 function formatPercent(value: number): string {
   return `${value.toFixed(2)}%`;
 }
@@ -273,7 +275,7 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
   const option = useMemo(() => {
     const buckets = buildBuckets(rangeStart, rangeEnd, toStepMs(rollup));
     const loss = buildMetricSeries(points, "loss_rate", buckets, rollup, palette.textSubtle, palette.success);
-    const latency = buildMetricSeries(points, "avg_latency_ms", buckets, rollup, palette.textSubtle, palette.success);
+    const latency = buildMetricSeries(points, "avg_latency_ms", buckets, rollup, palette.textSubtle, LATENCY_SERIES_COLOR);
     const latestLossValue = getLatestLossValue(points);
     const lossLegendColor = resolveLossColor(latestLossValue, palette);
     const lossMeasured = loss.measured.map((seriesDef) => ({
@@ -284,9 +286,9 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
     }));
     const latencyMeasured = latency.measured.map((seriesDef) => ({
       ...seriesDef,
-      color: palette.success,
-      lineStyle: { ...(seriesDef.lineStyle as Record<string, unknown>), color: palette.success },
-      itemStyle: { color: palette.success }
+      color: LATENCY_SERIES_COLOR,
+      lineStyle: { ...(seriesDef.lineStyle as Record<string, unknown>), color: LATENCY_SERIES_COLOR },
+      itemStyle: { color: LATENCY_SERIES_COLOR }
     }));
 
     const maxLatency = points.reduce((acc, point) => {
