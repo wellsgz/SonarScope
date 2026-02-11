@@ -243,6 +243,7 @@ export function InventoryPage() {
   const [selectedGroupID, setSelectedGroupID] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [isPreparingImportApply, setIsPreparingImportApply] = useState(false);
+  const [importApplyConfirmOpen, setImportApplyConfirmOpen] = useState(false);
   const [importGuardError, setImportGuardError] = useState<string | null>(null);
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
@@ -383,6 +384,7 @@ export function InventoryPage() {
         : Promise.reject(new Error("No preview available")),
     onSuccess: (data) => {
       setImportGuardError(null);
+      setImportApplyConfirmOpen(false);
       setLastImportSummary({
         added: data.added,
         updated: data.updated,
@@ -583,29 +585,42 @@ export function InventoryPage() {
     }
 
     setImportGuardError(null);
+    setImportApplyConfirmOpen(false);
     setIsPreparingImportApply(true);
     try {
       const status = await getProbeStatus();
       if (status.running) {
-        const confirmed = window.confirm(
-          "Probing is running. SonarScope will stop probing before applying this import to avoid immediately probing newly imported endpoints. Continue?"
-        );
-        if (!confirmed) {
-          return;
-        }
-
-        await stopProbe();
-        queryClient.setQueryData<ProbeStatus>(["probe-status"], {
-          running: false,
-          scope: "",
-          group_ids: []
-        });
-        queryClient.invalidateQueries({ queryKey: ["probe-status"] });
+        setImportApplyConfirmOpen(true);
+        return;
       }
 
       applyMutation.mutate();
     } catch (error) {
       setImportGuardError((error as Error).message || "Failed to prepare import apply while probing is active.");
+    } finally {
+      setIsPreparingImportApply(false);
+    }
+  };
+
+  const handleConfirmStopProbeAndApply = async () => {
+    if (isPreparingImportApply || applyMutation.isPending) {
+      return;
+    }
+
+    setImportGuardError(null);
+    setIsPreparingImportApply(true);
+    try {
+      await stopProbe();
+      queryClient.setQueryData<ProbeStatus>(["probe-status"], {
+        running: false,
+        scope: "",
+        group_ids: []
+      });
+      queryClient.invalidateQueries({ queryKey: ["probe-status"] });
+      setImportApplyConfirmOpen(false);
+      applyMutation.mutate();
+    } catch (error) {
+      setImportGuardError((error as Error).message || "Failed to stop probing before import apply.");
     } finally {
       setIsPreparingImportApply(false);
     }
@@ -655,6 +670,7 @@ export function InventoryPage() {
                 !preview ||
                 Object.keys(selection).length === 0 ||
                 groupAssignmentInvalid ||
+                importApplyConfirmOpen ||
                 isPreparingImportApply ||
                 applyMutation.isPending
               }
@@ -662,6 +678,36 @@ export function InventoryPage() {
               {isPreparingImportApply ? "Preparing..." : applyMutation.isPending ? "Applying..." : "Apply Selected"}
             </button>
           </div>
+
+          {importApplyConfirmOpen ? (
+            <div className="inventory-import-confirm-card" role="alert" aria-live="assertive">
+              <div className="inventory-import-confirm-copy">
+                <p className="inventory-import-confirm-title">Probing is running</p>
+                <p className="inventory-import-confirm-text">
+                  SonarScope will stop probing before applying this import so newly imported endpoints are not probed
+                  immediately.
+                </p>
+              </div>
+              <div className="button-row inventory-import-confirm-actions">
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={isPreparingImportApply || applyMutation.isPending}
+                  onClick={() => setImportApplyConfirmOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  disabled={isPreparingImportApply || applyMutation.isPending}
+                  onClick={handleConfirmStopProbeAndApply}
+                >
+                  {isPreparingImportApply ? "Stopping Probe..." : "Stop Probing & Apply"}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="inventory-import-assignment">
             <label className="inventory-import-assignment-toggle">

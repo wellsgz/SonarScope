@@ -98,13 +98,21 @@
 
 .monitor-dashboard-view {
   min-height: 100%;
+  width: 100%;
+  min-width: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: var(--space-3);
+  overflow: hidden;
 }
 
 .monitor-dashboard-header {
   padding: var(--space-3);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.monitor-dashboard-header-main {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -115,29 +123,66 @@
   min-width: 0;
 }
 
+.monitor-dashboard-header-actions {
+  flex: 0 0 auto;
+}
+
+.monitor-dashboard-exit-btn {
+  white-space: nowrap;
+}
+
 .monitor-dashboard-meta {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
 
 .monitor-dashboard-table {
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .monitor-dashboard-table .table-panel {
   height: 100%;
   min-height: 0;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .monitor-dashboard-table .table-scroll {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  overflow-x: scroll;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
   padding-inline-end: var(--space-2);
+  padding-block-end: var(--space-1);
+}
+
+.monitor-dashboard-table .table-scroll::-webkit-scrollbar {
+  width: 0.56rem;
+  height: 0.56rem;
+}
+
+.monitor-dashboard-table .table-scroll::-webkit-scrollbar-track {
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+}
+
+.monitor-dashboard-table .table-scroll::-webkit-scrollbar-thumb {
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+}
+
+.monitor-dashboard-table .table-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-accent) 62%, var(--color-border-strong));
 }
 
 .toolbar-panel {
@@ -519,6 +564,37 @@
   display: grid;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
+}
+
+.inventory-import-confirm-card {
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface-elevated));
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.inventory-import-confirm-copy {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.inventory-import-confirm-title {
+  margin: 0;
+  color: var(--color-warning);
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+
+.inventory-import-confirm-text {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-md);
+}
+
+.inventory-import-confirm-actions {
+  justify-content: flex-end;
 }
 
 .inventory-import-assignment-toggle {
@@ -934,6 +1010,10 @@
   }
 
   .monitor-dashboard-header {
+    gap: var(--space-2);
+  }
+
+  .monitor-dashboard-header-main {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -998,6 +1078,11 @@
 
   .inventory-delete-confirm-actions {
     width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .inventory-import-confirm-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
   }

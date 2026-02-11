@@ -123,8 +123,8 @@ export default function App() {
     if (view === "inventory") return <InventoryPage />;
     if (view === "groups") return <GroupsPage />;
     if (view === "settings") return <SettingsPage />;
-    return <MonitorPage onDashboardModeChange={setMonitorDashboardMode} />;
-  }, [view]);
+    return <MonitorPage dashboardMode={monitorDashboardMode} onDashboardModeChange={setMonitorDashboardMode} />;
+  }, [view, monitorDashboardMode]);
 
   return (
     <AppShell
@@ -151,6 +151,8 @@ export default function App() {
       probeBusy={probeBusy}
       deleteInProgress={deleteInProgress}
       immersiveMonitorMode={immersiveMonitorMode}
+      showOpenDashboardButton={view === "monitor" && !monitorDashboardMode}
+      onOpenDashboard={() => setMonitorDashboardMode(true)}
     >
       {page}
     </AppShell>

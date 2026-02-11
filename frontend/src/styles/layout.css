@@ -289,7 +289,12 @@
   margin-left: auto;
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+.topbar-dashboard-button {
+  flex: 0 0 auto;
 }
 
 .topbar-control {
@@ -356,12 +361,13 @@
 .app-content-immersive {
   padding: var(--space-2);
   min-height: 100vh;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .app-content-immersive .app-content-frame {
   max-width: none;
   height: 100%;
+  min-width: 0;
 }
 
 .shell-backdrop {

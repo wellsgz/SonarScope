@@ -120,10 +120,11 @@ function normalizeIPList(raw: string): string[] {
 }
 
 type Props = {
+  dashboardMode?: boolean;
   onDashboardModeChange?: (enabled: boolean) => void;
 };
 
-export function MonitorPage({ onDashboardModeChange }: Props = {}) {
+export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}) {
   const queryClient = useQueryClient();
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
@@ -141,7 +142,7 @@ export function MonitorPage({ onDashboardModeChange }: Props = {}) {
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
   const [dataScope, setDataScope] = useState<MonitorDataScope>("live");
   const [rangeAnchorMs, setRangeAnchorMs] = useState<number>(Date.now());
-  const [tableDashboardMode, setTableDashboardMode] = useState(false);
+  const [internalDashboardMode, setInternalDashboardMode] = useState(false);
   const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") {
       return true;
@@ -184,9 +185,13 @@ export function MonitorPage({ onDashboardModeChange }: Props = {}) {
     window.localStorage.setItem(monitorControlsCollapsedKey, controlsCollapsed ? "1" : "0");
   }, [controlsCollapsed]);
 
-  useEffect(() => {
-    onDashboardModeChange?.(tableDashboardMode);
-  }, [onDashboardModeChange, tableDashboardMode]);
+  const tableDashboardMode = dashboardMode ?? internalDashboardMode;
+  const setTableDashboardMode = (enabled: boolean) => {
+    if (dashboardMode === undefined) {
+      setInternalDashboardMode(enabled);
+    }
+    onDashboardModeChange?.(enabled);
+  };
 
   useEffect(() => {
     return () => {
@@ -404,17 +409,21 @@ export function MonitorPage({ onDashboardModeChange }: Props = {}) {
         )}
 
         <div className="panel monitor-dashboard-header">
-          <div className="monitor-dashboard-header-copy">
-            <h2 className="panel-title">Monitor Dashboard</h2>
-            <p className="panel-subtitle">Fullscreen endpoint table view for wallboard monitoring.</p>
+          <div className="monitor-dashboard-header-main">
+            <div className="monitor-dashboard-header-copy">
+              <h2 className="panel-title">Monitor Dashboard</h2>
+              <p className="panel-subtitle">Fullscreen endpoint table view for wallboard monitoring.</p>
+            </div>
+            <div className="monitor-dashboard-header-actions">
+              <button className="btn btn-primary monitor-dashboard-exit-btn" type="button" onClick={() => setTableDashboardMode(false)}>
+                Exit Dashboard
+              </button>
+            </div>
           </div>
           <div className="monitor-dashboard-meta">
             <span className="status-chip">{controlsSummaryScope}</span>
             <span className="status-chip">{controlsSummaryFilters}</span>
             <span className="status-chip">{dashboardRowSummary}</span>
-            <button className="btn btn-primary" type="button" onClick={() => setTableDashboardMode(false)}>
-              Return to Operations Monitor
-            </button>
           </div>
         </div>
 
@@ -543,14 +552,6 @@ export function MonitorPage({ onDashboardModeChange }: Props = {}) {
         <div className="monitor-pane-middle">
           <div className="monitor-pane-middle-head">
             <span className="monitor-pane-middle-title">Endpoint Snapshot</span>
-            <button
-              className="btn btn-small"
-              type="button"
-              disabled={monitorQuery.isLoading || monitorRows.length === 0}
-              onClick={() => setTableDashboardMode(true)}
-            >
-              Open Dashboard
-            </button>
           </div>
           {tableContent}
         </div>

@@ -9,6 +9,8 @@ type Props = {
   views: AppViewMeta[];
   mode: ThemeMode;
   immersiveMonitorMode: boolean;
+  showOpenDashboardButton?: boolean;
+  onOpenDashboard?: () => void;
   sidebarOpen: boolean;
   onOpenSidebar: () => void;
   onCloseSidebar: () => void;
@@ -31,6 +33,8 @@ export function AppShell({
   views,
   mode,
   immersiveMonitorMode,
+  showOpenDashboardButton,
+  onOpenDashboard,
   sidebarOpen,
   onOpenSidebar,
   onCloseSidebar,
@@ -102,6 +106,8 @@ export function AppShell({
           <TopBar
             activeView={activeMeta}
             onOpenSidebar={onOpenSidebar}
+            showOpenDashboardButton={showOpenDashboardButton}
+            onOpenDashboard={onOpenDashboard}
           />
         ) : null}
 

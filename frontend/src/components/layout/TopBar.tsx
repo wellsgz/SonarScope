@@ -6,9 +6,11 @@ import type { AppViewMeta } from "../../types/ui";
 type Props = {
   activeView: AppViewMeta;
   onOpenSidebar: () => void;
+  showOpenDashboardButton?: boolean;
+  onOpenDashboard?: () => void;
 };
 
-export function TopBar({ activeView, onOpenSidebar }: Props) {
+export function TopBar({ activeView, onOpenSidebar, showOpenDashboardButton, onOpenDashboard }: Props) {
   const queryClient = useQueryClient();
   const isMonitorView = activeView.key === "monitor";
 
@@ -68,6 +70,11 @@ export function TopBar({ activeView, onOpenSidebar }: Props) {
                 aria-label="Auto refresh interval in seconds"
               />
             </label>
+            {showOpenDashboardButton && onOpenDashboard ? (
+              <button className="btn btn-small topbar-dashboard-button" type="button" onClick={onOpenDashboard}>
+                Open Dashboard
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
