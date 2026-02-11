@@ -1573,6 +1573,25 @@ func (s *Store) ListAllEndpointIDs(ctx context.Context) ([]int64, error) {
 	return ids, nil
 }
 
+func (s *Store) DeleteInventoryEndpointByID(ctx context.Context, endpointID int64) (int64, error) {
+	var exists bool
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_endpoint WHERE id = $1)`, endpointID).Scan(&exists); err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, pgx.ErrNoRows
+	}
+
+	deletedCount, err := s.DeleteInventoryEndpointsByIDs(ctx, []int64{endpointID}, 1, nil)
+	if err != nil {
+		return 0, err
+	}
+	if deletedCount == 0 {
+		return 0, pgx.ErrNoRows
+	}
+	return deletedCount, nil
+}
+
 func (s *Store) DeleteInventoryEndpointsByIDs(
 	ctx context.Context,
 	endpointIDs []int64,
@@ -2065,6 +2084,8 @@ func monitorSortExpression(sortBy string) (string, error) {
 	switch sortBy {
 	case "":
 		return "", nil
+	case "last_failed_on":
+		return "es.last_failed_on", nil
 	case "last_success_on":
 		return "es.last_success_on", nil
 	case "success_count":
@@ -2092,7 +2113,8 @@ func monitorRangeSortExpression(sortBy string) (string, error) {
 	switch sortBy {
 	case "":
 		return "", nil
-	case "last_success_on",
+	case "last_failed_on",
+		"last_success_on",
 		"success_count",
 		"failed_count",
 		"failed_pct",

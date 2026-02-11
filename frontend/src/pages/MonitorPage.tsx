@@ -29,6 +29,7 @@ const defaultFilters: FilterState = {
 };
 
 const liveSortableFields: MonitorSortField[] = [
+  "last_failed_on",
   "last_success_on",
   "success_count",
   "failed_count",
@@ -41,6 +42,7 @@ const liveSortableFields: MonitorSortField[] = [
 ];
 
 const rangeSortableFields: MonitorSortField[] = [
+  "last_failed_on",
   "last_success_on",
   "success_count",
   "failed_count",
@@ -460,6 +462,7 @@ export function MonitorPage() {
               pageSize={(monitorQuery.data?.page_size as 50 | 100 | 200) ?? pageSize}
               totalItems={monitorQuery.data?.total_items ?? 0}
               totalPages={monitorQuery.data?.total_pages ?? 0}
+              dataScope={dataScope}
               onPageChange={(nextPage) => setPage(Math.max(1, nextPage))}
               onPageSizeChange={(nextSize) => {
                 setPageSize(nextSize);

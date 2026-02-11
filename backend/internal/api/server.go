@@ -392,6 +392,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/endpoints", s.handleInventoryEndpoints)
 			r.Get("/endpoints/export.csv", s.handleInventoryEndpointsExportCSV)
 			r.Put("/endpoints/{endpointID}", s.handleInventoryEndpointUpdate)
+			r.Delete("/endpoints/{endpointID}", s.handleInventoryEndpointDelete)
 			r.Delete("/endpoints/by-group/{groupID}", s.handleInventoryDeleteByGroup)
 			r.Post("/endpoints/delete-all", s.handleInventoryDeleteAll)
 			r.Post("/delete-jobs/by-group/{groupID}", s.handleInventoryDeleteJobByGroup)
@@ -897,6 +898,35 @@ func (s *Server) handleInventoryEndpointUpdate(w http.ResponseWriter, r *http.Re
 	}
 
 	util.WriteJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) handleInventoryEndpointDelete(w http.ResponseWriter, r *http.Request) {
+	if s.isDeleteJobRunning() {
+		util.WriteError(w, http.StatusConflict, "inventory deletion already in progress")
+		return
+	}
+
+	endpointID, err := strconv.ParseInt(chi.URLParam(r, "endpointID"), 10, 64)
+	if err != nil || endpointID < 1 {
+		util.WriteError(w, http.StatusBadRequest, "invalid endpoint id")
+		return
+	}
+
+	deletedCount, err := s.store.DeleteInventoryEndpointByID(r.Context(), endpointID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			util.WriteError(w, http.StatusNotFound, "inventory endpoint not found")
+			return
+		}
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	util.WriteJSON(w, http.StatusOK, map[string]any{
+		"deleted":       true,
+		"endpoint_id":   endpointID,
+		"deleted_count": deletedCount,
+	})
 }
 
 func (s *Server) handleInventoryDeleteByGroup(w http.ResponseWriter, r *http.Request) {
@@ -1574,6 +1604,7 @@ func parseIPListQuery(r *http.Request, key string) ([]string, error) {
 func storeMonitorSortExpression(sortBy string) (string, error) {
 	switch sortBy {
 	case "",
+		"last_failed_on",
 		"last_success_on",
 		"success_count",
 		"failed_count",
@@ -1592,6 +1623,7 @@ func storeMonitorSortExpression(sortBy string) (string, error) {
 func storeMonitorRangeSortExpression(sortBy string) (string, error) {
 	switch sortBy {
 	case "",
+		"last_failed_on",
 		"last_success_on",
 		"success_count",
 		"failed_count",

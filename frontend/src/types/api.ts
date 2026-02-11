@@ -27,6 +27,7 @@ export type MonitorEndpoint = {
 };
 
 export type MonitorSortField =
+  | "last_failed_on"
   | "last_success_on"
   | "success_count"
   | "failed_count"

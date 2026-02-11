@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { MonitorEndpoint, MonitorSortField } from "../types/api";
+import type { MonitorDataScope, MonitorEndpoint, MonitorSortField } from "../types/api";
 
 type Props = {
   rows: MonitorEndpoint[];
@@ -12,6 +12,7 @@ type Props = {
   totalPages: number;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: 50 | 100 | 200) => void;
+  dataScope: MonitorDataScope;
   sortableFields: MonitorSortField[];
   sortBy: MonitorSortField | null;
   sortDir: "asc" | "desc" | null;
@@ -77,21 +78,22 @@ function failureClassName(row: MonitorEndpoint): string | undefined {
 
 const baseColumns: MonitorColumn[] = [
   { key: "hostname", header: "Hostname", render: (row) => row.hostname || "-" },
-  {
-    key: "last_failed_on",
-    header: "Last Failed On",
-    render: (row) => formatDate(row.last_failed_on),
-    cellClassName: failureClassName
-  },
   { key: "ip_address", header: "IP Address", render: (row) => row.ip_address },
-  { key: "mac_address", header: "MAC Address", render: (row) => row.mac_address || "-" },
-  { key: "reply_ip_address", header: "Reply IP", render: (row) => row.reply_ip_address || "-" },
   {
     key: "last_success_on",
     header: "Last Success On",
     sortable: "last_success_on",
     render: (row) => formatDate(row.last_success_on)
   },
+  {
+    key: "last_failed_on",
+    header: "Last Failed On",
+    sortable: "last_failed_on",
+    render: (row) => formatDate(row.last_failed_on),
+    cellClassName: failureClassName
+  },
+  { key: "mac_address", header: "MAC Address", render: (row) => row.mac_address || "-" },
+  { key: "reply_ip_address", header: "Reply IP", render: (row) => row.reply_ip_address || "-" },
   { key: "success_count", header: "Success Count", sortable: "success_count", render: (row) => String(row.success_count) },
   {
     key: "failed_count",
@@ -160,6 +162,7 @@ export function MonitorTable({
   totalPages,
   onPageChange,
   onPageSizeChange,
+  dataScope,
   sortableFields,
   sortBy,
   sortDir,
@@ -172,8 +175,37 @@ export function MonitorTable({
       header: field.name,
       render: (row) => customFieldValueBySlot(row, field.slot)
     }));
-    return [...baseColumns, ...dynamicCustomColumns];
-  }, [customFields]);
+
+    const columnsWithCustom = [...baseColumns, ...dynamicCustomColumns];
+    if (dataScope !== "live") {
+      return columnsWithCustom;
+    }
+
+    const recentDropThresholdMs = 30 * 60 * 1000;
+    const nowMs = Date.now();
+    const identityClassName = (row: MonitorEndpoint): string => {
+      if (row.consecutive_failed_count > 0) {
+        return "monitor-identity-danger";
+      }
+      if (row.last_failed_on) {
+        const failedAt = new Date(row.last_failed_on).getTime();
+        if (!Number.isNaN(failedAt) && nowMs - failedAt <= recentDropThresholdMs) {
+          return "monitor-identity-warning";
+        }
+      }
+      return "monitor-identity-ok";
+    };
+
+    return columnsWithCustom.map((column) => {
+      if (column.key === "hostname" || column.key === "ip_address") {
+        return {
+          ...column,
+          cellClassName: identityClassName
+        };
+      }
+      return column;
+    });
+  }, [customFields, dataScope]);
 
   const pageOptions = useMemo(() => {
     if (totalPages < 1) {

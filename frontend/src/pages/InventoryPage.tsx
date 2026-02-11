@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
   createInventoryEndpoint,
+  deleteInventoryEndpoint,
   exportInventoryEndpointsCSV,
   getProbeStatus,
   getSettings,
@@ -248,6 +249,7 @@ export function InventoryPage() {
   const [customSearch, setCustomSearch] = useState<CustomSearchState>(defaultCustomSearch);
   const [editingEndpointID, setEditingEndpointID] = useState<number | null>(null);
   const [editingPatch, setEditingPatch] = useState<InventoryPatch | null>(null);
+  const [deletingEndpointID, setDeletingEndpointID] = useState<number | null>(null);
   const [singleEndpoint, setSingleEndpoint] = useState<InventoryEndpointCreateRequest>(initialSingleEndpoint);
   const [singleEndpointAdvancedOpen, setSingleEndpointAdvancedOpen] = useState(false);
   const [deleteGroupID, setDeleteGroupID] = useState("");
@@ -411,6 +413,21 @@ export function InventoryPage() {
       setEditingEndpointID(null);
       setEditingPatch(null);
       invalidateInventoryAndMonitorQueries();
+    }
+  });
+
+  const deleteEndpointMutation = useMutation({
+    mutationFn: (endpointID: number) => deleteInventoryEndpoint(endpointID),
+    onMutate: (endpointID) => {
+      setDeletingEndpointID(endpointID);
+    },
+    onSuccess: () => {
+      setEditingEndpointID(null);
+      setEditingPatch(null);
+      invalidateInventoryAndMonitorQueries();
+    },
+    onSettled: () => {
+      setDeletingEndpointID(null);
     }
   });
 
@@ -1156,6 +1173,7 @@ export function InventoryPage() {
           {(inventoryQuery.error ||
             exportCSVMutation.error ||
             updateMutation.error ||
+            deleteEndpointMutation.error ||
             startDeleteByGroupJobMutation.error ||
             startDeleteAllJobMutation.error ||
             settingsQuery.error ||
@@ -1164,6 +1182,7 @@ export function InventoryPage() {
               {(inventoryQuery.error as Error | undefined)?.message ||
                 (exportCSVMutation.error as Error | undefined)?.message ||
                 (updateMutation.error as Error | undefined)?.message ||
+                (deleteEndpointMutation.error as Error | undefined)?.message ||
                 (startDeleteByGroupJobMutation.error as Error | undefined)?.message ||
                 (startDeleteAllJobMutation.error as Error | undefined)?.message ||
                 (settingsQuery.error as Error | undefined)?.message ||
@@ -1370,16 +1389,38 @@ export function InventoryPage() {
                                 </button>
                               </>
                             ) : (
-                              <button
-                                className="btn"
-                                type="button"
-                                onClick={() => {
-                                  setEditingEndpointID(row.endpoint_id);
-                                  setEditingPatch(toPatch(row));
-                                }}
-                              >
-                                Edit
-                              </button>
+                              <>
+                                <button
+                                  className="btn"
+                                  type="button"
+                                  disabled={deleteEndpointMutation.isPending || deleteInProgress}
+                                  onClick={() => {
+                                    setEditingEndpointID(row.endpoint_id);
+                                    setEditingPatch(toPatch(row));
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="btn btn-danger"
+                                  type="button"
+                                  disabled={deleteEndpointMutation.isPending || deleteInProgress}
+                                  onClick={() => {
+                                    const label = row.hostname?.trim() ? `${row.hostname} (${row.ip_address})` : row.ip_address;
+                                    const confirmed = window.confirm(
+                                      `Delete endpoint "${label}"? This cannot be undone and will remove related probe history.`
+                                    );
+                                    if (!confirmed) {
+                                      return;
+                                    }
+                                    deleteEndpointMutation.mutate(row.endpoint_id);
+                                  }}
+                                >
+                                  {deleteEndpointMutation.isPending && deletingEndpointID === row.endpoint_id
+                                    ? "Deleting..."
+                                    : "Delete"}
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>

@@ -308,6 +308,17 @@ export async function updateInventoryEndpoint(
   });
 }
 
+export async function deleteInventoryEndpoint(
+  endpointID: number
+): Promise<{ deleted: boolean; endpoint_id: number; deleted_count: number }> {
+  return request<{ deleted: boolean; endpoint_id: number; deleted_count: number }>(
+    `/api/inventory/endpoints/${endpointID}`,
+    {
+      method: "DELETE"
+    }
+  );
+}
+
 export async function deleteInventoryEndpointsByGroup(groupID: number): Promise<DeleteInventoryByGroupResponse> {
   return request<DeleteInventoryByGroupResponse>(`/api/inventory/endpoints/by-group/${groupID}`, {
     method: "DELETE"
