@@ -178,6 +178,34 @@
   padding-top: var(--space-2);
 }
 
+.advanced-filter-scroll-region {
+  max-height: 12rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable both-edges;
+  padding-inline-end: var(--space-1);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border)) transparent;
+}
+
+.advanced-filter-scroll-region::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.advanced-filter-scroll-region::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
+  border-radius: var(--radius-pill);
+}
+
+.advanced-filter-scroll-region::-webkit-scrollbar-thumb {
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
+}
+
+.advanced-filter-scroll-region::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-accent) 52%, var(--color-border-strong));
+}
+
 .monitor-pane-middle .table-panel {
   min-height: 0;
   display: flex;
@@ -798,6 +826,10 @@
   .inventory-filter-grid,
   .custom-time-row {
     grid-template-columns: 1fr;
+  }
+
+  .advanced-filter-scroll-region {
+    max-height: 14.5rem;
   }
 
   .inventory-header-actions {

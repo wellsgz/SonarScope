@@ -321,6 +321,7 @@ export function MonitorPage() {
     }
   });
   const controlsSummaryScope = dataScope === "live" ? "Live Snapshot" : "Selected Range";
+  const controlsSummaryFilters = activeFilterCount === 0 ? "Filters: All" : `Filters: ${activeFilterCount}`;
 
   return (
     <div className={`monitor-page ${controlsCollapsed ? "monitor-page-controls-collapsed" : ""}`}>
@@ -335,7 +336,7 @@ export function MonitorPage() {
         {controlsCollapsed ? (
           <div className="panel monitor-controls-summary-panel">
             <span className="status-chip">{controlsSummaryScope}</span>
-            <span className="status-chip">Filters: {activeFilterCount}</span>
+            <span className="status-chip">{controlsSummaryFilters}</span>
           </div>
         ) : (
           <MonitorToolbar
