@@ -248,6 +248,11 @@
   border-bottom-color: var(--color-border);
 }
 
+.filter-card-summary-static {
+  border-bottom-color: var(--color-border);
+  cursor: default;
+}
+
 .filter-card-body {
   padding: 0.5rem 0.58rem 0.58rem;
   display: grid;

@@ -271,11 +271,11 @@ export function MonitorToolbar({
                 {filterCards.map((filterCard) => {
                   const selectedValues = filters[filterCard.key];
                   return (
-                    <details key={filterCard.key} className="filter-card" open={selectedValues.length > 0}>
-                      <summary className="filter-card-summary">
+                    <div key={filterCard.key} className="filter-card">
+                      <div className="filter-card-summary filter-card-summary-static">
                         <span>{filterCard.label}</span>
                         <span className="count-badge">{selectedValues.length}</span>
-                      </summary>
+                      </div>
                       <div className="filter-card-body">
                         <div className="filter-card-actions">
                           <span>{selectedValues.length} selected</span>
@@ -283,25 +283,29 @@ export function MonitorToolbar({
                             Clear
                           </button>
                         </div>
-                        <select
-                          multiple
-                          value={selectedValues}
-                          onChange={(event) =>
-                            onFilterChange({
-                              ...filters,
-                              [filterCard.key]: multiSelectValue(event)
-                            })
-                          }
-                          aria-label={`${filterCard.label} filter`}
-                        >
-                          {filterCard.options.map((item) => (
-                            <option key={item} value={item}>
-                              {item}
-                            </option>
-                          ))}
-                        </select>
+                        {filterCard.options.length > 0 ? (
+                          <select
+                            multiple
+                            value={selectedValues}
+                            onChange={(event) =>
+                              onFilterChange({
+                                ...filters,
+                                [filterCard.key]: multiSelectValue(event)
+                              })
+                            }
+                            aria-label={`${filterCard.label} filter`}
+                          >
+                            {filterCard.options.map((item) => (
+                              <option key={item} value={item}>
+                                {item}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="field-help">No options available yet.</span>
+                        )}
                       </div>
-                    </details>
+                    </div>
                   );
                 })}
               </div>
