@@ -481,8 +481,8 @@ export function MonitorPage() {
             <div className="panel state-panel empty-chart-panel">Select an endpoint row to visualize loss rate and latency.</div>
           ) : timeSeriesQuery.isLoading ? (
             <div className="panel state-panel">Loading timeseries data…</div>
-          ) : (timeSeriesQuery.data?.series || []).length === 0 ? (
-            <div className="panel state-panel">No timeseries data found for the selected range.</div>
+          ) : timeSeriesQuery.error ? (
+            <div className="panel state-panel">Failed to load timeseries data for the selected range.</div>
           ) : (
             <MonitorChart
               points={timeSeriesQuery.data?.series || []}

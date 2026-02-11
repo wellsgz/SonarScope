@@ -293,6 +293,9 @@ function getLatestLossValue(points: TimeSeriesPoint[]): number | null {
 }
 
 export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeEnd }: Props) {
+  const hasProbeActivityInRange = useMemo(() => points.some((point) => point.sent_count > 0), [points]);
+  const showNoProbeNote = !hasProbeActivityInRange;
+
   const palette = {
     textMuted: readToken("--color-text-muted", "#b4c3db"),
     textSubtle: readToken("--color-text-subtle", "#94a7c4"),
@@ -506,6 +509,12 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
         <div>
           <div className="chart-title">Loss & Latency Timeline</div>
           <div className="chart-subtitle">Selected endpoint: {endpointLabel}</div>
+          {showNoProbeNote ? (
+            <div className="chart-no-probe-note">
+              No probe activity in this selected period. This is expected when probing was stopped or no probes ran in this
+              window.
+            </div>
+          ) : null}
         </div>
       </div>
       <ReactECharts option={option} className="chart-canvas" />

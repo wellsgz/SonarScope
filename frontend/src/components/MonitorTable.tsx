@@ -23,7 +23,10 @@ type MonitorColumn = {
   header: string;
   sortable?: MonitorSortField;
   render: (row: MonitorEndpoint) => string;
+  cellClassName?: (row: MonitorEndpoint) => string | undefined;
 };
+
+type FailureSeverity = "danger" | "warning" | "none";
 
 function formatDate(value: string | null): string {
   if (!value) return "-";
@@ -45,9 +48,41 @@ function customFieldValueBySlot(row: MonitorEndpoint, slot: 1 | 2 | 3): string {
   return row.custom_field_3_value || "-";
 }
 
+function failureSeverity(row: MonitorEndpoint): FailureSeverity {
+  if (row.consecutive_failed_count > 0 || row.failed_pct > 1) {
+    return "danger";
+  }
+  if (
+    row.failed_count > 0 ||
+    row.max_consecutive_failed_count > 0 ||
+    row.max_consecutive_failed_count_time !== null ||
+    row.last_failed_on !== null ||
+    (row.failed_pct > 0 && row.failed_pct <= 1)
+  ) {
+    return "warning";
+  }
+  return "none";
+}
+
+function failureClassName(row: MonitorEndpoint): string | undefined {
+  const severity = failureSeverity(row);
+  if (severity === "danger") {
+    return "metric-failure-danger";
+  }
+  if (severity === "warning") {
+    return "metric-failure-warning";
+  }
+  return undefined;
+}
+
 const baseColumns: MonitorColumn[] = [
   { key: "hostname", header: "Hostname", render: (row) => row.hostname || "-" },
-  { key: "last_failed_on", header: "Last Failed On", render: (row) => formatDate(row.last_failed_on) },
+  {
+    key: "last_failed_on",
+    header: "Last Failed On",
+    render: (row) => formatDate(row.last_failed_on),
+    cellClassName: failureClassName
+  },
   { key: "ip_address", header: "IP Address", render: (row) => row.ip_address },
   { key: "mac_address", header: "MAC Address", render: (row) => row.mac_address || "-" },
   { key: "reply_ip_address", header: "Reply IP", render: (row) => row.reply_ip_address || "-" },
@@ -58,26 +93,41 @@ const baseColumns: MonitorColumn[] = [
     render: (row) => formatDate(row.last_success_on)
   },
   { key: "success_count", header: "Success Count", sortable: "success_count", render: (row) => String(row.success_count) },
-  { key: "failed_count", header: "Failed Count", sortable: "failed_count", render: (row) => String(row.failed_count) },
+  {
+    key: "failed_count",
+    header: "Failed Count",
+    sortable: "failed_count",
+    render: (row) => String(row.failed_count),
+    cellClassName: failureClassName
+  },
   {
     key: "consecutive_failed_count",
     header: "Consecutive Failed",
     sortable: "consecutive_failed_count",
-    render: (row) => String(row.consecutive_failed_count)
+    render: (row) => String(row.consecutive_failed_count),
+    cellClassName: failureClassName
   },
   {
     key: "max_consecutive_failed_count",
     header: "Max Consecutive Failed",
     sortable: "max_consecutive_failed_count",
-    render: (row) => String(row.max_consecutive_failed_count)
+    render: (row) => String(row.max_consecutive_failed_count),
+    cellClassName: failureClassName
   },
   {
     key: "max_consecutive_failed_count_time",
     header: "Max Consec Failed Time",
     sortable: "max_consecutive_failed_count_time",
-    render: (row) => formatDate(row.max_consecutive_failed_count_time)
+    render: (row) => formatDate(row.max_consecutive_failed_count_time),
+    cellClassName: failureClassName
   },
-  { key: "failed_pct", header: "Failed %", sortable: "failed_pct", render: (row) => formatPercent(row.failed_pct) },
+  {
+    key: "failed_pct",
+    header: "Failed %",
+    sortable: "failed_pct",
+    render: (row) => formatPercent(row.failed_pct),
+    cellClassName: failureClassName
+  },
   { key: "total_sent_ping", header: "Total Sent Ping", render: (row) => String(row.total_sent_ping) },
   { key: "last_ping_status", header: "Last Ping Status", render: (row) => row.last_ping_status || "-" },
   {
@@ -199,9 +249,14 @@ export function MonitorTable({
                   tabIndex={0}
                   aria-selected={selected}
                 >
-                  {columns.map((column) => (
-                    <td key={`${endpointID}-${column.key}`}>{column.render(row)}</td>
-                  ))}
+                  {columns.map((column) => {
+                    const cellClassName = column.cellClassName?.(row);
+                    return (
+                      <td key={`${endpointID}-${column.key}`} className={cellClassName}>
+                        {column.render(row)}
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}

@@ -257,6 +257,13 @@
   color: var(--color-text-subtle);
 }
 
+.chart-no-probe-note {
+  margin-top: var(--stack-gap-tight);
+  max-width: 72ch;
+  font-size: var(--text-xs);
+  color: color-mix(in srgb, var(--color-text-subtle) 84%, var(--color-accent) 16%);
+}
+
 .chart-canvas {
   height: calc(100% - 52px);
   min-height: 248px;
