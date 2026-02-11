@@ -267,45 +267,43 @@ export function MonitorToolbar({
               <span className="count-badge">{selectedFilterCount}</span>
             </summary>
             <div className="filter-card-body">
-              <div className="advanced-filter-scroll-region">
-                <div className="filter-stack">
-                  {filterCards.map((filterCard) => {
-                    const selectedValues = filters[filterCard.key];
-                    return (
-                      <details key={filterCard.key} className="filter-card" open={selectedValues.length > 0}>
-                        <summary className="filter-card-summary">
-                          <span>{filterCard.label}</span>
-                          <span className="count-badge">{selectedValues.length}</span>
-                        </summary>
-                        <div className="filter-card-body">
-                          <div className="filter-card-actions">
-                            <span>{selectedValues.length} selected</span>
-                            <button className="btn-link" type="button" onClick={() => onClearFilter(filterCard.key)}>
-                              Clear
-                            </button>
-                          </div>
-                          <select
-                            multiple
-                            value={selectedValues}
-                            onChange={(event) =>
-                              onFilterChange({
-                                ...filters,
-                                [filterCard.key]: multiSelectValue(event)
-                              })
-                            }
-                            aria-label={`${filterCard.label} filter`}
-                          >
-                            {filterCard.options.map((item) => (
-                              <option key={item} value={item}>
-                                {item}
-                              </option>
-                            ))}
-                          </select>
+              <div className="filter-stack">
+                {filterCards.map((filterCard) => {
+                  const selectedValues = filters[filterCard.key];
+                  return (
+                    <details key={filterCard.key} className="filter-card" open={selectedValues.length > 0}>
+                      <summary className="filter-card-summary">
+                        <span>{filterCard.label}</span>
+                        <span className="count-badge">{selectedValues.length}</span>
+                      </summary>
+                      <div className="filter-card-body">
+                        <div className="filter-card-actions">
+                          <span>{selectedValues.length} selected</span>
+                          <button className="btn-link" type="button" onClick={() => onClearFilter(filterCard.key)}>
+                            Clear
+                          </button>
                         </div>
-                      </details>
-                    );
-                  })}
-                </div>
+                        <select
+                          multiple
+                          value={selectedValues}
+                          onChange={(event) =>
+                            onFilterChange({
+                              ...filters,
+                              [filterCard.key]: multiSelectValue(event)
+                            })
+                          }
+                          aria-label={`${filterCard.label} filter`}
+                        >
+                          {filterCard.options.map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </details>
+                  );
+                })}
               </div>
             </div>
           </details>
