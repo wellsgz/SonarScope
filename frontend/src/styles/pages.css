@@ -675,12 +675,15 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+  padding-bottom: var(--space-1);
 }
 
 .settings-custom-field-name {
-  font-family: var(--font-heading);
-  font-size: var(--text-lg);
-  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-text-muted);
 }
 
 .settings-custom-field-toggle {
@@ -718,7 +721,7 @@
 }
 
 .settings-custom-field-item.is-enabled .settings-custom-field-name {
-  color: var(--color-text);
+  color: var(--color-text-muted);
 }
 
 .settings-custom-field-item.is-invalid input {
