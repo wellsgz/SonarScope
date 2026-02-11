@@ -292,9 +292,44 @@ function getLatestLossValue(points: TimeSeriesPoint[]): number | null {
   return latestLoss;
 }
 
+function formatChartRangeLabel(rangeStart: Date, rangeEnd: Date): string {
+  const startMs = rangeStart.getTime();
+  const endMs = rangeEnd.getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    return "Chart range: unavailable";
+  }
+
+  const sameDay = rangeStart.toDateString() === rangeEnd.toDateString();
+  const dateFormatter = new Intl.DateTimeFormat(undefined, {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric"
+  });
+  const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+  const timeFormatter = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+
+  const startLabel = dateTimeFormatter.format(rangeStart);
+  const endLabel = sameDay ? timeFormatter.format(rangeEnd) : dateTimeFormatter.format(rangeEnd);
+  const dayLabel = sameDay ? ` (${dateFormatter.format(rangeStart)})` : "";
+
+  return `Chart range: ${startLabel} - ${endLabel}${dayLabel} (local)`;
+}
+
 export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeEnd }: Props) {
   const hasProbeActivityInRange = useMemo(() => points.some((point) => point.sent_count > 0), [points]);
   const showNoProbeNote = !hasProbeActivityInRange;
+  const chartRangeLabel = useMemo(() => formatChartRangeLabel(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
+  const chartRangeStartMs = rangeStart.getTime();
+  const chartRangeEndMs = rangeEnd.getTime();
 
   const palette = {
     textMuted: readToken("--color-text-muted", "#b4c3db"),
@@ -455,6 +490,8 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
       },
       xAxis: {
         type: "time",
+        min: chartRangeStartMs,
+        max: chartRangeEndMs,
         axisLabel: { color: palette.textSubtle },
         axisLine: { lineStyle: { color: palette.border } },
         splitLine: { lineStyle: { color: palette.border } }
@@ -498,6 +535,8 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
     palette.textSubtle,
     palette.warning,
     points,
+    chartRangeEndMs,
+    chartRangeStartMs,
     rangeEnd,
     rangeStart,
     rollup
@@ -507,16 +546,21 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
     <div className="panel chart-panel">
       <div className="chart-header">
         <div>
-          <div className="chart-title">Loss & Latency Timeline</div>
-          <div className="chart-subtitle">Selected endpoint: {endpointLabel}</div>
-          {showNoProbeNote ? (
-            <div className="chart-no-probe-note">
-              No probe activity in this selected period. This is expected when probing was stopped or no probes ran in this
-              window.
+          <div className="chart-title-row">
+            <div className="chart-title">Loss & Latency Timeline</div>
+            <div className="chart-time-range" aria-label={chartRangeLabel}>
+              {chartRangeLabel}
             </div>
-          ) : null}
+          </div>
+          <div className="chart-subtitle">Selected endpoint: {endpointLabel}</div>
         </div>
       </div>
+      {showNoProbeNote ? (
+        <div className="info-banner chart-no-probe-banner" role="status" aria-live="polite">
+          <span className="chart-no-probe-dot" aria-hidden />
+          <span>No probe activity in this selected period. This is expected when probing was stopped or no probes ran in this window.</span>
+        </div>
+      ) : null}
       <ReactECharts option={option} className="chart-canvas" />
     </div>
   );

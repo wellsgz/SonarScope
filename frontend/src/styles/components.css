@@ -325,6 +325,12 @@ label {
   height: 100%;
 }
 
+.chart-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .table-scroll {
   overflow-x: auto;
   overflow-y: auto;
