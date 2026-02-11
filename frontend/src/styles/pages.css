@@ -408,6 +408,12 @@
   flex-direction: column;
 }
 
+.inventory-list-panel {
+  --inventory-row-edit-width: 4.4rem;
+  --inventory-row-delete-width: 5.6rem;
+  --inventory-row-action-gap: var(--space-2);
+}
+
 .groups-panel {
   padding: 0;
   display: flex;
@@ -552,12 +558,28 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: nowrap;
   gap: var(--space-1);
   margin-left: auto;
 }
 
+.inventory-row-actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: var(--inventory-row-action-gap);
+}
+
+.inventory-row-action-edit {
+  min-width: var(--inventory-row-edit-width);
+}
+
+.inventory-row-action-delete {
+  min-width: var(--inventory-row-delete-width);
+}
+
 .inventory-delete-confirm-delete {
-  min-width: 9.8rem;
+  width: calc(var(--inventory-row-edit-width) + var(--inventory-row-delete-width) + var(--inventory-row-action-gap));
+  min-width: calc(var(--inventory-row-edit-width) + var(--inventory-row-delete-width) + var(--inventory-row-action-gap));
 }
 
 .inventory-delete-confirm-close {
@@ -908,10 +930,16 @@
   .inventory-delete-confirm-actions {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .inventory-delete-confirm-delete {
+    width: auto;
     min-width: 8.8rem;
+  }
+
+  .inventory-row-actions {
+    flex-wrap: wrap;
   }
 
   .settings-custom-field-form {
