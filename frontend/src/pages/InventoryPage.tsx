@@ -1448,11 +1448,22 @@ export function InventoryPage() {
                           <tr className="inventory-delete-confirm-row">
                             <td colSpan={inventoryTableColumnCount}>
                               <div className="inventory-delete-confirm-card" role="alert" aria-live="polite">
-                                <p className="inventory-delete-confirm-text">
-                                  Delete endpoint "{rowDeleteLabel}"? This cannot be undone and will remove related probe
-                                  history.
-                                </p>
+                                <div className="inventory-delete-confirm-copy">
+                                  <p className="inventory-delete-confirm-title">Delete this endpoint?</p>
+                                  <p className="inventory-delete-confirm-text">
+                                    <strong>{rowDeleteLabel}</strong> will be removed from inventory and related probe
+                                    history permanently.
+                                  </p>
+                                </div>
                                 <div className="inventory-delete-confirm-actions">
+                                  <button
+                                    className="btn"
+                                    type="button"
+                                    disabled={deleteEndpointMutation.isPending}
+                                    onClick={() => setPendingDeleteEndpointID(null)}
+                                  >
+                                    Cancel
+                                  </button>
                                   <button
                                     className="btn btn-danger"
                                     type="button"
@@ -1461,15 +1472,7 @@ export function InventoryPage() {
                                   >
                                     {deleteEndpointMutation.isPending && deletingEndpointID === row.endpoint_id
                                       ? "Deleting..."
-                                      : "Confirm Delete"}
-                                  </button>
-                                  <button
-                                    className="btn"
-                                    type="button"
-                                    disabled={deleteEndpointMutation.isPending}
-                                    onClick={() => setPendingDeleteEndpointID(null)}
-                                  >
-                                    Cancel
+                                      : "Delete Endpoint"}
                                   </button>
                                 </div>
                               </div>
