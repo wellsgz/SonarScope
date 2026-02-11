@@ -345,6 +345,25 @@
   min-width: 0;
 }
 
+.app-shell-immersive {
+  grid-template-columns: 1fr;
+}
+
+.app-shell-immersive .app-main {
+  min-height: 100vh;
+}
+
+.app-content-immersive {
+  padding: var(--space-2);
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.app-content-immersive .app-content-frame {
+  max-width: none;
+  height: 100%;
+}
+
 .shell-backdrop {
   display: none;
 }
