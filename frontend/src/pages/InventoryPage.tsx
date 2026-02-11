@@ -1446,7 +1446,7 @@ export function InventoryPage() {
                         </tr>
                         {!isEditing && isPendingDeleteConfirmation ? (
                           <tr className="inventory-delete-confirm-row">
-                            <td colSpan={inventoryTableColumnCount}>
+                            <td colSpan={Math.max(1, inventoryTableColumnCount - 1)}>
                               <div className="inventory-delete-confirm-card" role="alert" aria-live="polite">
                                 <div className="inventory-delete-confirm-copy">
                                   <p className="inventory-delete-confirm-title">Delete this endpoint?</p>
@@ -1455,27 +1455,29 @@ export function InventoryPage() {
                                     history permanently.
                                   </p>
                                 </div>
-                                <div className="inventory-delete-confirm-actions">
-                                  <button
-                                    className="btn btn-icon inventory-delete-confirm-close"
-                                    type="button"
-                                    aria-label="Cancel endpoint delete"
-                                    disabled={deleteEndpointMutation.isPending}
-                                    onClick={() => setPendingDeleteEndpointID(null)}
-                                  >
-                                    ×
-                                  </button>
-                                  <button
-                                    className="btn btn-danger inventory-delete-confirm-delete"
-                                    type="button"
-                                    disabled={deleteEndpointMutation.isPending || deleteInProgress}
-                                    onClick={() => deleteEndpointMutation.mutate(row.endpoint_id)}
-                                  >
-                                    {deleteEndpointMutation.isPending && deletingEndpointID === row.endpoint_id
-                                      ? "Deleting..."
-                                      : "Delete Endpoint"}
-                                  </button>
-                                </div>
+                              </div>
+                            </td>
+                            <td className="inventory-delete-confirm-action-cell">
+                              <div className="button-row inventory-row-actions inventory-delete-confirm-actions">
+                                <button
+                                  className="btn btn-icon inventory-delete-confirm-close"
+                                  type="button"
+                                  aria-label="Cancel endpoint delete"
+                                  disabled={deleteEndpointMutation.isPending}
+                                  onClick={() => setPendingDeleteEndpointID(null)}
+                                >
+                                  ×
+                                </button>
+                                <button
+                                  className="btn btn-danger inventory-delete-confirm-delete"
+                                  type="button"
+                                  disabled={deleteEndpointMutation.isPending || deleteInProgress}
+                                  onClick={() => deleteEndpointMutation.mutate(row.endpoint_id)}
+                                >
+                                  {deleteEndpointMutation.isPending && deletingEndpointID === row.endpoint_id
+                                    ? "Deleting..."
+                                    : "Delete Endpoint"}
+                                </button>
                               </div>
                             </td>
                           </tr>
