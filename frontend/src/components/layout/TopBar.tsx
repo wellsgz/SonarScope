@@ -71,7 +71,7 @@ export function TopBar({ activeView, onOpenSidebar, showOpenDashboardButton, onO
               />
             </label>
             {showOpenDashboardButton && onOpenDashboard ? (
-              <button className="btn btn-small topbar-dashboard-button" type="button" onClick={onOpenDashboard}>
+              <button className="btn topbar-dashboard-button" type="button" onClick={onOpenDashboard}>
                 Dashboard Mode
               </button>
             ) : null}

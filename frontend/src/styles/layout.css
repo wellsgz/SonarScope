@@ -258,6 +258,7 @@
 }
 
 .topbar {
+  --topbar-control-height: 2.14rem;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -288,14 +289,19 @@
 .topbar-controls {
   margin-left: auto;
   display: inline-flex;
-  align-items: flex-end;
+  align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
 
 .topbar-dashboard-button {
   flex: 0 0 auto;
-  align-self: flex-end;
+  align-self: center;
+  min-height: var(--topbar-control-height);
+  padding-inline: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .topbar-control {
@@ -315,6 +321,8 @@
 .topbar-control input {
   width: 4.4rem;
   text-align: right;
+  min-height: var(--topbar-control-height);
+  padding-block: 0.3rem;
 }
 
 .topbar-title {

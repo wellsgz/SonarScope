@@ -1605,39 +1605,45 @@ export function InventoryPage() {
             <div className="inventory-danger-grid">
               <div className="inventory-danger-card">
                 <h4>Delete Endpoints By Group</h4>
-                <label>
-                  Group
-                  <select value={deleteGroupID} onChange={(event) => setDeleteGroupID(event.target.value)}>
-                    <option value="">Select a group</option>
-                    {(groupsQuery.data || []).map((group) => (
-                      <option key={group.id} value={String(group.id)}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="button-row">
-                  <button
-                    className="btn btn-danger"
-                    type="button"
-                    disabled={!deleteGroupID || startDeleteByGroupJobMutation.isPending || deleteInProgress}
-                    onClick={() => {
-                      const groupID = Number(deleteGroupID);
-                      if (!Number.isFinite(groupID)) {
-                        return;
-                      }
-                      const groupName = (groupsQuery.data || []).find((group) => group.id === groupID)?.name || "selected group";
-                      const isNoGroup = groupName.trim().toLowerCase() === "no group";
-                      setGroupDeleteConfirmTarget({
-                        id: groupID,
-                        name: groupName,
-                        isNoGroup
-                      });
-                      setGroupDeleteConfirmOpen(true);
-                    }}
-                  >
-                    Delete Group Endpoints
-                  </button>
+                <div className="inventory-danger-card-body">
+                  <p className="inventory-danger-card-help">
+                    This removes every endpoint currently assigned to the selected group and purges related probe history.
+                  </p>
+                  <label>
+                    Group
+                    <select value={deleteGroupID} onChange={(event) => setDeleteGroupID(event.target.value)}>
+                      <option value="">Select a group</option>
+                      {(groupsQuery.data || []).map((group) => (
+                        <option key={group.id} value={String(group.id)}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="button-row inventory-danger-trigger-row">
+                    <button
+                      className="btn btn-danger inventory-danger-trigger"
+                      type="button"
+                      disabled={!deleteGroupID || startDeleteByGroupJobMutation.isPending || deleteInProgress}
+                      onClick={() => {
+                        const groupID = Number(deleteGroupID);
+                        if (!Number.isFinite(groupID)) {
+                          return;
+                        }
+                        const groupName =
+                          (groupsQuery.data || []).find((group) => group.id === groupID)?.name || "selected group";
+                        const isNoGroup = groupName.trim().toLowerCase() === "no group";
+                        setGroupDeleteConfirmTarget({
+                          id: groupID,
+                          name: groupName,
+                          isNoGroup
+                        });
+                        setGroupDeleteConfirmOpen(true);
+                      }}
+                    >
+                      Delete Group Endpoints
+                    </button>
+                  </div>
                 </div>
                 {groupDeleteConfirmOpen && groupDeleteConfirmTarget ? (
                   <div className="inventory-danger-inline-confirm" role="alert" aria-live="assertive">
@@ -1680,89 +1686,93 @@ export function InventoryPage() {
 
               <div className="inventory-danger-card">
                 <h4>Delete All Endpoints</h4>
-                <p className="field-help">
-                  This removes every endpoint and all related probe data from the database.
-                </p>
-                {!deleteAllArmed ? (
-                  <button
-                    className="btn btn-danger"
-                    type="button"
-                    disabled={deleteInProgress}
-                    onClick={() => {
-                      setDeleteAllArmed(true);
-                      setDeleteAllPhrase("");
-                      setDeleteAllFinalConfirmOpen(false);
-                    }}
-                  >
-                    Start Delete-All
-                  </button>
-                ) : (
-                  <div className="inventory-delete-all-confirm">
-                    <p className="field-help">
-                      Type <code>DELETE ALL ENDPOINTS</code> to confirm.
-                    </p>
-                    <input
-                      value={deleteAllPhrase}
-                      onChange={(event) => setDeleteAllPhrase(event.target.value)}
-                      placeholder="DELETE ALL ENDPOINTS"
-                    />
-                    <div className="button-row">
+                <div className="inventory-danger-card-body">
+                  <p className="inventory-danger-card-help">
+                    This removes every endpoint and all related probe data from the database.
+                  </p>
+                  {!deleteAllArmed ? (
+                    <div className="button-row inventory-danger-trigger-row">
                       <button
-                        className="btn"
+                        className="btn btn-danger inventory-danger-trigger"
                         type="button"
+                        disabled={deleteInProgress}
                         onClick={() => {
-                          setDeleteAllArmed(false);
+                          setDeleteAllArmed(true);
                           setDeleteAllPhrase("");
+                          setDeleteAllFinalConfirmOpen(false);
                         }}
                       >
-                        Cancel
-                      </button>
-                      <button
-                        className="btn btn-danger"
-                        type="button"
-                        disabled={
-                          deleteAllPhrase.trim() !== "DELETE ALL ENDPOINTS" ||
-                          startDeleteAllJobMutation.isPending ||
-                          deleteInProgress
-                        }
-                        onClick={() => {
-                          setDeleteAllFinalConfirmOpen(true);
-                        }}
-                      >
-                        Delete All Endpoints
+                        Start Delete-All
                       </button>
                     </div>
-                    {deleteAllFinalConfirmOpen ? (
-                      <div className="inventory-danger-inline-confirm" role="alert" aria-live="assertive">
-                        <p className="inventory-danger-inline-confirm-title">Final confirmation required</p>
-                        <p className="inventory-danger-inline-confirm-text">
-                          Delete ALL endpoints and related probe history? This action is permanent.
-                        </p>
-                        <div className="button-row inventory-danger-inline-confirm-actions">
-                          <button
-                            className="btn"
-                            type="button"
-                            disabled={startDeleteAllJobMutation.isPending || deleteInProgress}
-                            onClick={() => setDeleteAllFinalConfirmOpen(false)}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            className="btn btn-danger"
-                            type="button"
-                            disabled={startDeleteAllJobMutation.isPending || deleteInProgress}
-                            onClick={() => {
-                              setDeleteJobNotice(null);
-                              startDeleteAllJobMutation.mutate(deleteAllPhrase.trim());
-                            }}
-                          >
-                            {startDeleteAllJobMutation.isPending ? "Deleting..." : "Confirm Delete All Endpoints"}
-                          </button>
-                        </div>
+                  ) : (
+                    <div className="inventory-delete-all-confirm">
+                      <p className="field-help">
+                        Type <code>DELETE ALL ENDPOINTS</code> to confirm.
+                      </p>
+                      <input
+                        value={deleteAllPhrase}
+                        onChange={(event) => setDeleteAllPhrase(event.target.value)}
+                        placeholder="DELETE ALL ENDPOINTS"
+                      />
+                      <div className="button-row inventory-danger-arm-actions">
+                        <button
+                          className="btn"
+                          type="button"
+                          onClick={() => {
+                            setDeleteAllArmed(false);
+                            setDeleteAllPhrase("");
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="btn btn-danger"
+                          type="button"
+                          disabled={
+                            deleteAllPhrase.trim() !== "DELETE ALL ENDPOINTS" ||
+                            startDeleteAllJobMutation.isPending ||
+                            deleteInProgress
+                          }
+                          onClick={() => {
+                            setDeleteAllFinalConfirmOpen(true);
+                          }}
+                        >
+                          Delete All Endpoints
+                        </button>
                       </div>
-                    ) : null}
-                  </div>
-                )}
+                      {deleteAllFinalConfirmOpen ? (
+                        <div className="inventory-danger-inline-confirm" role="alert" aria-live="assertive">
+                          <p className="inventory-danger-inline-confirm-title">Final confirmation required</p>
+                          <p className="inventory-danger-inline-confirm-text">
+                            Delete ALL endpoints and related probe history? This action is permanent.
+                          </p>
+                          <div className="button-row inventory-danger-inline-confirm-actions">
+                            <button
+                              className="btn"
+                              type="button"
+                              disabled={startDeleteAllJobMutation.isPending || deleteInProgress}
+                              onClick={() => setDeleteAllFinalConfirmOpen(false)}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              className="btn btn-danger"
+                              type="button"
+                              disabled={startDeleteAllJobMutation.isPending || deleteInProgress}
+                              onClick={() => {
+                                setDeleteJobNotice(null);
+                                startDeleteAllJobMutation.mutate(deleteAllPhrase.trim());
+                              }}
+                            >
+                              {startDeleteAllJobMutation.isPending ? "Deleting..." : "Confirm Delete All Endpoints"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </section>
