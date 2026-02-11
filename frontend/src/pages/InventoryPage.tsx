@@ -257,8 +257,15 @@ export function InventoryPage() {
   const [showAddSuccessNotice, setShowAddSuccessNotice] = useState(false);
   const [singleEndpointAdvancedOpen, setSingleEndpointAdvancedOpen] = useState(false);
   const [deleteGroupID, setDeleteGroupID] = useState("");
+  const [groupDeleteConfirmOpen, setGroupDeleteConfirmOpen] = useState(false);
+  const [groupDeleteConfirmTarget, setGroupDeleteConfirmTarget] = useState<{
+    id: number;
+    name: string;
+    isNoGroup: boolean;
+  } | null>(null);
   const [deleteAllArmed, setDeleteAllArmed] = useState(false);
   const [deleteAllPhrase, setDeleteAllPhrase] = useState("");
+  const [deleteAllFinalConfirmOpen, setDeleteAllFinalConfirmOpen] = useState(false);
   const [deleteJobNotice, setDeleteJobNotice] = useState<{
     type: "success" | "error" | "info";
     message: string;
@@ -456,6 +463,8 @@ export function InventoryPage() {
     onSuccess: () => {
       setEditingEndpointID(null);
       setEditingPatch(null);
+      setGroupDeleteConfirmOpen(false);
+      setGroupDeleteConfirmTarget(null);
       setDeleteJobNotice(null);
       queryClient.invalidateQueries({ queryKey: ["inventory-delete-job-current"] });
     }
@@ -468,6 +477,7 @@ export function InventoryPage() {
       setEditingPatch(null);
       setDeleteAllArmed(false);
       setDeleteAllPhrase("");
+      setDeleteAllFinalConfirmOpen(false);
       setDeleteJobNotice(null);
       queryClient.invalidateQueries({ queryKey: ["inventory-delete-job-current"] });
     }
@@ -578,6 +588,34 @@ export function InventoryPage() {
     }
     setDeleteJobNotice(null);
   };
+
+  useEffect(() => {
+    if (!groupDeleteConfirmOpen) {
+      return;
+    }
+    if (!groupDeleteConfirmTarget || !deleteGroupID || String(groupDeleteConfirmTarget.id) !== deleteGroupID) {
+      setGroupDeleteConfirmOpen(false);
+      setGroupDeleteConfirmTarget(null);
+    }
+  }, [deleteGroupID, groupDeleteConfirmOpen, groupDeleteConfirmTarget]);
+
+  useEffect(() => {
+    if (!deleteAllFinalConfirmOpen) {
+      return;
+    }
+    if (deleteAllPhrase.trim() !== "DELETE ALL ENDPOINTS" || !deleteAllArmed) {
+      setDeleteAllFinalConfirmOpen(false);
+    }
+  }, [deleteAllArmed, deleteAllFinalConfirmOpen, deleteAllPhrase]);
+
+  useEffect(() => {
+    if (!deleteInProgress) {
+      return;
+    }
+    setGroupDeleteConfirmOpen(false);
+    setGroupDeleteConfirmTarget(null);
+    setDeleteAllFinalConfirmOpen(false);
+  }, [deleteInProgress]);
 
   const handleApplySelected = async () => {
     if (!preview || Object.keys(selection).length === 0 || groupAssignmentInvalid || isPreparingImportApply || applyMutation.isPending) {
@@ -1585,22 +1623,59 @@ export function InventoryPage() {
                     disabled={!deleteGroupID || startDeleteByGroupJobMutation.isPending || deleteInProgress}
                     onClick={() => {
                       const groupID = Number(deleteGroupID);
-                      const groupName = (groupsQuery.data || []).find((group) => group.id === groupID)?.name || "selected group";
-                      const isNoGroup = groupName.trim().toLowerCase() === "no group";
-                      const confirmMessage = isNoGroup
-                        ? `Delete all endpoints assigned to "${groupName}"? This may delete a large number of endpoints and historical probe data. Continue?`
-                        : `Delete all endpoints assigned to "${groupName}"? This cannot be undone.`;
-                      const confirmed = window.confirm(confirmMessage);
-                      if (!confirmed) {
+                      if (!Number.isFinite(groupID)) {
                         return;
                       }
-                      setDeleteJobNotice(null);
-                      startDeleteByGroupJobMutation.mutate(groupID);
+                      const groupName = (groupsQuery.data || []).find((group) => group.id === groupID)?.name || "selected group";
+                      const isNoGroup = groupName.trim().toLowerCase() === "no group";
+                      setGroupDeleteConfirmTarget({
+                        id: groupID,
+                        name: groupName,
+                        isNoGroup
+                      });
+                      setGroupDeleteConfirmOpen(true);
                     }}
                   >
                     Delete Group Endpoints
                   </button>
                 </div>
+                {groupDeleteConfirmOpen && groupDeleteConfirmTarget ? (
+                  <div className="inventory-danger-inline-confirm" role="alert" aria-live="assertive">
+                    <p className="inventory-danger-inline-confirm-title">Confirm group endpoint deletion</p>
+                    <p className="inventory-danger-inline-confirm-text">
+                      {groupDeleteConfirmTarget.isNoGroup
+                        ? `Delete all endpoints assigned to "${groupDeleteConfirmTarget.name}"? This may remove a large number of endpoints and historical probe data.`
+                        : `Delete all endpoints assigned to "${groupDeleteConfirmTarget.name}"? This cannot be undone.`}
+                    </p>
+                    <div className="button-row inventory-danger-inline-confirm-actions">
+                      <button
+                        className="btn"
+                        type="button"
+                        disabled={startDeleteByGroupJobMutation.isPending || deleteInProgress}
+                        onClick={() => {
+                          setGroupDeleteConfirmOpen(false);
+                          setGroupDeleteConfirmTarget(null);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="btn btn-danger"
+                        type="button"
+                        disabled={startDeleteByGroupJobMutation.isPending || deleteInProgress}
+                        onClick={() => {
+                          if (!groupDeleteConfirmTarget) {
+                            return;
+                          }
+                          setDeleteJobNotice(null);
+                          startDeleteByGroupJobMutation.mutate(groupDeleteConfirmTarget.id);
+                        }}
+                      >
+                        {startDeleteByGroupJobMutation.isPending ? "Deleting..." : "Delete Group Endpoints"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="inventory-danger-card">
@@ -1616,6 +1691,7 @@ export function InventoryPage() {
                     onClick={() => {
                       setDeleteAllArmed(true);
                       setDeleteAllPhrase("");
+                      setDeleteAllFinalConfirmOpen(false);
                     }}
                   >
                     Start Delete-All
@@ -1650,19 +1726,41 @@ export function InventoryPage() {
                           deleteInProgress
                         }
                         onClick={() => {
-                          const finalConfirm = window.confirm(
-                            "Final confirmation: delete ALL endpoints and related data?"
-                          );
-                          if (!finalConfirm) {
-                            return;
-                          }
-                          setDeleteJobNotice(null);
-                          startDeleteAllJobMutation.mutate(deleteAllPhrase.trim());
+                          setDeleteAllFinalConfirmOpen(true);
                         }}
                       >
                         Delete All Endpoints
                       </button>
                     </div>
+                    {deleteAllFinalConfirmOpen ? (
+                      <div className="inventory-danger-inline-confirm" role="alert" aria-live="assertive">
+                        <p className="inventory-danger-inline-confirm-title">Final confirmation required</p>
+                        <p className="inventory-danger-inline-confirm-text">
+                          Delete ALL endpoints and related probe history? This action is permanent.
+                        </p>
+                        <div className="button-row inventory-danger-inline-confirm-actions">
+                          <button
+                            className="btn"
+                            type="button"
+                            disabled={startDeleteAllJobMutation.isPending || deleteInProgress}
+                            onClick={() => setDeleteAllFinalConfirmOpen(false)}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            className="btn btn-danger"
+                            type="button"
+                            disabled={startDeleteAllJobMutation.isPending || deleteInProgress}
+                            onClick={() => {
+                              setDeleteJobNotice(null);
+                              startDeleteAllJobMutation.mutate(deleteAllPhrase.trim());
+                            }}
+                          >
+                            {startDeleteAllJobMutation.isPending ? "Deleting..." : "Confirm Delete All Endpoints"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
