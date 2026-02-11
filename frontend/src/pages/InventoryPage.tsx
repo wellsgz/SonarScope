@@ -1457,15 +1457,7 @@ export function InventoryPage() {
                                 </div>
                                 <div className="inventory-delete-confirm-actions">
                                   <button
-                                    className="btn"
-                                    type="button"
-                                    disabled={deleteEndpointMutation.isPending}
-                                    onClick={() => setPendingDeleteEndpointID(null)}
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    className="btn btn-danger"
+                                    className="btn btn-danger inventory-delete-confirm-delete"
                                     type="button"
                                     disabled={deleteEndpointMutation.isPending || deleteInProgress}
                                     onClick={() => deleteEndpointMutation.mutate(row.endpoint_id)}
@@ -1473,6 +1465,15 @@ export function InventoryPage() {
                                     {deleteEndpointMutation.isPending && deletingEndpointID === row.endpoint_id
                                       ? "Deleting..."
                                       : "Delete Endpoint"}
+                                  </button>
+                                  <button
+                                    className="btn btn-icon inventory-delete-confirm-close"
+                                    type="button"
+                                    aria-label="Cancel endpoint delete"
+                                    disabled={deleteEndpointMutation.isPending}
+                                    onClick={() => setPendingDeleteEndpointID(null)}
+                                  >
+                                    ×
                                   </button>
                                 </div>
                               </div>

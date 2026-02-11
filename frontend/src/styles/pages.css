@@ -543,7 +543,7 @@
 
 .inventory-delete-confirm-text {
   margin: 0;
-  color: color-mix(in srgb, var(--color-danger) 82%, var(--color-text));
+  color: var(--color-danger);
   font-size: var(--text-md);
   font-weight: 500;
 }
@@ -552,9 +552,21 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--space-1);
   margin-left: auto;
+}
+
+.inventory-delete-confirm-delete {
+  min-width: 9.8rem;
+}
+
+.inventory-delete-confirm-close {
+  min-width: 2rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: var(--text-lg);
+  line-height: 1;
 }
 
 .inventory-state-panel {
@@ -896,6 +908,10 @@
   .inventory-delete-confirm-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .inventory-delete-confirm-delete {
+    min-width: 8.8rem;
   }
 
   .settings-custom-field-form {
