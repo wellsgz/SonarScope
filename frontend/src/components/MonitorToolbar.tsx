@@ -175,142 +175,144 @@ export function MonitorToolbar({
               Clear All
             </button>
           </div>
-          <div className="monitor-search-grid monitor-search-grid-compact">
-            <div className="search-dual-row">
-              <label>
-                Hostname Search
-                <div className="search-input-row search-input-row-compact">
-                  <input
-                    type="text"
-                    value={hostnameSearch}
-                    onChange={(event) => onHostnameSearchChange(event.target.value)}
-                    placeholder="Contains match"
-                    aria-label="Search hostname"
-                  />
-                  {hostnameSearch.trim() ? (
-                    <button className="btn btn-small btn-icon" type="button" onClick={onClearHostnameSearch}>
-                      ×
-                    </button>
-                  ) : null}
-                </div>
-              </label>
-              <label>
-                MAC Address Search
-                <div className="search-input-row search-input-row-compact">
-                  <input
-                    type="text"
-                    value={macSearch}
-                    onChange={(event) => onMACSearchChange(event.target.value)}
-                    placeholder="Contains match"
-                    aria-label="Search MAC address"
-                  />
-                  {macSearch.trim() ? (
-                    <button className="btn btn-small btn-icon" type="button" onClick={onClearMACSearch}>
-                      ×
-                    </button>
-                  ) : null}
-                </div>
-              </label>
-            </div>
-            {customFields.length > 0 ? (
+          <div className="toolbar-block-filters-scroll">
+            <div className="monitor-search-grid monitor-search-grid-compact">
               <div className="search-dual-row">
-                {customFields.map((field) => {
-                  const slot = field.slot as 1 | 2 | 3;
-                  const value = customSearchValueBySlot(customSearch, slot);
-                  return (
-                    <label key={`monitor-custom-search-${field.slot}`}>
-                      {field.name} Search
-                      <div className="search-input-row search-input-row-compact">
-                        <input
-                          type="text"
-                          value={value}
-                          onChange={(event) => onCustomSearchChange(slot, event.target.value)}
-                          placeholder="Contains match"
-                          aria-label={`Search ${field.name}`}
-                        />
-                        {value.trim() ? (
-                          <button className="btn btn-small btn-icon" type="button" onClick={() => onClearCustomSearch(slot)}>
-                            ×
-                          </button>
-                        ) : null}
-                      </div>
-                    </label>
-                  );
-                })}
+                <label>
+                  Hostname Search
+                  <div className="search-input-row search-input-row-compact">
+                    <input
+                      type="text"
+                      value={hostnameSearch}
+                      onChange={(event) => onHostnameSearchChange(event.target.value)}
+                      placeholder="Contains match"
+                      aria-label="Search hostname"
+                    />
+                    {hostnameSearch.trim() ? (
+                      <button className="btn btn-small btn-icon" type="button" onClick={onClearHostnameSearch}>
+                        ×
+                      </button>
+                    ) : null}
+                  </div>
+                </label>
+                <label>
+                  MAC Address Search
+                  <div className="search-input-row search-input-row-compact">
+                    <input
+                      type="text"
+                      value={macSearch}
+                      onChange={(event) => onMACSearchChange(event.target.value)}
+                      placeholder="Contains match"
+                      aria-label="Search MAC address"
+                    />
+                    {macSearch.trim() ? (
+                      <button className="btn btn-small btn-icon" type="button" onClick={onClearMACSearch}>
+                        ×
+                      </button>
+                    ) : null}
+                  </div>
+                </label>
               </div>
-            ) : null}
-            <details className="filter-card filter-ip-details" open={ipListCount > 0}>
+              {customFields.length > 0 ? (
+                <div className="search-dual-row">
+                  {customFields.map((field) => {
+                    const slot = field.slot as 1 | 2 | 3;
+                    const value = customSearchValueBySlot(customSearch, slot);
+                    return (
+                      <label key={`monitor-custom-search-${field.slot}`}>
+                        {field.name} Search
+                        <div className="search-input-row search-input-row-compact">
+                          <input
+                            type="text"
+                            value={value}
+                            onChange={(event) => onCustomSearchChange(slot, event.target.value)}
+                            placeholder="Contains match"
+                            aria-label={`Search ${field.name}`}
+                          />
+                          {value.trim() ? (
+                            <button className="btn btn-small btn-icon" type="button" onClick={() => onClearCustomSearch(slot)}>
+                              ×
+                            </button>
+                          ) : null}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <details className="filter-card filter-ip-details" open={ipListCount > 0}>
+                <summary className="filter-card-summary">
+                  <span>IP Search List</span>
+                  <span className="count-badge">{ipListCount}</span>
+                </summary>
+                <div className="filter-card-body">
+                  <textarea
+                    rows={2}
+                    value={ipListSearch}
+                    onChange={(event) => onIPListSearchChange(event.target.value)}
+                    placeholder="10.0.0.1,10.0.0.2 or newline separated"
+                    aria-label="Search by IP list"
+                  />
+                  <div className="search-input-row">
+                    <span className="field-help">IP list overrides hostname, MAC, and custom field searches when provided.</span>
+                    <button className="btn btn-small" type="button" onClick={onClearIPListSearch}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </details>
+            </div>
+            <details className="filter-card advanced-filter-details" open={selectedFilterCount > 0}>
               <summary className="filter-card-summary">
-                <span>IP Search List</span>
-                <span className="count-badge">{ipListCount}</span>
+                <span>Advanced Filters</span>
+                <span className="count-badge">{selectedFilterCount}</span>
               </summary>
               <div className="filter-card-body">
-                <textarea
-                  rows={2}
-                  value={ipListSearch}
-                  onChange={(event) => onIPListSearchChange(event.target.value)}
-                  placeholder="10.0.0.1,10.0.0.2 or newline separated"
-                  aria-label="Search by IP list"
-                />
-                <div className="search-input-row">
-                  <span className="field-help">IP list overrides hostname, MAC, and custom field searches when provided.</span>
-                  <button className="btn btn-small" type="button" onClick={onClearIPListSearch}>
-                    Clear
-                  </button>
+                <div className="filter-stack">
+                  {filterCards.map((filterCard) => {
+                    const selectedValues = filters[filterCard.key];
+                    return (
+                      <div key={filterCard.key} className="filter-card">
+                        <div className="filter-card-summary filter-card-summary-static">
+                          <span>{filterCard.label}</span>
+                          <span className="count-badge">{selectedValues.length}</span>
+                        </div>
+                        <div className="filter-card-body">
+                          <div className="filter-card-actions">
+                            <span>{selectedValues.length} selected</span>
+                            <button className="btn-link" type="button" onClick={() => onClearFilter(filterCard.key)}>
+                              Clear
+                            </button>
+                          </div>
+                          {filterCard.options.length > 0 ? (
+                            <select
+                              multiple
+                              value={selectedValues}
+                              onChange={(event) =>
+                                onFilterChange({
+                                  ...filters,
+                                  [filterCard.key]: multiSelectValue(event)
+                                })
+                              }
+                              aria-label={`${filterCard.label} filter`}
+                            >
+                              {filterCard.options.map((item) => (
+                                <option key={item} value={item}>
+                                  {item}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="field-help">No options available yet.</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </details>
           </div>
-          <details className="filter-card advanced-filter-details" open={selectedFilterCount > 0}>
-            <summary className="filter-card-summary">
-              <span>Advanced Filters</span>
-              <span className="count-badge">{selectedFilterCount}</span>
-            </summary>
-            <div className="filter-card-body">
-              <div className="filter-stack">
-                {filterCards.map((filterCard) => {
-                  const selectedValues = filters[filterCard.key];
-                  return (
-                    <div key={filterCard.key} className="filter-card">
-                      <div className="filter-card-summary filter-card-summary-static">
-                        <span>{filterCard.label}</span>
-                        <span className="count-badge">{selectedValues.length}</span>
-                      </div>
-                      <div className="filter-card-body">
-                        <div className="filter-card-actions">
-                          <span>{selectedValues.length} selected</span>
-                          <button className="btn-link" type="button" onClick={() => onClearFilter(filterCard.key)}>
-                            Clear
-                          </button>
-                        </div>
-                        {filterCard.options.length > 0 ? (
-                          <select
-                            multiple
-                            value={selectedValues}
-                            onChange={(event) =>
-                              onFilterChange({
-                                ...filters,
-                                [filterCard.key]: multiSelectValue(event)
-                              })
-                            }
-                            aria-label={`${filterCard.label} filter`}
-                          >
-                            {filterCard.options.map((item) => (
-                              <option key={item} value={item}>
-                                {item}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className="field-help">No options available yet.</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </details>
         </section>
 
         <section className="toolbar-block" aria-label="Global settings controls">
