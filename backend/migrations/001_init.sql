@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 
 INSERT INTO app_settings(id, ping_interval_sec, icmp_payload_bytes, auto_refresh_sec)
-VALUES (TRUE, 1, 56, 10)
+VALUES (TRUE, 1, 56, 30)
 ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS ping_raw (

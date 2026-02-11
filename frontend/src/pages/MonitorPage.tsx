@@ -69,6 +69,7 @@ const defaultCustomSearch: CustomSearchState = {
   custom2: "",
   custom3: ""
 };
+const dashboardRefreshPresets = [30, 60] as const;
 
 function normalizeEnabledCustomFields(fields?: CustomFieldConfig[]): EnabledCustomField[] {
   const bySlot: Record<CustomFieldSlot, EnabledCustomField | null> = {
@@ -162,7 +163,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}
     [enabledCustomFields]
   );
 
-  const autoRefreshMs = Math.max(1000, (settingsQuery.data?.auto_refresh_sec ?? 10) * 1000);
+  const autoRefreshMs = Math.max(1000, (settingsQuery.data?.auto_refresh_sec ?? 30) * 1000);
 
   useEffect(() => {
     lastRealtimeRefreshRef.current = 0;
@@ -355,6 +356,17 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}
       queryClient.invalidateQueries({ queryKey: ["settings"] });
     }
   });
+
+  const handleDashboardRefreshPreset = (refreshSec: (typeof dashboardRefreshPresets)[number]) => {
+    const current = settingsQuery.data;
+    if (!current || current.auto_refresh_sec === refreshSec || settingsMutation.isPending) {
+      return;
+    }
+    settingsMutation.mutate({
+      ...current,
+      auto_refresh_sec: refreshSec
+    });
+  };
   const controlsSummaryScope = dataScope === "live" ? "Live Snapshot" : "Selected Range";
   const controlsSummaryFilters = activeFilterCount === 0 ? "Filters: All" : `Filters: ${activeFilterCount}`;
   const dashboardRowSummary =
@@ -418,6 +430,26 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}
               <button className="btn btn-primary monitor-dashboard-exit-btn" type="button" onClick={() => setTableDashboardMode(false)}>
                 Exit Dashboard
               </button>
+              <div className="monitor-dashboard-refresh-controls" aria-label="Dashboard refresh interval presets">
+                <span className="monitor-dashboard-refresh-label">Refresh Interval</span>
+                <div className="monitor-dashboard-refresh-actions">
+                  {dashboardRefreshPresets.map((refreshSec) => {
+                    const active = settingsQuery.data?.auto_refresh_sec === refreshSec;
+                    return (
+                      <button
+                        key={refreshSec}
+                        className={`btn btn-small monitor-dashboard-refresh-btn ${active ? "is-active" : ""}`}
+                        type="button"
+                        aria-pressed={active}
+                        disabled={settingsQuery.isLoading || settingsMutation.isPending}
+                        onClick={() => handleDashboardRefreshPreset(refreshSec)}
+                      >
+                        {refreshSec}s
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
           <div className="monitor-dashboard-meta">

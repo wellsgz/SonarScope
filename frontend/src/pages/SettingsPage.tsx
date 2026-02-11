@@ -122,7 +122,7 @@ export function SettingsPage() {
     ping_interval_sec: 1,
     icmp_payload_bytes: 56,
     icmp_timeout_ms: 500,
-    auto_refresh_sec: 10,
+    auto_refresh_sec: 30,
     custom_fields: normalizeCustomFields()
   });
 

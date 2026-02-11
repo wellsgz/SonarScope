@@ -35,7 +35,7 @@ func Load() (Config, error) {
 		DefaultInterval:  getEnvInt("DEFAULT_PING_INTERVAL_SEC", 1),
 		DefaultPayload:   getEnvInt("DEFAULT_ICMP_PAYLOAD_BYTES", 56),
 		DefaultTimeoutMs: clampInt(defaultTimeoutMs, 20, 1000),
-		DefaultRefresh:   getEnvInt("DEFAULT_AUTO_REFRESH_SEC", 10),
+		DefaultRefresh:   getEnvInt("DEFAULT_AUTO_REFRESH_SEC", 30),
 	}
 
 	origins := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")

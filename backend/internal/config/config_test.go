@@ -11,13 +11,13 @@ func TestValidateSettings(t *testing.T) {
 		timeoutMs   int
 		wantErr     bool
 	}{
-		{name: "valid defaults", intervalSec: 1, payload: 56, autoRefresh: 10, timeoutMs: 500, wantErr: false},
-		{name: "interval too small", intervalSec: 0, payload: 56, autoRefresh: 10, timeoutMs: 500, wantErr: true},
-		{name: "interval too large", intervalSec: 31, payload: 56, autoRefresh: 10, timeoutMs: 500, wantErr: true},
-		{name: "payload too small", intervalSec: 1, payload: 1, autoRefresh: 10, timeoutMs: 500, wantErr: true},
-		{name: "payload too large", intervalSec: 1, payload: 2000, autoRefresh: 10, timeoutMs: 500, wantErr: true},
-		{name: "timeout too small", intervalSec: 1, payload: 56, autoRefresh: 10, timeoutMs: 19, wantErr: true},
-		{name: "timeout too large", intervalSec: 1, payload: 56, autoRefresh: 10, timeoutMs: 1001, wantErr: true},
+		{name: "valid defaults", intervalSec: 1, payload: 56, autoRefresh: 30, timeoutMs: 500, wantErr: false},
+		{name: "interval too small", intervalSec: 0, payload: 56, autoRefresh: 30, timeoutMs: 500, wantErr: true},
+		{name: "interval too large", intervalSec: 31, payload: 56, autoRefresh: 30, timeoutMs: 500, wantErr: true},
+		{name: "payload too small", intervalSec: 1, payload: 1, autoRefresh: 30, timeoutMs: 500, wantErr: true},
+		{name: "payload too large", intervalSec: 1, payload: 2000, autoRefresh: 30, timeoutMs: 500, wantErr: true},
+		{name: "timeout too small", intervalSec: 1, payload: 56, autoRefresh: 30, timeoutMs: 19, wantErr: true},
+		{name: "timeout too large", intervalSec: 1, payload: 56, autoRefresh: 30, timeoutMs: 1001, wantErr: true},
 		{name: "auto refresh too small", intervalSec: 1, payload: 56, autoRefresh: 0, timeoutMs: 500, wantErr: true},
 		{name: "auto refresh too large", intervalSec: 1, payload: 56, autoRefresh: 61, timeoutMs: 500, wantErr: true},
 	}

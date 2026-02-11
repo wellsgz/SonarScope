@@ -288,13 +288,14 @@
 .topbar-controls {
   margin-left: auto;
   display: inline-flex;
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
 
 .topbar-dashboard-button {
   flex: 0 0 auto;
+  align-self: flex-end;
 }
 
 .topbar-control {

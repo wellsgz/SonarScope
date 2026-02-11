@@ -64,7 +64,7 @@ export function TopBar({ activeView, onOpenSidebar, showOpenDashboardButton, onO
                 type="number"
                 min={1}
                 max={60}
-                value={settingsQuery.data?.auto_refresh_sec ?? 10}
+                value={settingsQuery.data?.auto_refresh_sec ?? 30}
                 disabled={settingsMutation.isPending}
                 onChange={(event) => handleAutoRefreshChange(event.target.value)}
                 aria-label="Auto refresh interval in seconds"
@@ -72,7 +72,7 @@ export function TopBar({ activeView, onOpenSidebar, showOpenDashboardButton, onO
             </label>
             {showOpenDashboardButton && onOpenDashboard ? (
               <button className="btn btn-small topbar-dashboard-button" type="button" onClick={onOpenDashboard}>
-                Open Dashboard
+                Dashboard Mode
               </button>
             ) : null}
           </div>
