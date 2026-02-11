@@ -8,6 +8,7 @@ type Props = {
   activeView: AppViewKey;
   views: AppViewMeta[];
   mode: ThemeMode;
+  immersiveMonitorMode: boolean;
   sidebarOpen: boolean;
   onOpenSidebar: () => void;
   onCloseSidebar: () => void;
@@ -29,6 +30,7 @@ export function AppShell({
   activeView,
   views,
   mode,
+  immersiveMonitorMode,
   sidebarOpen,
   onOpenSidebar,
   onCloseSidebar,
@@ -69,35 +71,41 @@ export function AppShell({
   }, [onCloseSidebar, sidebarOpen]);
 
   return (
-    <div className="app-shell-v13">
-      <SidebarNav
-        activeView={activeView}
-        views={views}
-        mode={mode}
-        open={sidebarOpen}
-        onClose={onCloseSidebar}
-        onToggleTheme={onToggleTheme}
-        onViewChange={onViewChange}
-        probeStatus={probeStatus}
-        groups={groups}
-        selectedProbeGroupIDs={selectedProbeGroupIDs}
-        onProbeGroupSelectionChange={onProbeGroupSelectionChange}
-        onStartProbeAll={onStartProbeAll}
-        onStartProbeGroups={onStartProbeGroups}
-        onStopProbe={onStopProbe}
-        probeBusy={probeBusy}
-        deleteInProgress={deleteInProgress}
-      />
+    <div className={`app-shell-v13 ${immersiveMonitorMode ? "app-shell-immersive" : ""}`}>
+      {!immersiveMonitorMode ? (
+        <SidebarNav
+          activeView={activeView}
+          views={views}
+          mode={mode}
+          open={sidebarOpen}
+          onClose={onCloseSidebar}
+          onToggleTheme={onToggleTheme}
+          onViewChange={onViewChange}
+          probeStatus={probeStatus}
+          groups={groups}
+          selectedProbeGroupIDs={selectedProbeGroupIDs}
+          onProbeGroupSelectionChange={onProbeGroupSelectionChange}
+          onStartProbeAll={onStartProbeAll}
+          onStartProbeGroups={onStartProbeGroups}
+          onStopProbe={onStopProbe}
+          probeBusy={probeBusy}
+          deleteInProgress={deleteInProgress}
+        />
+      ) : null}
 
-      {sidebarOpen && <button className="shell-backdrop" onClick={onCloseSidebar} aria-label="Close navigation" />}
+      {!immersiveMonitorMode && sidebarOpen ? (
+        <button className="shell-backdrop" onClick={onCloseSidebar} aria-label="Close navigation" />
+      ) : null}
 
       <div className="app-main">
-        <TopBar
-          activeView={activeMeta}
-          onOpenSidebar={onOpenSidebar}
-        />
+        {!immersiveMonitorMode ? (
+          <TopBar
+            activeView={activeMeta}
+            onOpenSidebar={onOpenSidebar}
+          />
+        ) : null}
 
-        <main className="app-content" id="main-content" tabIndex={-1}>
+        <main className={`app-content ${immersiveMonitorMode ? "app-content-immersive" : ""}`} id="main-content" tabIndex={-1}>
           <div className="app-content-frame">{children}</div>
         </main>
       </div>

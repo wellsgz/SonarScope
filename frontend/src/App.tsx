@@ -55,6 +55,7 @@ export default function App() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<AppViewKey>("monitor");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [monitorDashboardMode, setMonitorDashboardMode] = useState(false);
   const [selectedProbeGroupIDs, setSelectedProbeGroupIDs] = useState<number[]>([]);
   const { mode, toggleMode } = useTheme();
 
@@ -84,6 +85,13 @@ export default function App() {
     setSelectedProbeGroupIDs((current) => current.filter((id) => validIDs.has(id)));
   }, [groupsQuery.data]);
 
+  useEffect(() => {
+    if (view === "monitor") {
+      return;
+    }
+    setMonitorDashboardMode(false);
+  }, [view]);
+
   const startProbeMutation = useMutation({
     mutationFn: (payload: { scope: "all" | "groups"; group_ids?: number[] }) => startProbe(payload),
     onSuccess: (result) => {
@@ -109,12 +117,13 @@ export default function App() {
   const deleteJobStatus = deleteJobStatusQuery.data ?? defaultDeleteJobStatus;
   const deleteInProgress = Boolean(deleteJobStatus.active);
   const probeBusy = startProbeMutation.isPending || stopProbeMutation.isPending;
+  const immersiveMonitorMode = view === "monitor" && monitorDashboardMode;
 
   const page = useMemo(() => {
     if (view === "inventory") return <InventoryPage />;
     if (view === "groups") return <GroupsPage />;
     if (view === "settings") return <SettingsPage />;
-    return <MonitorPage />;
+    return <MonitorPage onDashboardModeChange={setMonitorDashboardMode} />;
   }, [view]);
 
   return (
@@ -141,6 +150,7 @@ export default function App() {
       onStopProbe={() => stopProbeMutation.mutate()}
       probeBusy={probeBusy}
       deleteInProgress={deleteInProgress}
+      immersiveMonitorMode={immersiveMonitorMode}
     >
       {page}
     </AppShell>

@@ -119,7 +119,11 @@ function normalizeIPList(raw: string): string[] {
     });
 }
 
-export function MonitorPage() {
+type Props = {
+  onDashboardModeChange?: (enabled: boolean) => void;
+};
+
+export function MonitorPage({ onDashboardModeChange }: Props = {}) {
   const queryClient = useQueryClient();
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
@@ -137,6 +141,7 @@ export function MonitorPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
   const [dataScope, setDataScope] = useState<MonitorDataScope>("live");
   const [rangeAnchorMs, setRangeAnchorMs] = useState<number>(Date.now());
+  const [tableDashboardMode, setTableDashboardMode] = useState(false);
   const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") {
       return true;
@@ -178,6 +183,29 @@ export function MonitorPage() {
     }
     window.localStorage.setItem(monitorControlsCollapsedKey, controlsCollapsed ? "1" : "0");
   }, [controlsCollapsed]);
+
+  useEffect(() => {
+    onDashboardModeChange?.(tableDashboardMode);
+  }, [onDashboardModeChange, tableDashboardMode]);
+
+  useEffect(() => {
+    return () => {
+      onDashboardModeChange?.(false);
+    };
+  }, [onDashboardModeChange]);
+
+  useEffect(() => {
+    if (!tableDashboardMode) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setTableDashboardMode(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [tableDashboardMode]);
 
   const socketConnected = useMonitorSocket((message) => {
     const event = message as { type?: string; endpoint_id?: number };
@@ -324,6 +352,76 @@ export function MonitorPage() {
   });
   const controlsSummaryScope = dataScope === "live" ? "Live Snapshot" : "Selected Range";
   const controlsSummaryFilters = activeFilterCount === 0 ? "Filters: All" : `Filters: ${activeFilterCount}`;
+  const dashboardRowSummary =
+    monitorQuery.data && monitorQuery.data.total_items > 0
+      ? `Showing ${monitorQuery.data.total_items} endpoints`
+      : "No endpoints in current scope";
+
+  const tableContent = monitorQuery.isLoading ? (
+    <div className="panel state-panel">
+      <div>
+        <span className="skeleton-bar" style={{ width: 240 }} />
+        <p className="state-loading-copy">Loading endpoint telemetry…</p>
+      </div>
+    </div>
+  ) : monitorRows.length === 0 ? (
+    <div className="panel state-panel">No endpoints match the active filters.</div>
+  ) : (
+    <MonitorTable
+      rows={monitorRows}
+      customFields={enabledCustomFields}
+      selectedEndpointID={selectedEndpointID}
+      onSelectionChange={setSelectedEndpointID}
+      page={monitorQuery.data?.page ?? page}
+      pageSize={(monitorQuery.data?.page_size as 50 | 100 | 200) ?? pageSize}
+      totalItems={monitorQuery.data?.total_items ?? 0}
+      totalPages={monitorQuery.data?.total_pages ?? 0}
+      dataScope={dataScope}
+      onPageChange={(nextPage) => setPage(Math.max(1, nextPage))}
+      onPageSizeChange={(nextSize) => {
+        setPageSize(nextSize);
+        setPage(1);
+      }}
+      sortableFields={dataScope === "range" ? rangeSortableFields : liveSortableFields}
+      sortBy={sortBy}
+      sortDir={sortDir}
+      onSortChange={(nextSortBy, nextSortDir) => {
+        setSortBy(nextSortBy);
+        setSortDir(nextSortDir);
+        setPage(1);
+      }}
+    />
+  );
+
+  if (tableDashboardMode) {
+    return (
+      <div className="monitor-dashboard-view">
+        {(monitorQuery.error || settingsMutation.error) && (
+          <div className="error-banner" role="alert" aria-live="assertive">
+            {(monitorQuery.error as Error | undefined)?.message ||
+              (settingsMutation.error as Error | undefined)?.message}
+          </div>
+        )}
+
+        <div className="panel monitor-dashboard-header">
+          <div className="monitor-dashboard-header-copy">
+            <h2 className="panel-title">Monitor Dashboard</h2>
+            <p className="panel-subtitle">Fullscreen endpoint table view for wallboard monitoring.</p>
+          </div>
+          <div className="monitor-dashboard-meta">
+            <span className="status-chip">{controlsSummaryScope}</span>
+            <span className="status-chip">{controlsSummaryFilters}</span>
+            <span className="status-chip">{dashboardRowSummary}</span>
+            <button className="btn btn-primary" type="button" onClick={() => setTableDashboardMode(false)}>
+              Return to Operations Monitor
+            </button>
+          </div>
+        </div>
+
+        <div className="monitor-dashboard-table">{tableContent}</div>
+      </div>
+    );
+  }
 
   return (
     <div className={`monitor-page ${controlsCollapsed ? "monitor-page-controls-collapsed" : ""}`}>
@@ -443,41 +541,18 @@ export function MonitorPage() {
         )}
 
         <div className="monitor-pane-middle">
-          {monitorQuery.isLoading ? (
-            <div className="panel state-panel">
-              <div>
-                <span className="skeleton-bar" style={{ width: 240 }} />
-                <p className="state-loading-copy">Loading endpoint telemetry…</p>
-              </div>
-            </div>
-          ) : monitorRows.length === 0 ? (
-            <div className="panel state-panel">No endpoints match the active filters.</div>
-          ) : (
-            <MonitorTable
-              rows={monitorRows}
-              customFields={enabledCustomFields}
-              selectedEndpointID={selectedEndpointID}
-              onSelectionChange={setSelectedEndpointID}
-              page={monitorQuery.data?.page ?? page}
-              pageSize={(monitorQuery.data?.page_size as 50 | 100 | 200) ?? pageSize}
-              totalItems={monitorQuery.data?.total_items ?? 0}
-              totalPages={monitorQuery.data?.total_pages ?? 0}
-              dataScope={dataScope}
-              onPageChange={(nextPage) => setPage(Math.max(1, nextPage))}
-              onPageSizeChange={(nextSize) => {
-                setPageSize(nextSize);
-                setPage(1);
-              }}
-              sortableFields={dataScope === "range" ? rangeSortableFields : liveSortableFields}
-              sortBy={sortBy}
-              sortDir={sortDir}
-              onSortChange={(nextSortBy, nextSortDir) => {
-                setSortBy(nextSortBy);
-                setSortDir(nextSortDir);
-                setPage(1);
-              }}
-            />
-          )}
+          <div className="monitor-pane-middle-head">
+            <span className="monitor-pane-middle-title">Endpoint Snapshot</span>
+            <button
+              className="btn btn-small"
+              type="button"
+              disabled={monitorQuery.isLoading || monitorRows.length === 0}
+              onClick={() => setTableDashboardMode(true)}
+            >
+              Open Dashboard
+            </button>
+          </div>
+          {tableContent}
         </div>
 
         <div className="monitor-pane-bottom">
