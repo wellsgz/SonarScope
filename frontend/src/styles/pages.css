@@ -510,6 +510,38 @@
   max-height: 560px;
 }
 
+.inventory-delete-confirm-row td {
+  background: color-mix(in srgb, var(--color-danger) 6%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-danger) 30%, var(--color-border));
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.inventory-delete-confirm-card {
+  border: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+  padding: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.inventory-delete-confirm-text {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.inventory-delete-confirm-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .inventory-state-panel {
   min-height: 220px;
 }
@@ -840,6 +872,10 @@
   .inventory-header-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .inventory-delete-confirm-actions {
+    width: 100%;
   }
 
   .settings-custom-field-form {

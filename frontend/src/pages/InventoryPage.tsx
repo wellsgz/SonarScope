@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
@@ -250,7 +250,10 @@ export function InventoryPage() {
   const [editingEndpointID, setEditingEndpointID] = useState<number | null>(null);
   const [editingPatch, setEditingPatch] = useState<InventoryPatch | null>(null);
   const [deletingEndpointID, setDeletingEndpointID] = useState<number | null>(null);
+  const [pendingDeleteEndpointID, setPendingDeleteEndpointID] = useState<number | null>(null);
   const [singleEndpoint, setSingleEndpoint] = useState<InventoryEndpointCreateRequest>(initialSingleEndpoint);
+  const [lastAddedEndpoint, setLastAddedEndpoint] = useState<{ ip_address: string; hostname: string } | null>(null);
+  const [showAddSuccessNotice, setShowAddSuccessNotice] = useState(false);
   const [singleEndpointAdvancedOpen, setSingleEndpointAdvancedOpen] = useState(false);
   const [deleteGroupID, setDeleteGroupID] = useState("");
   const [deleteAllArmed, setDeleteAllArmed] = useState(false);
@@ -424,6 +427,7 @@ export function InventoryPage() {
     onSuccess: () => {
       setEditingEndpointID(null);
       setEditingPatch(null);
+      setPendingDeleteEndpointID(null);
       invalidateInventoryAndMonitorQueries();
     },
     onSettled: () => {
@@ -433,7 +437,12 @@ export function InventoryPage() {
 
   const createSingleEndpointMutation = useMutation({
     mutationFn: (payload: InventoryEndpointCreateRequest) => createInventoryEndpoint(payload),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      setLastAddedEndpoint({
+        ip_address: data.ip_address,
+        hostname: data.hostname || data.ip_address
+      });
+      setShowAddSuccessNotice(true);
       setSingleEndpoint(initialSingleEndpoint);
       setSingleEndpointAdvancedOpen(false);
       invalidateInventoryAndMonitorQueries();
@@ -557,6 +566,7 @@ export function InventoryPage() {
   const exportDisabled =
     exportCSVMutation.isPending || inventoryQuery.isLoading || (inventoryQuery.data?.length || 0) === 0;
   const filteredEndpointCount = inventoryQuery.data?.length ?? 0;
+  const inventoryTableColumnCount = 11 + enabledCustomFields.length;
 
   const dismissDeleteNotice = () => {
     const key = completionNoticeKey(deleteJobStatus);
@@ -842,9 +852,9 @@ export function InventoryPage() {
           <div className="inventory-section-heading">
             <h2 className="panel-title">Add Single Endpoint</h2>
             <p className="panel-subtitle">Quickly add one endpoint. If hostname is blank, IP will be used.</p>
-            {createSingleEndpointMutation.data ? (
+            {lastAddedEndpoint ? (
               <div className="inventory-inline-summary" role="status" aria-live="polite">
-                Last added: {createSingleEndpointMutation.data.ip_address} ({createSingleEndpointMutation.data.hostname})
+                Last added: {lastAddedEndpoint.ip_address} ({lastAddedEndpoint.hostname})
               </div>
             ) : null}
           </div>
@@ -1023,10 +1033,19 @@ export function InventoryPage() {
               {(createSingleEndpointMutation.error as Error).message}
             </div>
           )}
-          {createSingleEndpointMutation.data && (
-            <div className="success-banner" role="status" aria-live="polite">
-              Added endpoint {createSingleEndpointMutation.data.ip_address} (
-              {createSingleEndpointMutation.data.hostname}).
+          {showAddSuccessNotice && lastAddedEndpoint && (
+            <div className="success-banner banner-dismissible" role="status" aria-live="polite">
+              <span>
+                Added endpoint {lastAddedEndpoint.ip_address} ({lastAddedEndpoint.hostname}).
+              </span>
+              <button
+                className="banner-close"
+                type="button"
+                aria-label="Dismiss add endpoint message"
+                onClick={() => setShowAddSuccessNotice(false)}
+              >
+                ×
+              </button>
             </div>
           )}
 
@@ -1251,180 +1270,213 @@ export function InventoryPage() {
                 <tbody>
                   {(inventoryQuery.data || []).map((row) => {
                     const isEditing = editingEndpointID === row.endpoint_id && editingPatch !== null;
+                    const isPendingDeleteConfirmation = pendingDeleteEndpointID === row.endpoint_id;
+                    const rowDeleteLabel = row.hostname?.trim() ? `${row.hostname} (${row.ip_address})` : row.ip_address;
                     return (
-                      <tr key={row.endpoint_id} className={isEditing ? "row-selected" : ""}>
-                        <td>
-                          {isEditing ? (
-                            <input
-                              value={editingPatch.hostname}
-                              onChange={(event) =>
-                                setEditingPatch((prev) => (prev ? { ...prev, hostname: event.target.value } : prev))
-                              }
-                            />
-                          ) : (
-                            row.hostname || "-"
-                          )}
-                        </td>
-                        <td>{row.ip_address}</td>
-                        <td>
-                          {isEditing ? (
-                            <input
-                              value={editingPatch.mac_address}
-                              onChange={(event) =>
-                                setEditingPatch((prev) => (prev ? { ...prev, mac_address: event.target.value } : prev))
-                              }
-                            />
-                          ) : (
-                            row.mac_address || "-"
-                          )}
-                        </td>
-                        <td>
-                          {isEditing ? (
-                            <input
-                              value={editingPatch.vlan}
-                              onChange={(event) =>
-                                setEditingPatch((prev) => (prev ? { ...prev, vlan: event.target.value } : prev))
-                              }
-                            />
-                          ) : (
-                            row.vlan || "-"
-                          )}
-                        </td>
-                        <td>
-                          {isEditing ? (
-                            <input
-                              value={editingPatch.switch}
-                              onChange={(event) =>
-                                setEditingPatch((prev) => (prev ? { ...prev, switch: event.target.value } : prev))
-                              }
-                            />
-                          ) : (
-                            row.switch || "-"
-                          )}
-                        </td>
-                        <td>
-                          {isEditing ? (
-                            <input
-                              value={editingPatch.port}
-                              onChange={(event) =>
-                                setEditingPatch((prev) => (prev ? { ...prev, port: event.target.value } : prev))
-                              }
-                            />
-                          ) : (
-                            row.port || "-"
-                          )}
-                        </td>
-                        <td>
-                          {isEditing ? (
-                            <input
-                              value={editingPatch.port_type}
-                              onChange={(event) =>
-                                setEditingPatch((prev) => (prev ? { ...prev, port_type: event.target.value } : prev))
-                              }
-                            />
-                          ) : (
-                            row.port_type || "-"
-                          )}
-                        </td>
-                        <td>
-                          {isEditing ? (
-                            <input
-                              value={editingPatch.description}
-                              onChange={(event) =>
-                                setEditingPatch((prev) => (prev ? { ...prev, description: event.target.value } : prev))
-                              }
-                            />
-                          ) : (
-                            row.description || "-"
-                          )}
-                        </td>
-                        <td>{row.group.join(", ") || "-"}</td>
-                        {enabledCustomFields.map((field) => (
-                          <td key={`inventory-row-${row.endpoint_id}-custom-${field.slot}`}>
+                      <Fragment key={row.endpoint_id}>
+                        <tr className={isEditing ? "row-selected" : ""}>
+                          <td>
                             {isEditing ? (
                               <input
-                                value={customFieldValueBySlot(
-                                  {
-                                    custom_field_1_value: editingPatch.custom_field_1_value,
-                                    custom_field_2_value: editingPatch.custom_field_2_value,
-                                    custom_field_3_value: editingPatch.custom_field_3_value
-                                  },
-                                  field.slot
-                                )}
+                                value={editingPatch.hostname}
                                 onChange={(event) =>
-                                  setEditingPatch((prev) =>
-                                    prev ? setInventoryPatchCustomFieldValue(prev, field.slot, event.target.value) : prev
-                                  )
+                                  setEditingPatch((prev) => (prev ? { ...prev, hostname: event.target.value } : prev))
                                 }
                               />
                             ) : (
-                              customFieldValueBySlot(
-                                {
-                                  custom_field_1_value: row.custom_field_1_value || "",
-                                  custom_field_2_value: row.custom_field_2_value || "",
-                                  custom_field_3_value: row.custom_field_3_value || ""
-                                },
-                                field.slot
-                              ) || "-"
+                              row.hostname || "-"
                             )}
                           </td>
-                        ))}
-                        <td>{new Date(row.updated_at).toLocaleString()}</td>
-                        <td>
-                          <div className="button-row">
+                          <td>{row.ip_address}</td>
+                          <td>
                             {isEditing ? (
-                              <>
-                                <button className="btn btn-primary" type="button" onClick={() => updateMutation.mutate()}>
-                                  Save
-                                </button>
-                                <button
-                                  className="btn"
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingEndpointID(null);
-                                    setEditingPatch(null);
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                              </>
+                              <input
+                                value={editingPatch.mac_address}
+                                onChange={(event) =>
+                                  setEditingPatch((prev) => (prev ? { ...prev, mac_address: event.target.value } : prev))
+                                }
+                              />
                             ) : (
-                              <>
-                                <button
-                                  className="btn"
-                                  type="button"
-                                  disabled={deleteEndpointMutation.isPending || deleteInProgress}
-                                  onClick={() => {
-                                    setEditingEndpointID(row.endpoint_id);
-                                    setEditingPatch(toPatch(row));
-                                  }}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  className="btn btn-danger"
-                                  type="button"
-                                  disabled={deleteEndpointMutation.isPending || deleteInProgress}
-                                  onClick={() => {
-                                    const label = row.hostname?.trim() ? `${row.hostname} (${row.ip_address})` : row.ip_address;
-                                    const confirmed = window.confirm(
-                                      `Delete endpoint "${label}"? This cannot be undone and will remove related probe history.`
-                                    );
-                                    if (!confirmed) {
-                                      return;
-                                    }
-                                    deleteEndpointMutation.mutate(row.endpoint_id);
-                                  }}
-                                >
-                                  {deleteEndpointMutation.isPending && deletingEndpointID === row.endpoint_id
-                                    ? "Deleting..."
-                                    : "Delete"}
-                                </button>
-                              </>
+                              row.mac_address || "-"
                             )}
-                          </div>
-                        </td>
-                      </tr>
+                          </td>
+                          <td>
+                            {isEditing ? (
+                              <input
+                                value={editingPatch.vlan}
+                                onChange={(event) =>
+                                  setEditingPatch((prev) => (prev ? { ...prev, vlan: event.target.value } : prev))
+                                }
+                              />
+                            ) : (
+                              row.vlan || "-"
+                            )}
+                          </td>
+                          <td>
+                            {isEditing ? (
+                              <input
+                                value={editingPatch.switch}
+                                onChange={(event) =>
+                                  setEditingPatch((prev) => (prev ? { ...prev, switch: event.target.value } : prev))
+                                }
+                              />
+                            ) : (
+                              row.switch || "-"
+                            )}
+                          </td>
+                          <td>
+                            {isEditing ? (
+                              <input
+                                value={editingPatch.port}
+                                onChange={(event) =>
+                                  setEditingPatch((prev) => (prev ? { ...prev, port: event.target.value } : prev))
+                                }
+                              />
+                            ) : (
+                              row.port || "-"
+                            )}
+                          </td>
+                          <td>
+                            {isEditing ? (
+                              <input
+                                value={editingPatch.port_type}
+                                onChange={(event) =>
+                                  setEditingPatch((prev) => (prev ? { ...prev, port_type: event.target.value } : prev))
+                                }
+                              />
+                            ) : (
+                              row.port_type || "-"
+                            )}
+                          </td>
+                          <td>
+                            {isEditing ? (
+                              <input
+                                value={editingPatch.description}
+                                onChange={(event) =>
+                                  setEditingPatch((prev) => (prev ? { ...prev, description: event.target.value } : prev))
+                                }
+                              />
+                            ) : (
+                              row.description || "-"
+                            )}
+                          </td>
+                          <td>{row.group.join(", ") || "-"}</td>
+                          {enabledCustomFields.map((field) => (
+                            <td key={`inventory-row-${row.endpoint_id}-custom-${field.slot}`}>
+                              {isEditing ? (
+                                <input
+                                  value={customFieldValueBySlot(
+                                    {
+                                      custom_field_1_value: editingPatch.custom_field_1_value,
+                                      custom_field_2_value: editingPatch.custom_field_2_value,
+                                      custom_field_3_value: editingPatch.custom_field_3_value
+                                    },
+                                    field.slot
+                                  )}
+                                  onChange={(event) =>
+                                    setEditingPatch((prev) =>
+                                      prev ? setInventoryPatchCustomFieldValue(prev, field.slot, event.target.value) : prev
+                                    )
+                                  }
+                                />
+                              ) : (
+                                customFieldValueBySlot(
+                                  {
+                                    custom_field_1_value: row.custom_field_1_value || "",
+                                    custom_field_2_value: row.custom_field_2_value || "",
+                                    custom_field_3_value: row.custom_field_3_value || ""
+                                  },
+                                  field.slot
+                                ) || "-"
+                              )}
+                            </td>
+                          ))}
+                          <td>{new Date(row.updated_at).toLocaleString()}</td>
+                          <td>
+                            <div className="button-row">
+                              {isEditing ? (
+                                <>
+                                  <button className="btn btn-primary" type="button" onClick={() => updateMutation.mutate()}>
+                                    Save
+                                  </button>
+                                  <button
+                                    className="btn"
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingEndpointID(null);
+                                      setEditingPatch(null);
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    className="btn"
+                                    type="button"
+                                    disabled={deleteEndpointMutation.isPending || deleteInProgress}
+                                    onClick={() => {
+                                      setPendingDeleteEndpointID(null);
+                                      setEditingEndpointID(row.endpoint_id);
+                                      setEditingPatch(toPatch(row));
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    className="btn btn-danger"
+                                    type="button"
+                                    aria-expanded={isPendingDeleteConfirmation}
+                                    disabled={deleteEndpointMutation.isPending || deleteInProgress}
+                                    onClick={() =>
+                                      setPendingDeleteEndpointID((current) =>
+                                        current === row.endpoint_id ? null : row.endpoint_id
+                                      )
+                                    }
+                                  >
+                                    {deleteEndpointMutation.isPending && deletingEndpointID === row.endpoint_id
+                                      ? "Deleting..."
+                                      : "Delete"}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {!isEditing && isPendingDeleteConfirmation ? (
+                          <tr className="inventory-delete-confirm-row">
+                            <td colSpan={inventoryTableColumnCount}>
+                              <div className="inventory-delete-confirm-card" role="alert" aria-live="polite">
+                                <p className="inventory-delete-confirm-text">
+                                  Delete endpoint "{rowDeleteLabel}"? This cannot be undone and will remove related probe
+                                  history.
+                                </p>
+                                <div className="inventory-delete-confirm-actions">
+                                  <button
+                                    className="btn btn-danger"
+                                    type="button"
+                                    disabled={deleteEndpointMutation.isPending || deleteInProgress}
+                                    onClick={() => deleteEndpointMutation.mutate(row.endpoint_id)}
+                                  >
+                                    {deleteEndpointMutation.isPending && deletingEndpointID === row.endpoint_id
+                                      ? "Deleting..."
+                                      : "Confirm Delete"}
+                                  </button>
+                                  <button
+                                    className="btn"
+                                    type="button"
+                                    disabled={deleteEndpointMutation.isPending}
+                                    onClick={() => setPendingDeleteEndpointID(null)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
                     );
                   })}
                 </tbody>
