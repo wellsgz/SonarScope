@@ -133,6 +133,7 @@ Inventory:
 - `GET /api/inventory/import-template.csv`
 - `GET /api/inventory/filter-options`
 - `POST /api/inventory/import-preview`
+- `DELETE /api/inventory/import-preview/{previewID}`
 - `POST /api/inventory/import-apply`
 - `POST /api/inventory/delete-jobs/by-group/{groupID}`
 - `POST /api/inventory/delete-jobs/all`

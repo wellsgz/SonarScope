@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent } from
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
+  cancelInventoryPreview,
   createInventoryEndpoint,
   downloadInventoryImportTemplateCSV,
   deleteInventoryEndpoint,
@@ -416,14 +417,7 @@ export function InventoryPage() {
         valid_upload_ips: data.group_assignment?.valid_upload_ips,
         unresolved_ips: data.group_assignment?.unresolved_ips
       });
-      setPreview(null);
-      setSelection({});
-      setFile(null);
-      setImportFileInputKey((value) => value + 1);
-      setAssignToGroup(false);
-      setGroupAssignmentMode("existing");
-      setSelectedGroupID("");
-      setNewGroupName("");
+      resetImportPreviewState();
       invalidateInventoryAndMonitorQueries();
     }
   });
@@ -678,6 +672,35 @@ export function InventoryPage() {
     }
   };
 
+  function resetImportPreviewState(resetMutationState = false) {
+    setPreview(null);
+    setSelection({});
+    setFile(null);
+    setImportFileInputKey((value) => value + 1);
+    setImportApplyConfirmOpen(false);
+    setImportGuardError(null);
+    setAssignToGroup(false);
+    setGroupAssignmentMode("existing");
+    setSelectedGroupID("");
+    setNewGroupName("");
+    if (resetMutationState) {
+      previewMutation.reset();
+      applyMutation.reset();
+    }
+  }
+
+  const handleCancelImportPreview = async () => {
+    const previewID = preview?.preview_id;
+    if (previewID) {
+      try {
+        await cancelInventoryPreview(previewID);
+      } catch {
+        // best-effort cleanup only; always allow local cancel
+      }
+    }
+    resetImportPreviewState(true);
+  };
+
   return (
     <div className="inventory-page-v13">
       <section
@@ -869,18 +892,31 @@ export function InventoryPage() {
             </div>
           )}
 
-          {summary && (
-            <div className="summary-row">
-              <span className="status-chip">Add: {summary.add}</span>
-              <span className="status-chip">Update: {summary.update}</span>
-              <span className="status-chip">Unchanged: {summary.unchanged}</span>
-              <span className="status-chip">Invalid: {summary.invalid}</span>
-            </div>
-          )}
-
           {preview && (
-            <div className="table-scroll import-preview-table">
-              <table className="monitor-table">
+            <>
+              <div className="import-preview-head">
+                {summary ? (
+                  <div className="summary-row import-preview-summary">
+                    <span className="status-chip">Add: {summary.add}</span>
+                    <span className="status-chip">Update: {summary.update}</span>
+                    <span className="status-chip">Unchanged: {summary.unchanged}</span>
+                    <span className="status-chip">Invalid: {summary.invalid}</span>
+                  </div>
+                ) : null}
+                <button
+                  className="banner-close import-preview-close"
+                  type="button"
+                  aria-label="Cancel import preview"
+                  onClick={() => {
+                    void handleCancelImportPreview();
+                  }}
+                  disabled={isPreparingImportApply || applyMutation.isPending}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="table-scroll import-preview-table import-preview-scroll">
+                <table className="monitor-table">
                 <thead>
                   <tr>
                     <th>Apply</th>
@@ -961,8 +997,9 @@ export function InventoryPage() {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
+            </>
           )}
           </div>
         ) : null}

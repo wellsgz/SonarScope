@@ -588,6 +588,61 @@
   font-size: var(--text-sm);
 }
 
+.import-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.import-preview-summary {
+  margin: 0;
+}
+
+.import-preview-close {
+  color: var(--color-text-muted);
+  min-width: 1.4rem;
+  line-height: 1;
+  margin-inline-start: auto;
+}
+
+.import-preview-close:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.import-preview-scroll {
+  overflow-x: scroll;
+  overflow-y: auto;
+  max-width: 100%;
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border))
+    color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+  padding-inline-end: var(--space-1);
+  padding-block-end: var(--space-1);
+}
+
+.import-preview-scroll::-webkit-scrollbar {
+  width: 0.56rem;
+  height: 0.56rem;
+}
+
+.import-preview-scroll::-webkit-scrollbar-track {
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+}
+
+.import-preview-scroll::-webkit-scrollbar-thumb {
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+}
+
+.import-preview-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-accent) 62%, var(--color-border-strong));
+}
+
 .inventory-filter-section {
   display: grid;
   gap: var(--space-2);
@@ -1177,6 +1232,10 @@
   .inventory-header-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .import-preview-head {
+    align-items: flex-start;
   }
 
   .inventory-delete-confirm-card {

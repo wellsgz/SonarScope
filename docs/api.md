@@ -11,6 +11,11 @@
 - IP-only files are valid for preview/apply
 - Returns `preview_id` and row-level classification.
 
+`DELETE /api/inventory/import-preview/{previewID}`
+
+- Best-effort cleanup for a generated preview.
+- Returns `404` if preview is already expired or applied.
+
 ## Inventory Import Template
 
 `GET /api/inventory/import-template.csv`

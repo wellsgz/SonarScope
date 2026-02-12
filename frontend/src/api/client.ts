@@ -412,6 +412,30 @@ export async function importInventoryPreview(file: File): Promise<ImportPreview>
   return (await response.json()) as ImportPreview;
 }
 
+export async function cancelInventoryPreview(
+  previewID: string
+): Promise<{ deleted: boolean; preview_id: string; not_found?: boolean }> {
+  const response = await fetch(buildURL(`/api/inventory/import-preview/${encodeURIComponent(previewID)}`), {
+    method: "DELETE"
+  });
+  if (response.status === 404) {
+    return { deleted: false, preview_id: previewID, not_found: true };
+  }
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) {
+        message = body.error;
+      }
+    } catch {
+      // ignore parse errors and keep default status text
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as { deleted: boolean; preview_id: string };
+}
+
 export async function applyInventoryPreview(payload: {
   preview_id: string;
   selections?: { row_id: string; action: "add" | "update" }[];

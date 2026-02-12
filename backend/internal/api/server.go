@@ -401,6 +401,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/delete-jobs/current", s.handleInventoryDeleteJobCurrent)
 			r.Get("/filter-options", s.handleInventoryFilters)
 			r.Post("/import-preview", s.handleInventoryImportPreview)
+			r.Delete("/import-preview/{previewID}", s.handleInventoryImportPreviewDelete)
 			r.Post("/import-apply", s.handleInventoryImportApply)
 		})
 
@@ -484,6 +485,27 @@ func (s *Server) handleInventoryImportPreview(w http.ResponseWriter, r *http.Req
 	s.previewMu.Unlock()
 
 	util.WriteJSON(w, http.StatusOK, preview)
+}
+
+func (s *Server) handleInventoryImportPreviewDelete(w http.ResponseWriter, r *http.Request) {
+	previewID := strings.TrimSpace(chi.URLParam(r, "previewID"))
+	if previewID == "" {
+		util.WriteError(w, http.StatusBadRequest, "preview_id is required")
+		return
+	}
+
+	s.previewMu.Lock()
+	defer s.previewMu.Unlock()
+	if _, ok := s.previews[previewID]; !ok {
+		util.WriteError(w, http.StatusNotFound, "preview not found")
+		return
+	}
+	delete(s.previews, previewID)
+
+	util.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"deleted":    true,
+		"preview_id": previewID,
+	})
 }
 
 func (s *Server) handleInventoryImportTemplateCSV(w http.ResponseWriter, _ *http.Request) {
