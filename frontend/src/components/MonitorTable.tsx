@@ -192,13 +192,13 @@ export function MonitorTable({
       if (column.key === "hostname" || column.key === "ip_address") {
         return {
           ...column,
-          cellClassName: (row) => identityClassName(row, dataScope)
+          cellClassName: (row: MonitorEndpoint) => identityClassName(row, dataScope)
         };
       }
       if (failureHighlightColumns.has(column.key)) {
         return {
           ...column,
-          cellClassName: (row) => failureClassName(row, dataScope)
+          cellClassName: (row: MonitorEndpoint) => failureClassName(row, dataScope)
         };
       }
       return column;
