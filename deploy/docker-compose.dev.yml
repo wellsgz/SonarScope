@@ -18,8 +18,9 @@ services:
       retries: 10
 
   sonarscope-api:
-    image: ${SONARSCOPE_API_IMAGE:-ghcr.io/wellsgz/sonarscope-api}:${SONARSCOPE_IMAGE_TAG:-latest}
-    pull_policy: always
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
     container_name: sonarscope-api
     restart: unless-stopped
     environment:
@@ -41,8 +42,9 @@ services:
       - NET_RAW
 
   sonarscope-web:
-    image: ${SONARSCOPE_WEB_IMAGE:-ghcr.io/wellsgz/sonarscope-web}:${SONARSCOPE_IMAGE_TAG:-latest}
-    pull_policy: always
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
     container_name: sonarscope-web
     restart: unless-stopped
     depends_on:

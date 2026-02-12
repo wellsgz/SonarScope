@@ -6,7 +6,7 @@ SonarScope is a web-based endpoint reachability platform for network operations 
 
 - `/backend`: Go API + probe engine + SQL migrations
 - `/frontend`: React + TypeScript + Vite dashboard
-- `/deploy`: Docker Compose deployment for API + TimescaleDB + web reverse proxy
+- `/deploy`: Docker Compose manifests for deployment (GHCR images) and local development (source builds)
 - `/docs`: architecture and API notes
 
 ## Features Implemented
@@ -23,23 +23,48 @@ SonarScope is a web-based endpoint reachability platform for network operations 
 
 ## Quick Start (Docker)
 
-1. Copy deployment variables:
+### Run from GHCR images (deploy mode)
+
+1. Copy deploy variables:
 
 ```bash
-cp deploy/.env.example deploy/.env
+cp deploy/.env.deploy.example deploy/.env.deploy
+```
+
+2. Pull and start:
+
+```bash
+cd deploy
+docker compose -f docker-compose.yml --env-file .env.deploy up -d
+```
+
+### Run from local source (dev mode)
+
+1. Copy dev variables:
+
+```bash
+cp deploy/.env.dev.example deploy/.env.dev
 ```
 
 2. Build and start:
 
 ```bash
 cd deploy
-docker compose --env-file .env up --build
+docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --build
 ```
 
-3. Access:
+### Access
 
 - UI: `http://localhost:8088`
 - API health: `http://localhost:8088/healthz`
+
+If GHCR packages are private, authenticate first:
+
+```bash
+echo <GITHUB_TOKEN> | docker login ghcr.io -u <GITHUB_USERNAME> --password-stdin
+```
+
+For anonymous pulls, set package visibility to public in GitHub Packages.
 
 ## Local Backend Run (without Docker)
 
