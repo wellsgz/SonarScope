@@ -16,6 +16,9 @@ type Props = {
   sortableFields: MonitorSortField[];
   sortBy: MonitorSortField | null;
   sortDir: "asc" | "desc" | null;
+  probeRunning: boolean;
+  probeScope: "all" | "groups" | "";
+  activeProbeGroupNames: Set<string>;
   onSortChange: (sortBy: MonitorSortField | null, sortDir: "asc" | "desc" | null) => void;
 };
 
@@ -28,6 +31,11 @@ type MonitorColumn = {
 };
 
 type EndpointHealth = "healthy" | "unhealthy" | "no_data";
+type LiveProbeContext = {
+  probeRunning: boolean;
+  probeScope: "all" | "groups" | "";
+  activeProbeGroupNames: Set<string>;
+};
 
 function formatDate(value: string | null): string {
   if (!value) return "-";
@@ -49,7 +57,28 @@ function customFieldValueBySlot(row: MonitorEndpoint, slot: 1 | 2 | 3): string {
   return row.custom_field_3_value || "-";
 }
 
-function endpointHealth(row: MonitorEndpoint, dataScope: MonitorDataScope): EndpointHealth {
+function normalizeGroupName(groupName: string): string {
+  return groupName.trim().toLowerCase();
+}
+
+function isActivelyProbedLiveRow(row: MonitorEndpoint, liveProbeContext: LiveProbeContext): boolean {
+  if (!liveProbeContext.probeRunning) {
+    return false;
+  }
+  if (liveProbeContext.probeScope === "all") {
+    return true;
+  }
+  if (liveProbeContext.probeScope !== "groups" || liveProbeContext.activeProbeGroupNames.size === 0) {
+    return false;
+  }
+  return row.group.some((groupName) => liveProbeContext.activeProbeGroupNames.has(normalizeGroupName(groupName)));
+}
+
+function endpointHealth(
+  row: MonitorEndpoint,
+  dataScope: MonitorDataScope,
+  liveProbeContext: LiveProbeContext
+): EndpointHealth {
   if (row.total_sent_ping <= 0) {
     return "no_data";
   }
@@ -58,20 +87,24 @@ function endpointHealth(row: MonitorEndpoint, dataScope: MonitorDataScope): Endp
     return row.failed_count > 0 ? "unhealthy" : "healthy";
   }
 
+  if (!isActivelyProbedLiveRow(row, liveProbeContext)) {
+    return "no_data";
+  }
+
   const status = (row.last_ping_status || "").trim().toLowerCase();
   const liveFailure = row.consecutive_failed_count > 0 || (status.length > 0 && status !== "succeeded");
   return liveFailure ? "unhealthy" : "healthy";
 }
 
-function failureClassName(row: MonitorEndpoint, dataScope: MonitorDataScope): string | undefined {
-  if (endpointHealth(row, dataScope) === "unhealthy") {
+function failureClassName(row: MonitorEndpoint, dataScope: MonitorDataScope, liveProbeContext: LiveProbeContext): string | undefined {
+  if (endpointHealth(row, dataScope, liveProbeContext) === "unhealthy") {
     return "metric-failure-danger";
   }
   return undefined;
 }
 
-function identityClassName(row: MonitorEndpoint, dataScope: MonitorDataScope): string | undefined {
-  const health = endpointHealth(row, dataScope);
+function identityClassName(row: MonitorEndpoint, dataScope: MonitorDataScope, liveProbeContext: LiveProbeContext): string | undefined {
+  const health = endpointHealth(row, dataScope, liveProbeContext);
   if (health === "healthy") {
     return "monitor-identity-ok";
   }
@@ -165,9 +198,20 @@ export function MonitorTable({
   sortableFields,
   sortBy,
   sortDir,
+  probeRunning,
+  probeScope,
+  activeProbeGroupNames,
   onSortChange
 }: Props) {
   const sortableSet = useMemo(() => new Set<MonitorSortField>(sortableFields), [sortableFields]);
+  const liveProbeContext = useMemo(
+    () => ({
+      probeRunning,
+      probeScope,
+      activeProbeGroupNames
+    }),
+    [probeRunning, probeScope, activeProbeGroupNames]
+  );
   const failureHighlightColumns = useMemo(
     () =>
       new Set([
@@ -192,18 +236,18 @@ export function MonitorTable({
       if (column.key === "hostname" || column.key === "ip_address") {
         return {
           ...column,
-          cellClassName: (row: MonitorEndpoint) => identityClassName(row, dataScope)
+          cellClassName: (row: MonitorEndpoint) => identityClassName(row, dataScope, liveProbeContext)
         };
       }
       if (failureHighlightColumns.has(column.key)) {
         return {
           ...column,
-          cellClassName: (row: MonitorEndpoint) => failureClassName(row, dataScope)
+          cellClassName: (row: MonitorEndpoint) => failureClassName(row, dataScope, liveProbeContext)
         };
       }
       return column;
     });
-  }, [customFields, dataScope, failureHighlightColumns]);
+  }, [customFields, dataScope, failureHighlightColumns, liveProbeContext]);
 
   const pageOptions = useMemo(() => {
     if (totalPages < 1) {

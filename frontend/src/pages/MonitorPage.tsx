@@ -12,7 +12,7 @@ import { MonitorTable } from "../components/MonitorTable";
 import { MonitorToolbar, type FilterState } from "../components/MonitorToolbar";
 import { rangeToDatesAt, toApiTime, type QuickRange } from "../hooks/time";
 import { useMonitorSocket } from "../hooks/useMonitorSocket";
-import type { CustomFieldConfig, MonitorDataScope, MonitorSortField, Settings } from "../types/api";
+import type { CustomFieldConfig, Group, MonitorDataScope, MonitorSortField, ProbeStatus, Settings } from "../types/api";
 
 function toDateTimeLocal(value: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -124,9 +124,17 @@ function normalizeIPList(raw: string): string[] {
 type Props = {
   dashboardMode?: boolean;
   onDashboardModeChange?: (enabled: boolean) => void;
+  probeStatus?: ProbeStatus;
+  groups?: Group[];
 };
 
-export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}) {
+const defaultProbeStatus: ProbeStatus = {
+  running: false,
+  scope: "",
+  group_ids: []
+};
+
+export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus, groups }: Props = {}) {
   const queryClient = useQueryClient();
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
@@ -155,6 +163,8 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}
 
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: getSettings });
   const filterOptionsQuery = useQuery({ queryKey: ["filter-options"], queryFn: listFilterOptions });
+  const effectiveProbeStatus = probeStatus ?? defaultProbeStatus;
+  const probeGroups = groups ?? [];
   const enabledCustomFields = useMemo(
     () => normalizeEnabledCustomFields(settingsQuery.data?.custom_fields),
     [settingsQuery.data?.custom_fields]
@@ -249,6 +259,24 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}
     (macSearch.trim() ? 1 : 0) +
     activeCustomSearchCount +
     (ipListValues.length > 0 ? 1 : 0);
+  const activeLiveProbeGroupNames = useMemo(() => {
+    if (!effectiveProbeStatus.running || effectiveProbeStatus.scope !== "groups" || !effectiveProbeStatus.group_ids.length) {
+      return new Set<string>();
+    }
+
+    const activeGroupIDs = new Set<number>(effectiveProbeStatus.group_ids);
+    const names = new Set<string>();
+    probeGroups.forEach((group) => {
+      if (!activeGroupIDs.has(group.id)) {
+        return;
+      }
+      const normalized = group.name.trim().toLowerCase();
+      if (normalized) {
+        names.add(normalized);
+      }
+    });
+    return names;
+  }, [effectiveProbeStatus.group_ids, effectiveProbeStatus.running, effectiveProbeStatus.scope, probeGroups]);
 
   const { effectiveStart, effectiveEnd } = useMemo(() => {
     if (dataScope === "live") {
@@ -408,6 +436,9 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}
       sortableFields={dataScope === "range" ? rangeSortableFields : liveSortableFields}
       sortBy={sortBy}
       sortDir={sortDir}
+      probeRunning={effectiveProbeStatus.running}
+      probeScope={effectiveProbeStatus.scope}
+      activeProbeGroupNames={activeLiveProbeGroupNames}
       onSortChange={(nextSortBy, nextSortDir) => {
         setSortBy(nextSortBy);
         setSortDir(nextSortDir);

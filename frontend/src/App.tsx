@@ -123,8 +123,15 @@ export default function App() {
     if (view === "inventory") return <InventoryPage />;
     if (view === "groups") return <GroupsPage />;
     if (view === "settings") return <SettingsPage />;
-    return <MonitorPage dashboardMode={monitorDashboardMode} onDashboardModeChange={setMonitorDashboardMode} />;
-  }, [view, monitorDashboardMode]);
+    return (
+      <MonitorPage
+        dashboardMode={monitorDashboardMode}
+        onDashboardModeChange={setMonitorDashboardMode}
+        probeStatus={probeStatus}
+        groups={groupsQuery.data || []}
+      />
+    );
+  }, [view, monitorDashboardMode, probeStatus, groupsQuery.data]);
 
   return (
     <AppShell
