@@ -126,8 +126,8 @@ export function MonitorToolbar({
           </div>
           <span className="field-help">
             {dataScope === "live"
-              ? "Live Snapshot: middle pane shows current endpoint counters."
-              : "Selected Range: middle pane counters are recalculated for the chosen window."}
+              ? "Live Snapshot: middle pane shows current endpoint counters and chart uses a rolling last 30 minutes."
+              : "Selected Range: middle pane counters and chart are recalculated for the chosen window."}
           </span>
           {dataScope === "range" ? (
             <>

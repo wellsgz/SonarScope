@@ -268,18 +268,12 @@ function readTokenFontSizePx(name: string, fallbackRem: number): number {
   return fallbackRem * rootFontSizePx;
 }
 
-function resolveLossColor(lossValue: number | null, palette: { success: string; warning: string; danger: string; textSubtle: string }): string {
+function resolveLossColor(lossValue: number | null, palette: { success: string; danger: string; textSubtle: string }): string {
   if (lossValue === null) {
     return palette.textSubtle;
   }
   if (lossValue <= 0) {
     return palette.success;
-  }
-  if (lossValue <= 1) {
-    return palette.warning;
-  }
-  if (lossValue <= 10) {
-    return "#f97316";
   }
   return palette.danger;
 }
@@ -347,7 +341,6 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
     textSubtle: readToken("--color-text-subtle", "#94a7c4"),
     border: readToken("--color-border", "#21324d"),
     success: readToken("--color-success", "#10b981"),
-    warning: readToken("--color-warning", "#f59e0b"),
     danger: readToken("--color-danger", "#ef4444")
   };
   const legendFontSizePx = readTokenFontSizePx("--text-sm", 0.74);
@@ -487,9 +480,7 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
           seriesIndex: lossSeriesIndices,
           pieces: [
             { lte: 0, color: palette.success },
-            { gt: 0, lte: 1, color: palette.warning },
-            { gt: 1, lte: 10, color: "#f97316" },
-            { gt: 10, color: palette.danger }
+            { gt: 0, color: palette.danger }
           ]
         }
       ],
@@ -544,7 +535,6 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
     palette.success,
     palette.textMuted,
     palette.textSubtle,
-    palette.warning,
     points,
     chartRangeEndMs,
     chartRangeStartMs,

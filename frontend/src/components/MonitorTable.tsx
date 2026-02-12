@@ -27,7 +27,7 @@ type MonitorColumn = {
   cellClassName?: (row: MonitorEndpoint) => string | undefined;
 };
 
-type FailureSeverity = "danger" | "warning" | "none";
+type EndpointHealth = "healthy" | "unhealthy" | "no_data";
 
 function formatDate(value: string | null): string {
   if (!value) return "-";
@@ -49,29 +49,34 @@ function customFieldValueBySlot(row: MonitorEndpoint, slot: 1 | 2 | 3): string {
   return row.custom_field_3_value || "-";
 }
 
-function failureSeverity(row: MonitorEndpoint): FailureSeverity {
-  if (row.consecutive_failed_count > 0 || row.failed_pct > 1) {
-    return "danger";
+function endpointHealth(row: MonitorEndpoint, dataScope: MonitorDataScope): EndpointHealth {
+  if (row.total_sent_ping <= 0) {
+    return "no_data";
   }
-  if (
-    row.failed_count > 0 ||
-    row.max_consecutive_failed_count > 0 ||
-    row.max_consecutive_failed_count_time !== null ||
-    row.last_failed_on !== null ||
-    (row.failed_pct > 0 && row.failed_pct <= 1)
-  ) {
-    return "warning";
+
+  if (dataScope === "range") {
+    return row.failed_count > 0 ? "unhealthy" : "healthy";
   }
-  return "none";
+
+  const status = (row.last_ping_status || "").trim().toLowerCase();
+  const liveFailure = row.consecutive_failed_count > 0 || (status.length > 0 && status !== "succeeded");
+  return liveFailure ? "unhealthy" : "healthy";
 }
 
-function failureClassName(row: MonitorEndpoint): string | undefined {
-  const severity = failureSeverity(row);
-  if (severity === "danger") {
+function failureClassName(row: MonitorEndpoint, dataScope: MonitorDataScope): string | undefined {
+  if (endpointHealth(row, dataScope) === "unhealthy") {
     return "metric-failure-danger";
   }
-  if (severity === "warning") {
-    return "metric-failure-warning";
+  return undefined;
+}
+
+function identityClassName(row: MonitorEndpoint, dataScope: MonitorDataScope): string | undefined {
+  const health = endpointHealth(row, dataScope);
+  if (health === "healthy") {
+    return "monitor-identity-ok";
+  }
+  if (health === "unhealthy") {
+    return "monitor-identity-danger";
   }
   return undefined;
 }
@@ -89,8 +94,7 @@ const baseColumns: MonitorColumn[] = [
     key: "last_failed_on",
     header: "Last Failed On",
     sortable: "last_failed_on",
-    render: (row) => formatDate(row.last_failed_on),
-    cellClassName: failureClassName
+    render: (row) => formatDate(row.last_failed_on)
   },
   { key: "mac_address", header: "MAC Address", render: (row) => row.mac_address || "-" },
   { key: "reply_ip_address", header: "Reply IP", render: (row) => row.reply_ip_address || "-" },
@@ -99,36 +103,31 @@ const baseColumns: MonitorColumn[] = [
     key: "failed_count",
     header: "Failed Count",
     sortable: "failed_count",
-    render: (row) => String(row.failed_count),
-    cellClassName: failureClassName
+    render: (row) => String(row.failed_count)
   },
   {
     key: "consecutive_failed_count",
     header: "Consecutive Failed",
     sortable: "consecutive_failed_count",
-    render: (row) => String(row.consecutive_failed_count),
-    cellClassName: failureClassName
+    render: (row) => String(row.consecutive_failed_count)
   },
   {
     key: "max_consecutive_failed_count",
     header: "Max Consecutive Failed",
     sortable: "max_consecutive_failed_count",
-    render: (row) => String(row.max_consecutive_failed_count),
-    cellClassName: failureClassName
+    render: (row) => String(row.max_consecutive_failed_count)
   },
   {
     key: "max_consecutive_failed_count_time",
     header: "Max Consec Failed Time",
     sortable: "max_consecutive_failed_count_time",
-    render: (row) => formatDate(row.max_consecutive_failed_count_time),
-    cellClassName: failureClassName
+    render: (row) => formatDate(row.max_consecutive_failed_count_time)
   },
   {
     key: "failed_pct",
     header: "Failed %",
     sortable: "failed_pct",
-    render: (row) => formatPercent(row.failed_pct),
-    cellClassName: failureClassName
+    render: (row) => formatPercent(row.failed_pct)
   },
   { key: "total_sent_ping", header: "Total Sent Ping", render: (row) => String(row.total_sent_ping) },
   { key: "last_ping_status", header: "Last Ping Status", render: (row) => row.last_ping_status || "-" },
@@ -169,6 +168,18 @@ export function MonitorTable({
   onSortChange
 }: Props) {
   const sortableSet = useMemo(() => new Set<MonitorSortField>(sortableFields), [sortableFields]);
+  const failureHighlightColumns = useMemo(
+    () =>
+      new Set([
+        "last_failed_on",
+        "failed_count",
+        "consecutive_failed_count",
+        "max_consecutive_failed_count",
+        "max_consecutive_failed_count_time",
+        "failed_pct"
+      ]),
+    []
+  );
   const columns = useMemo(() => {
     const dynamicCustomColumns: MonitorColumn[] = customFields.map((field) => ({
       key: `custom_field_${field.slot}_value`,
@@ -177,35 +188,22 @@ export function MonitorTable({
     }));
 
     const columnsWithCustom = [...baseColumns, ...dynamicCustomColumns];
-    if (dataScope !== "live") {
-      return columnsWithCustom;
-    }
-
-    const recentDropThresholdMs = 30 * 60 * 1000;
-    const nowMs = Date.now();
-    const identityClassName = (row: MonitorEndpoint): string => {
-      if (row.consecutive_failed_count > 0) {
-        return "monitor-identity-danger";
-      }
-      if (row.last_failed_on) {
-        const failedAt = new Date(row.last_failed_on).getTime();
-        if (!Number.isNaN(failedAt) && nowMs - failedAt <= recentDropThresholdMs) {
-          return "monitor-identity-warning";
-        }
-      }
-      return "monitor-identity-ok";
-    };
-
     return columnsWithCustom.map((column) => {
       if (column.key === "hostname" || column.key === "ip_address") {
         return {
           ...column,
-          cellClassName: identityClassName
+          cellClassName: (row) => identityClassName(row, dataScope)
+        };
+      }
+      if (failureHighlightColumns.has(column.key)) {
+        return {
+          ...column,
+          cellClassName: (row) => failureClassName(row, dataScope)
         };
       }
       return column;
     });
-  }, [customFields, dataScope]);
+  }, [customFields, dataScope, failureHighlightColumns]);
 
   const pageOptions = useMemo(() => {
     if (totalPages < 1) {

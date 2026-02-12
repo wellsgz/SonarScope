@@ -70,6 +70,7 @@ const defaultCustomSearch: CustomSearchState = {
   custom3: ""
 };
 const dashboardRefreshPresets = [30, 60] as const;
+const liveSnapshotChartRange: QuickRange = "30m";
 
 function normalizeEnabledCustomFields(fields?: CustomFieldConfig[]): EnabledCustomField[] {
   const bySlot: Record<CustomFieldSlot, EnabledCustomField | null> = {
@@ -170,14 +171,15 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}
   }, [autoRefreshMs]);
 
   useEffect(() => {
-    if (quickRange === "custom") {
+    const usesRollingWindow = dataScope === "live" || quickRange !== "custom";
+    if (!usesRollingWindow) {
       return;
     }
     const refreshRangeAnchor = () => setRangeAnchorMs(Date.now());
     refreshRangeAnchor();
     const intervalID = window.setInterval(refreshRangeAnchor, autoRefreshMs);
     return () => window.clearInterval(intervalID);
-  }, [quickRange, autoRefreshMs]);
+  }, [autoRefreshMs, dataScope, quickRange]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -249,6 +251,10 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}
     (ipListValues.length > 0 ? 1 : 0);
 
   const { effectiveStart, effectiveEnd } = useMemo(() => {
+    if (dataScope === "live") {
+      const { start, end } = rangeToDatesAt(liveSnapshotChartRange, new Date(rangeAnchorMs));
+      return { effectiveStart: start, effectiveEnd: end };
+    }
     if (quickRange === "custom") {
       const startDate = new Date(customStart);
       const endDate = new Date(customEnd);
@@ -261,7 +267,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}
     }
     const { start, end } = rangeToDatesAt(quickRange, new Date(rangeAnchorMs));
     return { effectiveStart: start, effectiveEnd: end };
-  }, [quickRange, customStart, customEnd, rangeAnchorMs]);
+  }, [dataScope, quickRange, customStart, customEnd, rangeAnchorMs]);
 
   const displayStartValue = quickRange === "custom" ? customStart : toDateTimeLocal(effectiveStart);
   const displayEndValue = quickRange === "custom" ? customEnd : toDateTimeLocal(effectiveEnd);
@@ -339,7 +345,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange }: Props = {}
   }, [dataScope, sortBy]);
 
   const timeSeriesQuery = useQuery({
-    queryKey: ["timeseries", selectedEndpointID, effectiveStart.toISOString(), effectiveEnd.toISOString()],
+    queryKey: ["timeseries", dataScope, selectedEndpointID, effectiveStart.toISOString(), effectiveEnd.toISOString()],
     queryFn: () =>
       listMonitorTimeSeries({
         endpointIds: selectedEndpointID ? [selectedEndpointID] : [],
