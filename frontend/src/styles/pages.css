@@ -830,10 +830,11 @@
 }
 
 .inventory-danger-card-body {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
-  align-content: start;
   flex: 1 1 auto;
+  min-height: 0;
 }
 
 .inventory-danger-card-help {
@@ -844,6 +845,8 @@
 
 .inventory-danger-trigger-row {
   width: 100%;
+  margin-top: auto;
+  padding-top: var(--space-1);
 }
 
 .inventory-danger-trigger {
