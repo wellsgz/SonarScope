@@ -48,9 +48,20 @@ function alignToStep(timestampMs: number, stepMs: number): number {
   return Math.floor(timestampMs / stepMs) * stepMs;
 }
 
+function alignStartToIncludedBucket(timestampMs: number, stepMs: number): number {
+  return Math.ceil(timestampMs / stepMs) * stepMs;
+}
+
+function alignEndToIncludedBucket(timestampMs: number, stepMs: number): number {
+  return Math.floor(timestampMs / stepMs) * stepMs;
+}
+
 function buildBuckets(rangeStart: Date, rangeEnd: Date, stepMs: number): number[] {
-  const start = alignToStep(rangeStart.getTime(), stepMs);
-  const end = alignToStep(rangeEnd.getTime(), stepMs);
+  const start = alignStartToIncludedBucket(rangeStart.getTime(), stepMs);
+  const end = alignEndToIncludedBucket(rangeEnd.getTime(), stepMs);
+  if (start > end) {
+    return [];
+  }
   const buckets: number[] = [];
   for (let current = start; current <= end; current += stepMs) {
     buckets.push(current);
