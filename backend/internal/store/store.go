@@ -286,11 +286,11 @@ func (s *Store) ListGroups(ctx context.Context) ([]model.Group, error) {
 		       g.created_at,
 		       g.updated_at,
 		       COALESCE(array_agg(gm.endpoint_id) FILTER (WHERE gm.endpoint_id IS NOT NULL), '{}') AS endpoint_ids
-		FROM group_def g
-		LEFT JOIN group_member gm ON gm.group_id = g.id
-		GROUP BY g.id
-		ORDER BY g.name
-	`)
+			FROM group_def g
+			LEFT JOIN group_member gm ON gm.group_id = g.id
+			GROUP BY g.id
+			ORDER BY g.is_system DESC, lower(g.name), g.name
+		`)
 	if err != nil {
 		return nil, err
 	}
