@@ -391,6 +391,7 @@ func (s *Server) Routes() http.Handler {
 			r.Post("/endpoints", s.handleInventoryEndpointCreate)
 			r.Get("/endpoints", s.handleInventoryEndpoints)
 			r.Get("/endpoints/export.csv", s.handleInventoryEndpointsExportCSV)
+			r.Get("/import-template.csv", s.handleInventoryImportTemplateCSV)
 			r.Put("/endpoints/{endpointID}", s.handleInventoryEndpointUpdate)
 			r.Delete("/endpoints/{endpointID}", s.handleInventoryEndpointDelete)
 			r.Delete("/endpoints/by-group/{groupID}", s.handleInventoryDeleteByGroup)
@@ -483,6 +484,48 @@ func (s *Server) handleInventoryImportPreview(w http.ResponseWriter, r *http.Req
 	s.previewMu.Unlock()
 
 	util.WriteJSON(w, http.StatusOK, preview)
+}
+
+func (s *Server) handleInventoryImportTemplateCSV(w http.ResponseWriter, _ *http.Request) {
+	var csvBuffer bytes.Buffer
+	csvWriter := csv.NewWriter(&csvBuffer)
+
+	comment := "# Required: ip_address; Optional: hostname, mac_address, vlan, switch, port, port_type, description, sorting, custom_field_1_value, custom_field_2_value, custom_field_3_value"
+	header := []string{
+		"ip_address",
+		"hostname",
+		"mac_address",
+		"vlan",
+		"switch",
+		"port",
+		"port_type",
+		"description",
+		"sorting",
+		"custom_field_1_value",
+		"custom_field_2_value",
+		"custom_field_3_value",
+	}
+
+	if err := csvWriter.Write([]string{comment}); err != nil {
+		util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("write template comment: %v", err))
+		return
+	}
+	if err := csvWriter.Write(header); err != nil {
+		util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("write template header: %v", err))
+		return
+	}
+
+	csvWriter.Flush()
+	if err := csvWriter.Error(); err != nil {
+		util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("flush template csv: %v", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="inventory-import-template.csv"`)
+	if _, err := w.Write(csvBuffer.Bytes()); err != nil {
+		log.Printf("write import template csv response: %v", err)
+	}
 }
 
 func (s *Server) handleInventoryImportApply(w http.ResponseWriter, r *http.Request) {

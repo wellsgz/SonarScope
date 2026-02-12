@@ -174,7 +174,8 @@ func (s *Store) UpdateSettings(ctx context.Context, settings model.Settings) err
 
 func (s *Store) InventoryByIP(ctx context.Context) (map[string]model.InventoryEndpoint, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, host(ip), mac, vlan, switch_name, port, port_type, description, hostname, updated_at
+		SELECT id, host(ip), mac, custom_field_1_value, custom_field_2_value, custom_field_3_value,
+		       vlan, switch_name, port, port_type, description, hostname, updated_at
 		FROM inventory_endpoint
 	`)
 	if err != nil {
@@ -189,6 +190,9 @@ func (s *Store) InventoryByIP(ctx context.Context) (map[string]model.InventoryEn
 			&endpoint.ID,
 			&endpoint.IP,
 			&endpoint.MAC,
+			&endpoint.CustomField1Value,
+			&endpoint.CustomField2Value,
+			&endpoint.CustomField3Value,
 			&endpoint.VLAN,
 			&endpoint.SwitchName,
 			&endpoint.Port,
@@ -213,10 +217,23 @@ func (s *Store) ApplyImport(ctx context.Context, rows []model.ImportCandidate) (
 		switch row.Action {
 		case model.ImportAdd:
 			cmd, err := s.pool.Exec(ctx, `
-				INSERT INTO inventory_endpoint(ip, mac, vlan, switch_name, port, port_type, description, hostname, updated_at)
-				VALUES ($1::inet, $2, $3, $4, $5, $6, $7, $8, now())
+				INSERT INTO inventory_endpoint(
+					ip, mac,
+					custom_field_1_value, custom_field_2_value, custom_field_3_value,
+					vlan, switch_name, port, port_type, description, hostname, updated_at
+				)
+				VALUES (
+					$1::inet, $2,
+					$3, $4, $5,
+					$6, $7, $8, $9, $10,
+					COALESCE(NULLIF($11, ''), host($1::inet)),
+					now()
+				)
 				ON CONFLICT (ip) DO NOTHING
-			`, row.IP, row.MAC, row.VLAN, row.SwitchName, row.Port, row.PortType, row.Description, row.Hostname)
+			`, row.IP, row.MAC,
+				row.CustomField1Value, row.CustomField2Value, row.CustomField3Value,
+				row.VLAN, row.SwitchName, row.Port, row.PortType, row.Description, row.Hostname,
+			)
 			if err != nil {
 				errorsOut = append(errorsOut, fmt.Sprintf("%s: %v", row.RowID, err))
 				continue
@@ -229,16 +246,22 @@ func (s *Store) ApplyImport(ctx context.Context, rows []model.ImportCandidate) (
 		case model.ImportUpdate:
 			cmd, err := s.pool.Exec(ctx, `
 				UPDATE inventory_endpoint
-				SET mac = $2,
-					vlan = $3,
-					switch_name = $4,
-					port = $5,
-					port_type = $6,
-					description = $7,
-					hostname = $8,
+				SET mac = COALESCE(NULLIF($2, ''), mac),
+					custom_field_1_value = COALESCE(NULLIF($3, ''), custom_field_1_value),
+					custom_field_2_value = COALESCE(NULLIF($4, ''), custom_field_2_value),
+					custom_field_3_value = COALESCE(NULLIF($5, ''), custom_field_3_value),
+					vlan = COALESCE(NULLIF($6, ''), vlan),
+					switch_name = COALESCE(NULLIF($7, ''), switch_name),
+					port = COALESCE(NULLIF($8, ''), port),
+					port_type = COALESCE(NULLIF($9, ''), port_type),
+					description = COALESCE(NULLIF($10, ''), description),
+					hostname = COALESCE(NULLIF($11, ''), hostname),
 					updated_at = now()
 				WHERE ip = $1::inet
-			`, row.IP, row.MAC, row.VLAN, row.SwitchName, row.Port, row.PortType, row.Description, row.Hostname)
+			`, row.IP, row.MAC,
+				row.CustomField1Value, row.CustomField2Value, row.CustomField3Value,
+				row.VLAN, row.SwitchName, row.Port, row.PortType, row.Description, row.Hostname,
+			)
 			if err != nil {
 				errorsOut = append(errorsOut, fmt.Sprintf("%s: %v", row.RowID, err))
 				continue

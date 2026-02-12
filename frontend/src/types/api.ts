@@ -118,14 +118,17 @@ export type ImportCandidate = {
   row_id: string;
   source_row: number;
   ip: string;
+  hostname: string;
   mac: string;
+  custom_field_1_value: string;
+  custom_field_2_value: string;
+  custom_field_3_value: string;
   vlan: string;
   switch: string;
   port: string;
   port_type: string;
   description: string;
   sorting: string;
-  hostname: string;
   message: string;
   action: "add" | "update" | "unchanged" | "invalid";
   existing_id?: number;

@@ -5,7 +5,19 @@
 `POST /api/inventory/import-preview`
 
 - Multipart field: `file` (`.csv`, `.xlsx`, `.xls`, `.xlsm`)
+- Required header: `ip` or `ip_address`
+- Optional headers: `hostname`, `mac`/`mac_address`, `vlan`, `switch`/`switch_name`, `port`, `port_type`, `description`, `sorting`, `custom_field_1_value`, `custom_field_2_value`, `custom_field_3_value`
+- Comment rows are ignored when the first non-empty cell begins with `#`
+- IP-only files are valid for preview/apply
 - Returns `preview_id` and row-level classification.
+
+## Inventory Import Template
+
+`GET /api/inventory/import-template.csv`
+
+- Returns downloadable CSV template with:
+  - one commented instruction line for required vs optional columns
+  - one header row containing all supported import fields
 
 ## Inventory Import Apply
 
@@ -29,6 +41,10 @@
   "error": "probing is running; stop probing before import apply"
 }
 ```
+
+Import apply behavior:
+- For new endpoints, blank/missing hostname defaults to IP.
+- For updates, blank optional values are treated as no-change (existing stored values are preserved).
 
 ## Groups
 

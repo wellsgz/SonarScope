@@ -280,6 +280,26 @@ export async function exportInventoryEndpointsCSV(filters: {
   return { blob, filename };
 }
 
+export async function downloadInventoryImportTemplateCSV(): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(buildURL("/api/inventory/import-template.csv"), { method: "GET" });
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) {
+        message = body.error;
+      }
+    } catch {
+      // ignore parse errors and keep default status text
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const filename = parseDownloadFilename(response.headers.get("Content-Disposition")) || "inventory-import-template.csv";
+  return { blob, filename };
+}
+
 export async function createInventoryEndpoint(payload: InventoryEndpointCreateRequest): Promise<InventoryEndpoint> {
   return request<InventoryEndpoint>("/api/inventory/endpoints", {
     method: "POST",

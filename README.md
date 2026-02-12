@@ -12,14 +12,20 @@ SonarScope is a web-based endpoint reachability platform for network operations 
 ## Features Implemented
 
 - Inventory spreadsheet ingestion with preview and incremental diff classification (`add`, `update`, `unchanged`, `invalid`)
+- Inventory import template download (`/api/inventory/import-template.csv`) with IP-required, optional native/custom columns, and comment-line guidance
 - Inventory apply flow with user-selected Add/Update actions
+- Inventory custom fields (up to 3) with settings-driven enable/name/display/search behavior
+- Filtered inventory CSV export (`/api/inventory/endpoints/export.csv`)
+- Single-endpoint delete plus bulk inventory delete jobs (by group / all) with progress tracking
 - Group CRUD with endpoint membership
 - Probe control API (`start` all/groups, `stop`)
 - Global settings API (`ping_interval_sec`, `icmp_payload_bytes`, `icmp_timeout_ms`, `auto_refresh_sec`)
 - Persistent storage model for inventory, groups, raw ping events, and current stats
 - Monitoring API for upper grid and lower time-series chart
+- Monitor table dashboard mode (immersive fullscreen table view)
 - WebSocket stream for live monitor update events
-- Two-pane web UI with filters, quick/custom time range controls, and responsive layout
+- Two-pane web UI with filters, quick/custom time range controls, responsive layout, and inline confirmation UX for destructive actions
+- GHCR image publishing workflow with split deploy/dev Docker Compose modes
 
 ## Quick Start (Docker)
 
@@ -38,6 +44,15 @@ cd deploy
 docker compose -f docker-compose.yml --env-file .env.deploy up -d
 ```
 
+Set `SONARSCOPE_IMAGE_TAG` in `deploy/.env.deploy` to override the default `latest` tag.
+
+Optional stop:
+
+```bash
+cd deploy
+docker compose -f docker-compose.yml --env-file .env.deploy down
+```
+
 ### Run from local source (dev mode)
 
 1. Copy dev variables:
@@ -53,6 +68,13 @@ cd deploy
 docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --build
 ```
 
+Optional stop:
+
+```bash
+cd deploy
+docker compose -f docker-compose.dev.yml --env-file .env.dev down
+```
+
 ### Access
 
 - UI: `http://localhost:8088`
@@ -65,6 +87,14 @@ echo <GITHUB_TOKEN> | docker login ghcr.io -u <GITHUB_USERNAME> --password-stdin
 ```
 
 For anonymous pulls, set package visibility to public in GitHub Packages.
+
+## Container Publishing (GHCR)
+
+- Workflow file: `.github/workflows/publish-images.yml`
+- Triggers: `push main`, `push v*`, `workflow_dispatch`
+- Published tags: `latest`, `main`, `sha-<shortsha>`, `vX.Y.Z`
+
+See `docs/container-images.md` for full publishing and tag details.
 
 ## Local Backend Run (without Docker)
 
@@ -96,15 +126,37 @@ export VITE_API_BASE_URL="http://localhost:8080"
 
 ## Core API Endpoints
 
+Inventory:
+- `GET/POST /api/inventory/endpoints`
+- `PUT/DELETE /api/inventory/endpoints/{endpointID}`
+- `GET /api/inventory/endpoints/export.csv`
+- `GET /api/inventory/import-template.csv`
+- `GET /api/inventory/filter-options`
 - `POST /api/inventory/import-preview`
 - `POST /api/inventory/import-apply`
-- `GET/POST/PUT/DELETE /api/groups`
+- `POST /api/inventory/delete-jobs/by-group/{groupID}`
+- `POST /api/inventory/delete-jobs/all`
+- `GET /api/inventory/delete-jobs/current`
+
+Groups:
+- `GET/POST /api/groups/`
+- `PUT/DELETE /api/groups/{groupID}`
+
+Probes:
+- `GET /api/probes/status`
 - `POST /api/probes/start`
 - `POST /api/probes/stop`
-- `GET/PUT /api/settings`
+
+Settings:
+- `GET/PUT /api/settings/`
+
+Monitor:
 - `GET /api/monitor/endpoints`
+- `GET /api/monitor/endpoints-page`
 - `GET /api/monitor/timeseries`
 - `GET /api/monitor/filter-options`
+
+WebSocket:
 - `GET /ws/monitor`
 
 See `docs/api.md` for request and response samples.
@@ -117,4 +169,4 @@ See `docs/api.md` for request and response samples.
 
 ## Status
 
-This repository contains a full v1 implementation scaffold and core logic. Building/running requires dependency download (`go mod`, `npm`) in an environment with external package access.
+SonarScope is a production-ready v1.x baseline with ongoing iterative refinements across API, monitoring UX, and deployment tooling. GHCR image publishing and split deploy/dev compose workflows are available. Building/running still requires dependency download (`go mod`, `npm`) in an environment with external package access.

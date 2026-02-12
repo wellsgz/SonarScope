@@ -9,21 +9,48 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/xuri/excelize/v2"
 
 	"sonarscope/backend/internal/model"
 )
 
-var requiredHeaders = map[string]string{
-	"switch":      "switch",
-	"port":        "port",
-	"sorting":     "sorting",
-	"description": "description",
-	"vlan":        "vlan",
-	"mac":         "mac",
-	"port-type":   "port_type",
-	"ip":          "ip",
+var headerAliases = map[string]string{
+	"ip":                   "ip",
+	"ip_address":           "ip",
+	"ipaddress":            "ip",
+	"hostname":             "hostname",
+	"host":                 "hostname",
+	"mac":                  "mac",
+	"mac_address":          "mac",
+	"macaddress":           "mac",
+	"vlan":                 "vlan",
+	"switch":               "switch",
+	"switch_name":          "switch",
+	"switchname":           "switch",
+	"port":                 "port",
+	"port_type":            "port_type",
+	"porttype":             "port_type",
+	"description":          "description",
+	"desc":                 "description",
+	"sorting":              "sorting",
+	"sort":                 "sorting",
+	"custom_field_1":       "custom_field_1_value",
+	"custom_field1":        "custom_field_1_value",
+	"custom_field_1_value": "custom_field_1_value",
+	"custom_field1_value":  "custom_field_1_value",
+	"custom1":              "custom_field_1_value",
+	"custom_field_2":       "custom_field_2_value",
+	"custom_field2":        "custom_field_2_value",
+	"custom_field_2_value": "custom_field_2_value",
+	"custom_field2_value":  "custom_field_2_value",
+	"custom2":              "custom_field_2_value",
+	"custom_field_3":       "custom_field_3_value",
+	"custom_field3":        "custom_field_3_value",
+	"custom_field_3_value": "custom_field_3_value",
+	"custom_field3_value":  "custom_field_3_value",
+	"custom3":              "custom_field_3_value",
 }
 
 func Parse(fileName string, raw []byte) ([]model.ImportCandidate, error) {
@@ -123,14 +150,31 @@ func parseRows(rows [][]string) ([]model.ImportCandidate, error) {
 		return nil, fmt.Errorf("input is empty")
 	}
 
-	headerMap, err := mapHeaders(rows[0])
-	if err != nil {
-		return nil, err
+	headerRowIdx := -1
+	headerMap := map[string]int{}
+	for idx, row := range rows {
+		if isCommentOrEmptyRow(row) {
+			continue
+		}
+		mapped, err := mapHeaders(row)
+		if err != nil {
+			return nil, err
+		}
+		headerMap = mapped
+		headerRowIdx = idx
+		break
+	}
+	if headerRowIdx < 0 {
+		return nil, fmt.Errorf("input is empty")
 	}
 
-	result := make([]model.ImportCandidate, 0, len(rows)-1)
-	for i, row := range rows[1:] {
-		sourceRow := i + 2
+	result := make([]model.ImportCandidate, 0, len(rows)-headerRowIdx-1)
+	for i := headerRowIdx + 1; i < len(rows); i++ {
+		row := rows[i]
+		if isCommentOrEmptyRow(row) {
+			continue
+		}
+		sourceRow := i + 1
 		candidate := model.ImportCandidate{
 			RowID:     "row-" + strconv.Itoa(sourceRow),
 			SourceRow: sourceRow,
@@ -138,14 +182,17 @@ func parseRows(rows [][]string) ([]model.ImportCandidate, error) {
 		}
 
 		candidate.IP = cellByKey(row, headerMap, "ip")
+		candidate.Hostname = cellByKey(row, headerMap, "hostname")
 		candidate.MAC = normalizeMAC(cellByKey(row, headerMap, "mac"))
+		candidate.CustomField1Value = cellByKey(row, headerMap, "custom_field_1_value")
+		candidate.CustomField2Value = cellByKey(row, headerMap, "custom_field_2_value")
+		candidate.CustomField3Value = cellByKey(row, headerMap, "custom_field_3_value")
 		candidate.VLAN = cellByKey(row, headerMap, "vlan")
 		candidate.SwitchName = cellByKey(row, headerMap, "switch")
 		candidate.Port = cellByKey(row, headerMap, "port")
 		candidate.PortType = normalizePortType(cellByKey(row, headerMap, "port_type"))
 		candidate.Description = cellByKey(row, headerMap, "description")
 		candidate.Sorting = cellByKey(row, headerMap, "sorting")
-		candidate.Hostname = cellByKey(row, headerMap, "description")
 
 		if candidate.IP == "" {
 			candidate.Message = "missing IP"
@@ -167,22 +214,56 @@ func parseRows(rows [][]string) ([]model.ImportCandidate, error) {
 func mapHeaders(headers []string) (map[string]int, error) {
 	mapped := map[string]int{}
 	for idx, header := range headers {
-		normalized := strings.ToLower(strings.TrimSpace(header))
-		if key, ok := requiredHeaders[normalized]; ok {
+		normalized := normalizeHeader(header)
+		if key, ok := headerAliases[normalized]; ok {
+			if _, exists := mapped[key]; exists {
+				continue
+			}
 			mapped[key] = idx
 		}
 	}
 
-	missing := []string{}
-	for _, key := range requiredHeaders {
-		if _, ok := mapped[key]; !ok {
-			missing = append(missing, key)
-		}
-	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("missing headers: %s", strings.Join(missing, ", "))
+	if _, ok := mapped["ip"]; !ok {
+		return nil, fmt.Errorf("missing headers: ip (or ip_address)")
 	}
 	return mapped, nil
+}
+
+func normalizeHeader(input string) string {
+	raw := strings.ToLower(strings.TrimSpace(input))
+	if raw == "" {
+		return ""
+	}
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range raw {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteRune('_')
+			lastUnderscore = true
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+
+func isCommentOrEmptyRow(row []string) bool {
+	firstNonEmpty := ""
+	for _, item := range row {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		firstNonEmpty = trimmed
+		break
+	}
+	if firstNonEmpty == "" {
+		return true
+	}
+	return strings.HasPrefix(firstNonEmpty, "#")
 }
 
 func cell(row []string, idx int) string {
@@ -214,26 +295,40 @@ func normalizePortType(value string) string {
 }
 
 func hasDiff(candidate model.ImportCandidate, existing model.InventoryEndpoint) bool {
-	if candidate.MAC != existing.MAC {
+	if hasProvidedDiff(candidate.MAC, existing.MAC) {
 		return true
 	}
-	if candidate.VLAN != existing.VLAN {
+	if hasProvidedDiff(candidate.CustomField1Value, existing.CustomField1Value) {
 		return true
 	}
-	if candidate.SwitchName != existing.SwitchName {
+	if hasProvidedDiff(candidate.CustomField2Value, existing.CustomField2Value) {
 		return true
 	}
-	if candidate.Port != existing.Port {
+	if hasProvidedDiff(candidate.CustomField3Value, existing.CustomField3Value) {
 		return true
 	}
-	if candidate.Description != existing.Description {
+	if hasProvidedDiff(candidate.VLAN, existing.VLAN) {
 		return true
 	}
-	if candidate.PortType != existing.PortType {
+	if hasProvidedDiff(candidate.SwitchName, existing.SwitchName) {
 		return true
 	}
-	if candidate.Hostname != existing.Hostname {
+	if hasProvidedDiff(candidate.Port, existing.Port) {
+		return true
+	}
+	if hasProvidedDiff(candidate.Description, existing.Description) {
+		return true
+	}
+	if hasProvidedDiff(candidate.PortType, existing.PortType) {
+		return true
+	}
+	if hasProvidedDiff(candidate.Hostname, existing.Hostname) {
 		return true
 	}
 	return false
+}
+
+func hasProvidedDiff(candidateValue string, existingValue string) bool {
+	value := strings.TrimSpace(candidateValue)
+	return value != "" && value != existingValue
 }

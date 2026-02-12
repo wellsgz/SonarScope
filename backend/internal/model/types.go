@@ -12,16 +12,19 @@ const (
 )
 
 type InventoryEndpoint struct {
-	ID          int64     `json:"id"`
-	IP          string    `json:"ip"`
-	MAC         string    `json:"mac"`
-	VLAN        string    `json:"vlan"`
-	SwitchName  string    `json:"switch"`
-	Port        string    `json:"port"`
-	PortType    string    `json:"port_type"`
-	Description string    `json:"description"`
-	Hostname    string    `json:"hostname"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID                int64     `json:"id"`
+	IP                string    `json:"ip"`
+	MAC               string    `json:"mac"`
+	CustomField1Value string    `json:"custom_field_1_value"`
+	CustomField2Value string    `json:"custom_field_2_value"`
+	CustomField3Value string    `json:"custom_field_3_value"`
+	VLAN              string    `json:"vlan"`
+	SwitchName        string    `json:"switch"`
+	Port              string    `json:"port"`
+	PortType          string    `json:"port_type"`
+	Description       string    `json:"description"`
+	Hostname          string    `json:"hostname"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type EndpointStats struct {
@@ -174,20 +177,23 @@ type PingResult struct {
 }
 
 type ImportCandidate struct {
-	RowID       string               `json:"row_id"`
-	SourceRow   int                  `json:"source_row"`
-	IP          string               `json:"ip"`
-	MAC         string               `json:"mac"`
-	VLAN        string               `json:"vlan"`
-	SwitchName  string               `json:"switch"`
-	Port        string               `json:"port"`
-	PortType    string               `json:"port_type"`
-	Description string               `json:"description"`
-	Sorting     string               `json:"sorting"`
-	Hostname    string               `json:"hostname"`
-	Message     string               `json:"message"`
-	Action      ImportClassification `json:"action"`
-	ExistingID  *int64               `json:"existing_id,omitempty"`
+	RowID             string               `json:"row_id"`
+	SourceRow         int                  `json:"source_row"`
+	IP                string               `json:"ip"`
+	MAC               string               `json:"mac"`
+	CustomField1Value string               `json:"custom_field_1_value"`
+	CustomField2Value string               `json:"custom_field_2_value"`
+	CustomField3Value string               `json:"custom_field_3_value"`
+	VLAN              string               `json:"vlan"`
+	SwitchName        string               `json:"switch"`
+	Port              string               `json:"port"`
+	PortType          string               `json:"port_type"`
+	Description       string               `json:"description"`
+	Sorting           string               `json:"sorting"`
+	Hostname          string               `json:"hostname"`
+	Message           string               `json:"message"`
+	Action            ImportClassification `json:"action"`
+	ExistingID        *int64               `json:"existing_id,omitempty"`
 }
 
 type ImportPreview struct {

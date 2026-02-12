@@ -46,6 +46,36 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+func TestClassifyIPOnlyAsUnchanged(t *testing.T) {
+	now := time.Now()
+	existing := map[string]model.InventoryEndpoint{
+		"10.0.0.1": {
+			ID:          10,
+			IP:          "10.0.0.1",
+			MAC:         "AA:BB:CC:DD:EE:FF",
+			VLAN:        "100",
+			SwitchName:  "sw1",
+			Port:        "1/1",
+			PortType:    "access",
+			Description: "db",
+			Hostname:    "db1",
+			UpdatedAt:   now,
+		},
+	}
+
+	input := []model.ImportCandidate{
+		{RowID: "row-2", IP: "10.0.0.1", Action: model.ImportAdd},
+	}
+
+	out := Classify(input, existing)
+	if len(out) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(out))
+	}
+	if out[0].Action != model.ImportUnchanged {
+		t.Fatalf("expected unchanged for ip-only existing row, got %s", out[0].Action)
+	}
+}
+
 func TestParseRowsMissingIP(t *testing.T) {
 	rows := [][]string{
 		{"Switch", "Port", "Sorting", "Description", "VLAN", "MAC", "Port-Type", "IP"},
@@ -61,5 +91,47 @@ func TestParseRowsMissingIP(t *testing.T) {
 	}
 	if candidates[0].Action != model.ImportInvalid {
 		t.Fatalf("expected invalid action, got %s", candidates[0].Action)
+	}
+}
+
+func TestParseRowsIPOnlyHeader(t *testing.T) {
+	rows := [][]string{
+		{"ip_address"},
+		{"10.0.0.2"},
+	}
+
+	candidates, err := parseRows(rows)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	if candidates[0].Action != model.ImportAdd {
+		t.Fatalf("expected add action, got %s", candidates[0].Action)
+	}
+	if candidates[0].IP != "10.0.0.2" {
+		t.Fatalf("unexpected IP parsed: %s", candidates[0].IP)
+	}
+}
+
+func TestParseRowsSkipsCommentAndBlankRows(t *testing.T) {
+	rows := [][]string{
+		{"# Required: ip_address"},
+		{"ip_address", "hostname"},
+		{""},
+		{"# comment row"},
+		{"10.0.0.3", "edge-1"},
+	}
+
+	candidates, err := parseRows(rows)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	if candidates[0].IP != "10.0.0.3" || candidates[0].Hostname != "edge-1" {
+		t.Fatalf("unexpected parsed row: %#v", candidates[0])
 	}
 }

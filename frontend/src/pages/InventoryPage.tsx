@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
   createInventoryEndpoint,
+  downloadInventoryImportTemplateCSV,
   deleteInventoryEndpoint,
   exportInventoryEndpointsCSV,
   getProbeStatus,
@@ -341,6 +342,19 @@ export function InventoryPage() {
         custom2: customSearch.custom2,
         custom3: customSearch.custom3
       }),
+    onSuccess: ({ blob, filename }) => {
+      const downloadURL = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = downloadURL;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadURL), 0);
+    }
+  });
+  const downloadImportTemplateMutation = useMutation({
+    mutationFn: () => downloadInventoryImportTemplateCSV(),
     onSuccess: ({ blob, filename }) => {
       const downloadURL = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -697,6 +711,14 @@ export function InventoryPage() {
               accept=".csv,.xlsx,.xls,.xlsm"
               onChange={(event) => setFile(event.target.files?.[0] || null)}
             />
+            <button
+              className="btn"
+              type="button"
+              onClick={() => downloadImportTemplateMutation.mutate()}
+              disabled={downloadImportTemplateMutation.isPending}
+            >
+              {downloadImportTemplateMutation.isPending ? "Downloading..." : "Download Template"}
+            </button>
             <button className="btn btn-primary" type="button" onClick={() => file && previewMutation.mutate(file)} disabled={!file}>
               Preview
             </button>
@@ -808,6 +830,11 @@ export function InventoryPage() {
               {(previewMutation.error as Error).message}
             </div>
           )}
+          {downloadImportTemplateMutation.error && (
+            <div className="error-banner" role="alert" aria-live="assertive">
+              {(downloadImportTemplateMutation.error as Error).message}
+            </div>
+          )}
           {applyMutation.error && (
             <div className="error-banner" role="alert" aria-live="assertive">
               {(applyMutation.error as Error).message}
@@ -860,11 +887,17 @@ export function InventoryPage() {
                     <th>Action</th>
                     <th>Row</th>
                     <th>IP</th>
+                    <th>Hostname</th>
                     <th>MAC</th>
+                    <th>Custom Field 1</th>
+                    <th>Custom Field 2</th>
+                    <th>Custom Field 3</th>
                     <th>VLAN</th>
                     <th>Switch</th>
                     <th>Port</th>
                     <th>Port Type</th>
+                    <th>Description</th>
+                    <th>Sorting</th>
                     <th>Message</th>
                   </tr>
                 </thead>
@@ -912,11 +945,17 @@ export function InventoryPage() {
                         </td>
                         <td>{candidate.source_row}</td>
                         <td>{candidate.ip}</td>
+                        <td>{candidate.hostname || "-"}</td>
                         <td>{candidate.mac}</td>
+                        <td>{candidate.custom_field_1_value || "-"}</td>
+                        <td>{candidate.custom_field_2_value || "-"}</td>
+                        <td>{candidate.custom_field_3_value || "-"}</td>
                         <td>{candidate.vlan}</td>
                         <td>{candidate.switch}</td>
                         <td>{candidate.port}</td>
                         <td>{candidate.port_type || "-"}</td>
+                        <td>{candidate.description || "-"}</td>
+                        <td>{candidate.sorting || "-"}</td>
                         <td>{candidate.message}</td>
                       </tr>
                     );
