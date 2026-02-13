@@ -899,10 +899,7 @@ func (s *Store) listMonitorEndpointsPageLive(ctx context.Context, query MonitorP
 		return nil, err
 	}
 
-	orderClause := "ie.ip ASC"
-	if sortExpression != "" {
-		orderClause = fmt.Sprintf("%s %s NULLS LAST, ie.ip ASC", sortExpression, strings.ToUpper(query.SortDir))
-	}
+	orderClause := buildMonitorOrderClause(query.SortBy, query.SortDir, sortExpression)
 
 	itemsSQL := `
 		SELECT
@@ -1001,10 +998,7 @@ func (s *Store) listMonitorEndpointsPageRange(ctx context.Context, query Monitor
 		return nil, err
 	}
 
-	orderClause := "ie.ip ASC"
-	if sortExpression != "" {
-		orderClause = fmt.Sprintf("%s %s NULLS LAST, ie.ip ASC", sortExpression, strings.ToUpper(query.SortDir))
-	}
+	orderClause := buildMonitorOrderClause(query.SortBy, query.SortDir, sortExpression)
 
 	viewName := "ping_1m"
 	if query.End.Sub(query.Start) > 48*time.Hour {
@@ -2146,6 +2140,19 @@ func monitorRangeSortExpression(sortBy string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid sort_by")
 	}
+}
+
+func buildMonitorOrderClause(sortBy string, sortDir string, sortExpression string) string {
+	if sortExpression == "" {
+		return "ie.ip ASC"
+	}
+
+	nullsOrder := "NULLS LAST"
+	if sortBy == "last_success_on" && strings.EqualFold(sortDir, "asc") {
+		nullsOrder = "NULLS FIRST"
+	}
+
+	return fmt.Sprintf("%s %s %s, ie.ip ASC", sortExpression, strings.ToUpper(sortDir), nullsOrder)
 }
 
 func normalizeMACSearchTerm(value string) string {
