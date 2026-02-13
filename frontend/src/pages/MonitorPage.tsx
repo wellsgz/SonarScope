@@ -477,6 +477,13 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
             <div className="monitor-dashboard-header-copy">
               <h2 className="panel-title">Monitor Dashboard</h2>
             </div>
+          </div>
+          <div className="monitor-dashboard-header-summary">
+            <div className="monitor-dashboard-meta">
+              <span className="status-chip">{controlsSummaryScope}</span>
+              <span className="status-chip">{controlsSummaryFilters}</span>
+              <span className="status-chip">{dashboardRowSummary}</span>
+            </div>
             <div className="monitor-dashboard-header-actions">
               <label className="monitor-dashboard-refresh-field">
                 <span className="monitor-dashboard-refresh-label">Auto Refresh (s)</span>
@@ -494,11 +501,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
                 Exit Dashboard
               </button>
             </div>
-          </div>
-          <div className="monitor-dashboard-meta">
-            <span className="status-chip">{controlsSummaryScope}</span>
-            <span className="status-chip">{controlsSummaryFilters}</span>
-            <span className="status-chip">{dashboardRowSummary}</span>
           </div>
         </div>
 

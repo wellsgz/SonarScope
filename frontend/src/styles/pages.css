@@ -116,12 +116,19 @@
 .monitor-dashboard-header-main {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: var(--space-3);
 }
 
 .monitor-dashboard-header-copy {
   min-width: 0;
+}
+
+.monitor-dashboard-header-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .monitor-dashboard-header-actions {
@@ -158,6 +165,8 @@
 }
 
 .monitor-dashboard-meta {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -1154,7 +1163,7 @@
     grid-template-rows: minmax(320px, 1fr) minmax(260px, 0.8fr);
   }
 
-  .monitor-dashboard-header-main {
+  .monitor-dashboard-header-summary {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--space-2);
