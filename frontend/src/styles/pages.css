@@ -97,7 +97,8 @@
 }
 
 .monitor-dashboard-view {
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   width: 100%;
   min-width: 0;
   display: grid;
@@ -174,6 +175,7 @@
 }
 
 .monitor-dashboard-table {
+  height: 100%;
   min-height: 0;
   min-width: 0;
   display: flex;
@@ -182,6 +184,8 @@
 }
 
 .monitor-dashboard-table .table-panel {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   width: 100%;
@@ -193,8 +197,9 @@
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  overflow-x: scroll;
+  overflow-x: auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
   padding-inline-end: var(--space-2);
   padding-block-end: var(--space-1);
