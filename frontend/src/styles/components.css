@@ -332,6 +332,7 @@ label {
 }
 
 .table-scroll {
+  position: relative;
   overflow-x: auto;
   overflow-y: auto;
   max-height: 100%;
@@ -342,15 +343,19 @@ label {
 .monitor-table {
   width: max-content;
   min-width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: var(--table-font-size);
 }
 
 .monitor-table thead th {
   position: sticky;
   top: 0;
-  z-index: 2;
-  background: color-mix(in srgb, var(--color-surface) 96%, var(--color-bg) 4%);
+  z-index: 6;
+  background: var(--color-surface);
+  box-shadow:
+    inset 0 -1px 0 var(--color-border),
+    0 6px 10px -10px color-mix(in srgb, var(--color-bg-strong) 74%, transparent);
   color: var(--color-text-muted);
   letter-spacing: 0.02em;
   font-size: var(--text-xs);
@@ -391,35 +396,59 @@ label {
   color: var(--color-text-subtle);
 }
 
-.monitor-table tbody tr {
-  transition: background-color var(--motion-fast) ease;
+.monitor-table tbody tr td {
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
 }
 
-.monitor-table tbody tr:hover {
+.monitor-table tbody tr.monitor-row-health-no-data:hover td {
   background: color-mix(in srgb, var(--color-accent-soft) 80%, transparent);
 }
 
-.monitor-table tbody tr.row-selected {
-  background: color-mix(in srgb, var(--color-accent-soft) 96%, transparent);
+.monitor-table tbody tr.monitor-row-health-unhealthy td {
+  color: color-mix(in srgb, var(--color-danger) 88%, var(--color-text));
+  background: color-mix(in srgb, var(--color-danger) 9%, transparent);
+  font-weight: 600;
+}
+
+.monitor-table tbody tr.monitor-row-health-unhealthy:hover td {
+  background: color-mix(in srgb, var(--color-danger) 13%, transparent);
+}
+
+.monitor-table tbody tr.monitor-row-health-healthy td {
+  color: color-mix(in srgb, var(--color-success) 84%, var(--color-text));
+  background: color-mix(in srgb, var(--color-success) 9%, transparent);
+  font-weight: 600;
+}
+
+.monitor-table tbody tr.monitor-row-health-healthy:hover td {
+  background: color-mix(in srgb, var(--color-success) 13%, transparent);
+}
+
+.monitor-table tbody tr.row-selected td {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-accent) 58%, var(--color-border-strong)),
+    inset 0 -1px 0 color-mix(in srgb, var(--color-accent) 58%, var(--color-border-strong));
+}
+
+.monitor-table tbody tr.row-selected td:first-child {
+  box-shadow:
+    inset 1px 0 0 color-mix(in srgb, var(--color-accent) 58%, var(--color-border-strong)),
+    inset 0 1px 0 color-mix(in srgb, var(--color-accent) 58%, var(--color-border-strong)),
+    inset 0 -1px 0 color-mix(in srgb, var(--color-accent) 58%, var(--color-border-strong));
+}
+
+.monitor-table tbody tr.row-selected td:last-child {
+  box-shadow:
+    inset -1px 0 0 color-mix(in srgb, var(--color-accent) 58%, var(--color-border-strong)),
+    inset 0 1px 0 color-mix(in srgb, var(--color-accent) 58%, var(--color-border-strong)),
+    inset 0 -1px 0 color-mix(in srgb, var(--color-accent) 58%, var(--color-border-strong));
 }
 
 .monitor-pane-middle .monitor-table tbody tr {
   cursor: pointer;
-}
-
-.metric-failure-danger {
-  color: var(--color-danger);
-  font-weight: 600;
-}
-
-.monitor-identity-ok {
-  color: var(--color-success);
-  font-weight: 600;
-}
-
-.monitor-identity-danger {
-  color: var(--color-danger);
-  font-weight: 600;
 }
 
 .table-footer {

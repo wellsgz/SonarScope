@@ -27,7 +27,6 @@ type MonitorColumn = {
   header: string;
   sortable?: MonitorSortField;
   render: (row: MonitorEndpoint) => string;
-  cellClassName?: (row: MonitorEndpoint) => string | undefined;
 };
 
 type EndpointHealth = "healthy" | "unhealthy" | "no_data";
@@ -96,22 +95,14 @@ function endpointHealth(
   return liveFailure ? "unhealthy" : "healthy";
 }
 
-function failureClassName(row: MonitorEndpoint, dataScope: MonitorDataScope, liveProbeContext: LiveProbeContext): string | undefined {
-  if (endpointHealth(row, dataScope, liveProbeContext) === "unhealthy") {
-    return "metric-failure-danger";
-  }
-  return undefined;
-}
-
-function identityClassName(row: MonitorEndpoint, dataScope: MonitorDataScope, liveProbeContext: LiveProbeContext): string | undefined {
-  const health = endpointHealth(row, dataScope, liveProbeContext);
+function rowHealthClassName(health: EndpointHealth): string {
   if (health === "healthy") {
-    return "monitor-identity-ok";
+    return "monitor-row-health-healthy";
   }
   if (health === "unhealthy") {
-    return "monitor-identity-danger";
+    return "monitor-row-health-unhealthy";
   }
-  return undefined;
+  return "monitor-row-health-no-data";
 }
 
 const baseColumns: MonitorColumn[] = [
@@ -212,18 +203,6 @@ export function MonitorTable({
     }),
     [probeRunning, probeScope, activeProbeGroupNames]
   );
-  const failureHighlightColumns = useMemo(
-    () =>
-      new Set([
-        "last_failed_on",
-        "failed_count",
-        "consecutive_failed_count",
-        "max_consecutive_failed_count",
-        "max_consecutive_failed_count_time",
-        "failed_pct"
-      ]),
-    []
-  );
   const columns = useMemo(() => {
     const dynamicCustomColumns: MonitorColumn[] = customFields.map((field) => ({
       key: `custom_field_${field.slot}_value`,
@@ -231,23 +210,8 @@ export function MonitorTable({
       render: (row) => customFieldValueBySlot(row, field.slot)
     }));
 
-    const columnsWithCustom = [...baseColumns, ...dynamicCustomColumns];
-    return columnsWithCustom.map((column) => {
-      if (column.key === "hostname" || column.key === "ip_address") {
-        return {
-          ...column,
-          cellClassName: (row: MonitorEndpoint) => identityClassName(row, dataScope, liveProbeContext)
-        };
-      }
-      if (failureHighlightColumns.has(column.key)) {
-        return {
-          ...column,
-          cellClassName: (row: MonitorEndpoint) => failureClassName(row, dataScope, liveProbeContext)
-        };
-      }
-      return column;
-    });
-  }, [customFields, dataScope, failureHighlightColumns, liveProbeContext]);
+    return [...baseColumns, ...dynamicCustomColumns];
+  }, [customFields]);
 
   const pageOptions = useMemo(() => {
     if (totalPages < 1) {
@@ -309,10 +273,12 @@ export function MonitorTable({
             {rows.map((row) => {
               const endpointID = row.endpoint_id;
               const selected = selectedEndpointID === endpointID;
+              const health = endpointHealth(row, dataScope, liveProbeContext);
+              const rowClassName = `${rowHealthClassName(health)}${selected ? " row-selected" : ""}`;
               return (
                 <tr
                   key={endpointID}
-                  className={selected ? "row-selected" : ""}
+                  className={rowClassName}
                   onClick={() => onSelectionChange(selected ? null : endpointID)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -324,9 +290,8 @@ export function MonitorTable({
                   aria-selected={selected}
                 >
                   {columns.map((column) => {
-                    const cellClassName = column.cellClassName?.(row);
                     return (
-                      <td key={`${endpointID}-${column.key}`} className={cellClassName}>
+                      <td key={`${endpointID}-${column.key}`}>
                         {column.render(row)}
                       </td>
                     );
