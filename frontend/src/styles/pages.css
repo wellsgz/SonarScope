@@ -103,19 +103,19 @@
   min-width: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: var(--space-3);
+  gap: var(--space-2);
   overflow: hidden;
 }
 
 .monitor-dashboard-header {
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .monitor-dashboard-header-main {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
@@ -126,55 +126,35 @@
 
 .monitor-dashboard-header-actions {
   flex: 0 0 auto;
-  display: grid;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
-  justify-items: end;
-  align-content: start;
+  justify-content: flex-end;
 }
 
 .monitor-dashboard-exit-btn {
   white-space: nowrap;
 }
 
-.monitor-dashboard-refresh-controls {
-  display: grid;
-  gap: var(--space-1);
-  justify-items: end;
-}
-
 .monitor-dashboard-refresh-field {
-  display: grid;
-  gap: var(--space-1);
-  justify-items: end;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--color-text-muted);
 }
 
 .monitor-dashboard-refresh-field input {
   width: 4.4rem;
   text-align: right;
+  min-height: 2.14rem;
+  padding-block: 0.3rem;
 }
 
 .monitor-dashboard-refresh-label {
-  font-size: var(--text-xs);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--color-text-subtle);
-  text-transform: uppercase;
-}
-
-.monitor-dashboard-refresh-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.monitor-dashboard-refresh-btn {
-  min-width: 3.2rem;
-}
-
-.monitor-dashboard-refresh-btn.is-active {
-  border-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent-soft) 88%, transparent);
-  color: var(--color-text);
+  white-space: nowrap;
 }
 
 .monitor-dashboard-meta {
@@ -1174,26 +1154,19 @@
     grid-template-rows: minmax(320px, 1fr) minmax(260px, 0.8fr);
   }
 
-  .monitor-dashboard-header {
-    gap: var(--space-2);
-  }
-
   .monitor-dashboard-header-main {
     flex-direction: column;
     align-items: flex-start;
+    gap: var(--space-2);
   }
 
   .monitor-dashboard-header-actions {
     width: 100%;
-    justify-items: start;
-  }
-
-  .monitor-dashboard-refresh-controls {
-    justify-items: start;
+    justify-content: flex-start;
   }
 
   .monitor-dashboard-refresh-field {
-    justify-items: start;
+    justify-content: flex-start;
   }
 
   .monitor-dashboard-meta {
@@ -1233,8 +1206,8 @@
     flex-wrap: wrap;
   }
 
-  .monitor-dashboard-refresh-actions {
-    flex-wrap: wrap;
+  .monitor-dashboard-header-actions {
+    align-items: flex-start;
   }
 
   .toolbar-grid,

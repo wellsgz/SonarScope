@@ -69,7 +69,6 @@ const defaultCustomSearch: CustomSearchState = {
   custom2: "",
   custom3: ""
 };
-const dashboardRefreshPresets = [30, 60] as const;
 const liveSnapshotChartRange: QuickRange = "30m";
 
 function normalizeEnabledCustomFields(fields?: CustomFieldConfig[]): EnabledCustomField[] {
@@ -407,10 +406,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     });
   };
 
-  const handleDashboardRefreshPreset = (refreshSec: (typeof dashboardRefreshPresets)[number]) => {
-    applyAutoRefreshSetting(refreshSec);
-  };
-
   const handleDashboardRefreshInputChange = (value: string) => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) {
@@ -481,43 +476,23 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
           <div className="monitor-dashboard-header-main">
             <div className="monitor-dashboard-header-copy">
               <h2 className="panel-title">Monitor Dashboard</h2>
-              <p className="panel-subtitle">Fullscreen endpoint table view for wallboard monitoring.</p>
             </div>
             <div className="monitor-dashboard-header-actions">
+              <label className="monitor-dashboard-refresh-field">
+                <span className="monitor-dashboard-refresh-label">Auto Refresh (s)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={settingsQuery.data?.auto_refresh_sec ?? 30}
+                  disabled={settingsQuery.isLoading || settingsMutation.isPending}
+                  onChange={(event) => handleDashboardRefreshInputChange(event.target.value)}
+                  aria-label="Dashboard auto refresh interval in seconds"
+                />
+              </label>
               <button className="btn btn-primary monitor-dashboard-exit-btn" type="button" onClick={() => setTableDashboardMode(false)}>
                 Exit Dashboard
               </button>
-              <div className="monitor-dashboard-refresh-controls" aria-label="Dashboard auto refresh controls">
-                <label className="monitor-dashboard-refresh-field">
-                  <span className="monitor-dashboard-refresh-label">Auto Refresh (s)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={settingsQuery.data?.auto_refresh_sec ?? 30}
-                    disabled={settingsQuery.isLoading || settingsMutation.isPending}
-                    onChange={(event) => handleDashboardRefreshInputChange(event.target.value)}
-                    aria-label="Dashboard auto refresh interval in seconds"
-                  />
-                </label>
-                <div className="monitor-dashboard-refresh-actions">
-                  {dashboardRefreshPresets.map((refreshSec) => {
-                    const active = settingsQuery.data?.auto_refresh_sec === refreshSec;
-                    return (
-                      <button
-                        key={refreshSec}
-                        className={`btn btn-small monitor-dashboard-refresh-btn ${active ? "is-active" : ""}`}
-                        type="button"
-                        aria-pressed={active}
-                        disabled={settingsQuery.isLoading || settingsMutation.isPending}
-                        onClick={() => handleDashboardRefreshPreset(refreshSec)}
-                      >
-                        {refreshSec}s
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           </div>
           <div className="monitor-dashboard-meta">
