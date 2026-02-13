@@ -198,6 +198,8 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   }, [controlsCollapsed]);
 
   const tableDashboardMode = dashboardMode ?? internalDashboardMode;
+  const isNonDashboardCustomRange = !tableDashboardMode && dataScope === "range" && quickRange === "custom";
+  const allowRealtimeInvalidation = !tableDashboardMode && !isNonDashboardCustomRange;
   const setTableDashboardMode = (enabled: boolean) => {
     if (dashboardMode === undefined) {
       setInternalDashboardMode(enabled);
@@ -225,7 +227,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   }, [tableDashboardMode]);
 
   const socketConnected = useMonitorSocket((message) => {
-    if (tableDashboardMode) {
+    if (!allowRealtimeInvalidation) {
       return;
     }
     const event = message as { type?: string; endpoint_id?: number };
@@ -302,7 +304,13 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   const displayStartValue = quickRange === "custom" ? customStart : toDateTimeLocal(effectiveStart);
   const displayEndValue = quickRange === "custom" ? customEnd : toDateTimeLocal(effectiveEnd);
   const isDashboardIntervalMode = tableDashboardMode;
-  const queryRefetchInterval = isDashboardIntervalMode ? autoRefreshMs : socketConnected ? false : autoRefreshMs;
+  const queryRefetchInterval = isDashboardIntervalMode
+    ? autoRefreshMs
+    : isNonDashboardCustomRange
+      ? false
+      : socketConnected
+        ? false
+        : autoRefreshMs;
 
   const monitorQuery = useQuery({
     queryKey: [
@@ -420,8 +428,9 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     monitorQuery.data && monitorQuery.data.total_items > 0
       ? `Showing ${monitorQuery.data.total_items} endpoints`
       : "No endpoints in current scope";
+  const showTableLoading = monitorQuery.isLoading && !monitorQuery.data;
 
-  const tableContent = monitorQuery.isLoading ? (
+  const tableContent = showTableLoading ? (
     <div className="panel state-panel">
       <div>
         <span className="skeleton-bar" style={{ width: 240 }} />
