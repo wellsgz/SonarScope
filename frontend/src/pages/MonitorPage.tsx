@@ -485,8 +485,8 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
               <span className="status-chip">{dashboardRowSummary}</span>
             </div>
             <div className="monitor-dashboard-header-actions">
-              <label className="monitor-dashboard-refresh-field">
-                <span className="monitor-dashboard-refresh-label">Auto Refresh (s)</span>
+              <label className="monitor-dashboard-refresh-field topbar-control">
+                <span className="monitor-dashboard-refresh-label topbar-control-label">Auto Refresh (s)</span>
                 <input
                   type="number"
                   min={1}
