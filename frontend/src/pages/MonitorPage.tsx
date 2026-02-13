@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getSettings,
   listFilterOptions,
@@ -304,6 +304,13 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   const displayStartValue = quickRange === "custom" ? customStart : toDateTimeLocal(effectiveStart);
   const displayEndValue = quickRange === "custom" ? customEnd : toDateTimeLocal(effectiveEnd);
   const isDashboardIntervalMode = tableDashboardMode;
+  const fixedCustomRangeQueryOptions = isNonDashboardCustomRange
+    ? {
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+        refetchOnMount: false
+      }
+    : {};
   const queryRefetchInterval = isDashboardIntervalMode
     ? autoRefreshMs
     : isNonDashboardCustomRange
@@ -351,7 +358,9 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         sortBy: sortBy || undefined,
         sortDir: sortDir || undefined
       }),
-    refetchInterval: queryRefetchInterval
+    placeholderData: keepPreviousData,
+    refetchInterval: queryRefetchInterval,
+    ...fixedCustomRangeQueryOptions
   });
 
   const monitorRows = monitorQuery.data?.items || [];
@@ -393,7 +402,9 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         end: toApiTime(effectiveEnd)
       }),
     enabled: selectedEndpointID !== null,
-    refetchInterval: queryRefetchInterval
+    placeholderData: keepPreviousData,
+    refetchInterval: queryRefetchInterval,
+    ...fixedCustomRangeQueryOptions
   });
 
   const settingsMutation = useMutation({
@@ -428,7 +439,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     monitorQuery.data && monitorQuery.data.total_items > 0
       ? `Showing ${monitorQuery.data.total_items} endpoints`
       : "No endpoints in current scope";
-  const showTableLoading = monitorQuery.isLoading && !monitorQuery.data;
+  const showTableLoading = monitorQuery.isPending && !monitorQuery.data;
 
   const tableContent = showTableLoading ? (
     <div className="panel state-panel">
