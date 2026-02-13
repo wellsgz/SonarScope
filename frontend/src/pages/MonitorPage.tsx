@@ -226,6 +226,9 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   }, [tableDashboardMode]);
 
   const socketConnected = useMonitorSocket((message) => {
+    if (tableDashboardMode) {
+      return;
+    }
     const event = message as { type?: string; endpoint_id?: number };
     if (event.type !== "probe_update") {
       return;
@@ -299,6 +302,8 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
 
   const displayStartValue = quickRange === "custom" ? customStart : toDateTimeLocal(effectiveStart);
   const displayEndValue = quickRange === "custom" ? customEnd : toDateTimeLocal(effectiveEnd);
+  const isDashboardIntervalMode = tableDashboardMode;
+  const queryRefetchInterval = isDashboardIntervalMode ? autoRefreshMs : socketConnected ? false : autoRefreshMs;
 
   const monitorQuery = useQuery({
     queryKey: [
@@ -339,7 +344,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         sortBy: sortBy || undefined,
         sortDir: sortDir || undefined
       }),
-    refetchInterval: socketConnected ? false : autoRefreshMs
+    refetchInterval: queryRefetchInterval
   });
 
   const monitorRows = monitorQuery.data?.items || [];
@@ -381,7 +386,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         end: toApiTime(effectiveEnd)
       }),
     enabled: selectedEndpointID !== null,
-    refetchInterval: socketConnected ? false : autoRefreshMs
+    refetchInterval: queryRefetchInterval
   });
 
   const settingsMutation = useMutation({
@@ -391,7 +396,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     }
   });
 
-  const handleDashboardRefreshPreset = (refreshSec: (typeof dashboardRefreshPresets)[number]) => {
+  const applyAutoRefreshSetting = (refreshSec: number) => {
     const current = settingsQuery.data;
     if (!current || current.auto_refresh_sec === refreshSec || settingsMutation.isPending) {
       return;
@@ -400,6 +405,19 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       ...current,
       auto_refresh_sec: refreshSec
     });
+  };
+
+  const handleDashboardRefreshPreset = (refreshSec: (typeof dashboardRefreshPresets)[number]) => {
+    applyAutoRefreshSetting(refreshSec);
+  };
+
+  const handleDashboardRefreshInputChange = (value: string) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+    const bounded = Math.max(1, Math.min(60, Math.round(parsed)));
+    applyAutoRefreshSetting(bounded);
   };
   const controlsSummaryScope = dataScope === "live" ? "Live Snapshot" : "Selected Range";
   const controlsSummaryFilters = activeFilterCount === 0 ? "Filters: All" : `Filters: ${activeFilterCount}`;
@@ -444,6 +462,8 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         setSortDir(nextSortDir);
         setPage(1);
       }}
+      preserveRelativeScroll={tableDashboardMode}
+      refreshSignal={monitorQuery.dataUpdatedAt}
     />
   );
 
@@ -467,8 +487,19 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
               <button className="btn btn-primary monitor-dashboard-exit-btn" type="button" onClick={() => setTableDashboardMode(false)}>
                 Exit Dashboard
               </button>
-              <div className="monitor-dashboard-refresh-controls" aria-label="Dashboard refresh interval presets">
-                <span className="monitor-dashboard-refresh-label">Refresh Interval</span>
+              <div className="monitor-dashboard-refresh-controls" aria-label="Dashboard auto refresh controls">
+                <label className="monitor-dashboard-refresh-field">
+                  <span className="monitor-dashboard-refresh-label">Auto Refresh (s)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={settingsQuery.data?.auto_refresh_sec ?? 30}
+                    disabled={settingsQuery.isLoading || settingsMutation.isPending}
+                    onChange={(event) => handleDashboardRefreshInputChange(event.target.value)}
+                    aria-label="Dashboard auto refresh interval in seconds"
+                  />
+                </label>
                 <div className="monitor-dashboard-refresh-actions">
                   {dashboardRefreshPresets.map((refreshSec) => {
                     const active = settingsQuery.data?.auto_refresh_sec === refreshSec;

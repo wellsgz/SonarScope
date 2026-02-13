@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import type { MonitorDataScope, MonitorEndpoint, MonitorSortField } from "../types/api";
 
 type Props = {
@@ -20,6 +20,8 @@ type Props = {
   probeScope: "all" | "groups" | "";
   activeProbeGroupNames: Set<string>;
   onSortChange: (sortBy: MonitorSortField | null, sortDir: "asc" | "desc" | null) => void;
+  preserveRelativeScroll?: boolean;
+  refreshSignal?: number;
 };
 
 type MonitorColumn = {
@@ -192,9 +194,13 @@ export function MonitorTable({
   probeRunning,
   probeScope,
   activeProbeGroupNames,
-  onSortChange
+  onSortChange,
+  preserveRelativeScroll = false,
+  refreshSignal
 }: Props) {
   const sortableSet = useMemo(() => new Set<MonitorSortField>(sortableFields), [sortableFields]);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const relativeScrollRef = useRef(0);
   const liveProbeContext = useMemo(
     () => ({
       probeRunning,
@@ -235,9 +241,44 @@ export function MonitorTable({
     onSortChange(null, null);
   };
 
+  const captureRelativeScroll = () => {
+    if (!preserveRelativeScroll) {
+      return;
+    }
+    const tableScroll = tableScrollRef.current;
+    if (!tableScroll) {
+      return;
+    }
+    const maxScrollTop = tableScroll.scrollHeight - tableScroll.clientHeight;
+    if (maxScrollTop <= 0) {
+      relativeScrollRef.current = 0;
+      return;
+    }
+    const ratio = tableScroll.scrollTop / maxScrollTop;
+    relativeScrollRef.current = Math.max(0, Math.min(1, ratio));
+  };
+
+  useLayoutEffect(() => {
+    if (!preserveRelativeScroll) {
+      return;
+    }
+    const tableScroll = tableScrollRef.current;
+    if (!tableScroll) {
+      return;
+    }
+    const maxScrollTop = tableScroll.scrollHeight - tableScroll.clientHeight;
+    if (maxScrollTop <= 0) {
+      tableScroll.scrollTop = 0;
+      relativeScrollRef.current = 0;
+      return;
+    }
+    const nextScrollTop = relativeScrollRef.current * maxScrollTop;
+    tableScroll.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
+  }, [preserveRelativeScroll, refreshSignal]);
+
   return (
     <div className="panel table-panel">
-      <div className="table-scroll">
+      <div className="table-scroll" ref={tableScrollRef} onScroll={captureRelativeScroll}>
         <table className="monitor-table">
           <thead>
             <tr>
