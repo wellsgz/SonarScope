@@ -1,5 +1,5 @@
 import ReactECharts from "echarts-for-react";
-import { useEffect, useMemo, useRef } from "react";
+import { Component, useEffect, useMemo, useRef, type ReactNode } from "react";
 import type { TimeSeriesPoint, TimeSeriesResponse } from "../types/api";
 
 type Props = {
@@ -23,6 +23,40 @@ type ChartPoint = {
 };
 
 const LATENCY_SERIES_COLOR = "#2563EB";
+
+type ChartErrorBoundaryProps = {
+  resetKey: string;
+  children: ReactNode;
+};
+
+type ChartErrorBoundaryState = {
+  hasError: boolean;
+};
+
+class ChartErrorBoundary extends Component<ChartErrorBoundaryProps, ChartErrorBoundaryState> {
+  state: ChartErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): ChartErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("monitor chart render failed", error);
+  }
+
+  componentDidUpdate(prevProps: ChartErrorBoundaryProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <div className="state-panel chart-empty-series-panel">The chart failed to render. Select the endpoint again to retry.</div>;
+    }
+    return this.props.children;
+  }
+}
 
 function formatPercent(value: number): string {
   return `${value.toFixed(2)}%`;
@@ -337,10 +371,8 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
       points.some(
         (point) =>
           point.sent_count > 0 &&
-          (point.loss_rate !== null ||
-            point.loss_rate !== undefined ||
-            point.avg_latency_ms !== null ||
-            point.avg_latency_ms !== undefined)
+          ((typeof point.loss_rate === "number" && Number.isFinite(point.loss_rate)) ||
+            (typeof point.avg_latency_ms === "number" && Number.isFinite(point.avg_latency_ms)))
       ),
     [points]
   );
@@ -623,20 +655,22 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
         </div>
       ) : null}
       <div className="chart-body" ref={chartBodyRef}>
-        {!hasRenderableSeries ? (
-          <div className="state-panel chart-empty-series-panel">
-            No chart data is available for this endpoint in the selected period yet.
-          </div>
-        ) : (
-          <ReactECharts
-            key={chartKey}
-            ref={chartRef}
-            option={option}
-            notMerge
-            className="chart-canvas"
-            style={{ height: "100%", width: "100%" }}
-          />
-        )}
+        <ChartErrorBoundary resetKey={chartKey}>
+          {!hasRenderableSeries ? (
+            <div className="state-panel chart-empty-series-panel">
+              No chart data is available for this endpoint in the selected period yet.
+            </div>
+          ) : (
+            <ReactECharts
+              key={chartKey}
+              ref={chartRef}
+              option={option}
+              notMerge
+              className="chart-canvas"
+              style={{ height: "100%", width: "100%" }}
+            />
+          )}
+        </ChartErrorBoundary>
       </div>
     </div>
   );
