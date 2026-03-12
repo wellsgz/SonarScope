@@ -8,15 +8,19 @@ import (
 
 // Config holds runtime settings for the API and probe engine.
 type Config struct {
-	AppEnv           string
-	HTTPAddr         string
-	DatabaseURL      string
-	ProbeWorkers     int
-	DefaultInterval  int
-	DefaultPayload   int
-	DefaultTimeoutMs int
-	DefaultRefresh   int
-	AllowedOrigins   []string
+	AppEnv               string
+	HTTPAddr             string
+	DatabaseURL          string
+	ProbeWorkers         int
+	ProbeResultWorkers   int
+	ProbeResultQueueSize int
+	ProbeResultBatchSize int
+	ProbeResultFlushMs   int
+	DefaultInterval      int
+	DefaultPayload       int
+	DefaultTimeoutMs     int
+	DefaultRefresh       int
+	AllowedOrigins       []string
 }
 
 func Load() (Config, error) {
@@ -28,14 +32,18 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		AppEnv:           getEnv("APP_ENV", "development"),
-		HTTPAddr:         getEnv("HTTP_ADDR", ":8080"),
-		DatabaseURL:      getEnv("DATABASE_URL", "postgres://sonarscope:sonarscope@localhost:5432/sonarscope?sslmode=disable"),
-		ProbeWorkers:     getEnvInt("PROBE_WORKERS", 256),
-		DefaultInterval:  getEnvInt("DEFAULT_PING_INTERVAL_SEC", 1),
-		DefaultPayload:   getEnvInt("DEFAULT_ICMP_PAYLOAD_BYTES", 56),
-		DefaultTimeoutMs: clampInt(defaultTimeoutMs, 20, 1000),
-		DefaultRefresh:   getEnvInt("DEFAULT_AUTO_REFRESH_SEC", 30),
+		AppEnv:               getEnv("APP_ENV", "development"),
+		HTTPAddr:             getEnv("HTTP_ADDR", ":8080"),
+		DatabaseURL:          getEnv("DATABASE_URL", "postgres://sonarscope:sonarscope@localhost:5432/sonarscope?sslmode=disable"),
+		ProbeWorkers:         getEnvInt("PROBE_WORKERS", 384),
+		ProbeResultWorkers:   getEnvInt("PROBE_RESULT_WORKERS", 4),
+		ProbeResultQueueSize: clampInt(getEnvInt("PROBE_RESULT_QUEUE_SIZE", 4096), 1, 65536),
+		ProbeResultBatchSize: clampInt(getEnvInt("PROBE_RESULT_BATCH_SIZE", 64), 1, 1024),
+		ProbeResultFlushMs:   clampInt(getEnvInt("PROBE_RESULT_FLUSH_MS", 25), 1, 1000),
+		DefaultInterval:      getEnvInt("DEFAULT_PING_INTERVAL_SEC", 1),
+		DefaultPayload:       getEnvInt("DEFAULT_ICMP_PAYLOAD_BYTES", 56),
+		DefaultTimeoutMs:     clampInt(defaultTimeoutMs, 20, 1000),
+		DefaultRefresh:       getEnvInt("DEFAULT_AUTO_REFRESH_SEC", 30),
 	}
 
 	origins := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
@@ -47,6 +55,9 @@ func Load() (Config, error) {
 
 	if cfg.ProbeWorkers < 1 {
 		return Config{}, fmt.Errorf("PROBE_WORKERS must be >= 1")
+	}
+	if cfg.ProbeResultWorkers < 1 {
+		return Config{}, fmt.Errorf("PROBE_RESULT_WORKERS must be >= 1")
 	}
 	if err := ValidateSettings(cfg.DefaultInterval, cfg.DefaultPayload, cfg.DefaultRefresh, cfg.DefaultTimeoutMs); err != nil {
 		return Config{}, err

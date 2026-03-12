@@ -638,6 +638,105 @@ func (s *Store) ListProbeTargets(ctx context.Context, scope string, groupIDs []i
 	return targets, rows.Err()
 }
 
+const insertPingRawSQL = `
+	INSERT INTO ping_raw(ts, endpoint_id, success, latency_ms, reply_ip, ttl, error_code, payload_bytes)
+	VALUES ($1::timestamptz, $2::bigint, $3::boolean, $4::double precision, NULLIF($5, '')::inet, $6::int, $7::text, $8::int)
+	ON CONFLICT (ts, endpoint_id) DO NOTHING
+`
+
+const upsertEndpointStatsCurrentSQL = `
+	INSERT INTO endpoint_stats_current(
+		endpoint_id,
+		last_failed_on,
+		last_success_on,
+		success_count,
+		failed_count,
+		consecutive_failed_count,
+		max_consecutive_failed_count,
+		max_consecutive_failed_count_time,
+		failed_pct,
+		total_sent_ping,
+		last_ping_status,
+		last_ping_latency,
+		average_latency,
+		reply_ip_address,
+		updated_at
+	)
+	VALUES (
+		$1::bigint,
+		CASE WHEN $2::boolean = FALSE THEN $3::timestamptz ELSE NULL END,
+		CASE WHEN $2::boolean = TRUE THEN $3::timestamptz ELSE NULL END,
+		CASE WHEN $2::boolean = TRUE THEN 1 ELSE 0 END,
+		CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
+		CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
+		CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
+		CASE WHEN $2::boolean = FALSE THEN $3::timestamptz ELSE NULL END,
+		CASE WHEN $2::boolean = FALSE THEN 100 ELSE 0 END,
+		1,
+		$4::text,
+		$5::double precision,
+		$5::double precision,
+		NULLIF($6, '')::inet,
+		now()
+	)
+	ON CONFLICT (endpoint_id) DO UPDATE SET
+		last_failed_on = CASE WHEN $2::boolean = FALSE THEN $3::timestamptz ELSE endpoint_stats_current.last_failed_on END,
+		last_success_on = CASE WHEN $2::boolean = TRUE THEN $3::timestamptz ELSE endpoint_stats_current.last_success_on END,
+		success_count = endpoint_stats_current.success_count + CASE WHEN $2::boolean = TRUE THEN 1 ELSE 0 END,
+		failed_count = endpoint_stats_current.failed_count + CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
+		consecutive_failed_count = CASE WHEN $2::boolean = FALSE THEN endpoint_stats_current.consecutive_failed_count + 1 ELSE 0 END,
+		max_consecutive_failed_count = GREATEST(
+			endpoint_stats_current.max_consecutive_failed_count,
+			CASE WHEN $2::boolean = FALSE THEN endpoint_stats_current.consecutive_failed_count + 1 ELSE endpoint_stats_current.max_consecutive_failed_count END
+		),
+		max_consecutive_failed_count_time = CASE
+			WHEN $2::boolean = FALSE AND endpoint_stats_current.consecutive_failed_count + 1 > endpoint_stats_current.max_consecutive_failed_count THEN $3::timestamptz
+			ELSE endpoint_stats_current.max_consecutive_failed_count_time
+		END,
+		total_sent_ping = endpoint_stats_current.total_sent_ping + 1,
+		failed_pct = (
+			(endpoint_stats_current.failed_count + CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END)::DOUBLE PRECISION /
+			(endpoint_stats_current.total_sent_ping + 1)::DOUBLE PRECISION
+		) * 100,
+		last_ping_status = $4::text,
+		last_ping_latency = $5::double precision,
+		average_latency = CASE
+			WHEN $2::boolean = TRUE AND $5 IS NOT NULL THEN
+				(
+					(COALESCE(endpoint_stats_current.average_latency, 0) * endpoint_stats_current.success_count) + $5::double precision
+				) / (endpoint_stats_current.success_count + 1)
+			ELSE endpoint_stats_current.average_latency
+		END,
+		reply_ip_address = NULLIF($6, '')::inet,
+		updated_at = now()
+`
+
+type pingResultWriteValues struct {
+	status       string
+	latencyValue any
+	ttlValue     any
+	replyIP      string
+}
+
+func buildPingResultWriteValues(result model.PingResult) pingResultWriteValues {
+	values := pingResultWriteValues{
+		status:  "Request Timeout",
+		replyIP: derefString(result.ReplyIP),
+	}
+	if result.Success {
+		values.status = "Succeeded"
+	} else if result.ErrorCode != "" {
+		values.status = result.ErrorCode
+	}
+	if result.LatencyMs != nil {
+		values.latencyValue = *result.LatencyMs
+	}
+	if result.TTL != nil {
+		values.ttlValue = *result.TTL
+	}
+	return values
+}
+
 func (s *Store) RecordPingResult(ctx context.Context, result model.PingResult) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -645,99 +744,52 @@ func (s *Store) RecordPingResult(ctx context.Context, result model.PingResult) e
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	status := "Request Timeout"
-	if result.Success {
-		status = "Succeeded"
-	} else if result.ErrorCode != "" {
-		status = result.ErrorCode
-	}
+	values := buildPingResultWriteValues(result)
 
-	var latencyValue any
-	if result.LatencyMs != nil {
-		latencyValue = *result.LatencyMs
-	}
-
-	var ttlValue any
-	if result.TTL != nil {
-		ttlValue = *result.TTL
-	}
-
-	replyIP := derefString(result.ReplyIP)
-
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO ping_raw(ts, endpoint_id, success, latency_ms, reply_ip, ttl, error_code, payload_bytes)
-		VALUES ($1::timestamptz, $2::bigint, $3::boolean, $4::double precision, NULLIF($5, '')::inet, $6::int, $7::text, $8::int)
-		ON CONFLICT (ts, endpoint_id) DO NOTHING
-	`, result.Timestamp, result.EndpointID, result.Success, latencyValue, replyIP, ttlValue, result.ErrorCode, result.PayloadBytes); err != nil {
+	if _, err := tx.Exec(ctx, insertPingRawSQL, result.Timestamp, result.EndpointID, result.Success, values.latencyValue, values.replyIP, values.ttlValue, result.ErrorCode, result.PayloadBytes); err != nil {
 		return err
 	}
 
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO endpoint_stats_current(
-			endpoint_id,
-			last_failed_on,
-			last_success_on,
-			success_count,
-			failed_count,
-			consecutive_failed_count,
-			max_consecutive_failed_count,
-			max_consecutive_failed_count_time,
-			failed_pct,
-			total_sent_ping,
-			last_ping_status,
-			last_ping_latency,
-			average_latency,
-			reply_ip_address,
-			updated_at
-		)
-		VALUES (
-			$1::bigint,
-			CASE WHEN $2::boolean = FALSE THEN $3::timestamptz ELSE NULL END,
-			CASE WHEN $2::boolean = TRUE THEN $3::timestamptz ELSE NULL END,
-			CASE WHEN $2::boolean = TRUE THEN 1 ELSE 0 END,
-			CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
-			CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
-			CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
-			CASE WHEN $2::boolean = FALSE THEN $3::timestamptz ELSE NULL END,
-			CASE WHEN $2::boolean = FALSE THEN 100 ELSE 0 END,
-			1,
-			$4::text,
-			$5::double precision,
-			$5::double precision,
-			NULLIF($6, '')::inet,
-			now()
-		)
-		ON CONFLICT (endpoint_id) DO UPDATE SET
-			last_failed_on = CASE WHEN $2::boolean = FALSE THEN $3::timestamptz ELSE endpoint_stats_current.last_failed_on END,
-			last_success_on = CASE WHEN $2::boolean = TRUE THEN $3::timestamptz ELSE endpoint_stats_current.last_success_on END,
-			success_count = endpoint_stats_current.success_count + CASE WHEN $2::boolean = TRUE THEN 1 ELSE 0 END,
-			failed_count = endpoint_stats_current.failed_count + CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END,
-			consecutive_failed_count = CASE WHEN $2::boolean = FALSE THEN endpoint_stats_current.consecutive_failed_count + 1 ELSE 0 END,
-			max_consecutive_failed_count = GREATEST(
-				endpoint_stats_current.max_consecutive_failed_count,
-				CASE WHEN $2::boolean = FALSE THEN endpoint_stats_current.consecutive_failed_count + 1 ELSE endpoint_stats_current.max_consecutive_failed_count END
-			),
-			max_consecutive_failed_count_time = CASE
-				WHEN $2::boolean = FALSE AND endpoint_stats_current.consecutive_failed_count + 1 > endpoint_stats_current.max_consecutive_failed_count THEN $3::timestamptz
-				ELSE endpoint_stats_current.max_consecutive_failed_count_time
-			END,
-			total_sent_ping = endpoint_stats_current.total_sent_ping + 1,
-			failed_pct = (
-				(endpoint_stats_current.failed_count + CASE WHEN $2::boolean = FALSE THEN 1 ELSE 0 END)::DOUBLE PRECISION /
-				(endpoint_stats_current.total_sent_ping + 1)::DOUBLE PRECISION
-			) * 100,
-			last_ping_status = $4::text,
-			last_ping_latency = $5::double precision,
-			average_latency = CASE
-				WHEN $2::boolean = TRUE AND $5 IS NOT NULL THEN
-					(
-						(COALESCE(endpoint_stats_current.average_latency, 0) * endpoint_stats_current.success_count) + $5::double precision
-					) / (endpoint_stats_current.success_count + 1)
-				ELSE endpoint_stats_current.average_latency
-			END,
-			reply_ip_address = NULLIF($6, '')::inet,
-			updated_at = now()
-	`, result.EndpointID, result.Success, result.Timestamp, status, latencyValue, replyIP); err != nil {
+	if _, err := tx.Exec(ctx, upsertEndpointStatsCurrentSQL, result.EndpointID, result.Success, result.Timestamp, values.status, values.latencyValue, values.replyIP); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) RecordPingResultsBatch(ctx context.Context, results []model.PingResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var batch pgx.Batch
+	for _, result := range results {
+		values := buildPingResultWriteValues(result)
+		batch.Queue(insertPingRawSQL, result.Timestamp, result.EndpointID, result.Success, values.latencyValue, values.replyIP, values.ttlValue, result.ErrorCode, result.PayloadBytes)
+		batch.Queue(upsertEndpointStatsCurrentSQL, result.EndpointID, result.Success, result.Timestamp, values.status, values.latencyValue, values.replyIP)
+	}
+
+	br := tx.SendBatch(ctx, &batch)
+	for range results {
+		if _, err := br.Exec(); err != nil {
+			_ = br.Close()
+			return err
+		}
+		if _, err := br.Exec(); err != nil {
+			_ = br.Close()
+			return err
+		}
+	}
+	if err := br.Close(); err != nil {
 		return err
 	}
 

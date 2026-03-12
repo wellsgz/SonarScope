@@ -59,7 +59,13 @@ func main() {
 	}
 
 	hub := telemetry.NewHub()
-	probeEngine := probe.NewEngine(st, hub, cfg.ProbeWorkers, settings)
+	probeEngine := probe.NewEngine(st, hub, probe.Options{
+		ProbeWorkers:        cfg.ProbeWorkers,
+		ResultWorkers:       cfg.ProbeResultWorkers,
+		ResultQueueSize:     cfg.ProbeResultQueueSize,
+		ResultBatchSize:     cfg.ProbeResultBatchSize,
+		ResultFlushInterval: time.Duration(cfg.ProbeResultFlushMs) * time.Millisecond,
+	}, settings)
 	apiServer := api.NewServer(cfg, st, probeEngine, hub)
 
 	httpServer := &http.Server{

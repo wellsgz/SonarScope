@@ -19,8 +19,15 @@ import (
 type fakeProbeStore struct {
 	targets []store.ProbeTarget
 
-	mu      sync.Mutex
-	results []model.PingResult
+	mu               sync.Mutex
+	results          []model.PingResult
+	batchCalls       []int
+	batchStarted     chan struct{}
+	batchStartedOnce sync.Once
+	batchGate        chan struct{}
+	batchDelay       time.Duration
+	singleDelay      time.Duration
+	failBatchCount   int
 }
 
 func (s *fakeProbeStore) ListProbeTargets(ctx context.Context, scope string, groupIDs []int64) ([]store.ProbeTarget, error) {
@@ -30,18 +37,62 @@ func (s *fakeProbeStore) ListProbeTargets(ctx context.Context, scope string, gro
 }
 
 func (s *fakeProbeStore) RecordPingResult(ctx context.Context, result model.PingResult) error {
+	if s.singleDelay > 0 {
+		time.Sleep(s.singleDelay)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.results = append(s.results, result)
 	return nil
 }
 
+func (s *fakeProbeStore) RecordPingResultsBatch(ctx context.Context, results []model.PingResult) error {
+	s.batchStartedOnce.Do(func() {
+		if s.batchStarted != nil {
+			close(s.batchStarted)
+		}
+	})
+	if s.batchGate != nil {
+		<-s.batchGate
+	}
+	if s.batchDelay > 0 {
+		time.Sleep(s.batchDelay)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.batchCalls = append(s.batchCalls, len(results))
+	if s.failBatchCount > 0 {
+		s.failBatchCount--
+		return errors.New("batch failed")
+	}
+	s.results = append(s.results, results...)
+	return nil
+}
+
+func (s *fakeProbeStore) ResultCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.results)
+}
+
+func (s *fakeProbeStore) BatchCalls() []int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	calls := make([]int, len(s.batchCalls))
+	copy(calls, s.batchCalls)
+	return calls
+}
+
 type fakePacketConn struct {
-	mu      sync.Mutex
-	writes  [][]byte
-	readCh  chan fakeRead
-	closeCh chan struct{}
-	closed  bool
+	mu             sync.Mutex
+	writes         [][]byte
+	writeTimes     []time.Time
+	readCh         chan fakeRead
+	closeCh        chan struct{}
+	closed         bool
+	autoReply      bool
+	autoReplyDelay time.Duration
 }
 
 type fakeRead struct {
@@ -52,7 +103,7 @@ type fakeRead struct {
 
 func newFakePacketConn() *fakePacketConn {
 	return &fakePacketConn{
-		readCh:  make(chan fakeRead, 32),
+		readCh:  make(chan fakeRead, 64),
 		closeCh: make(chan struct{}),
 	}
 }
@@ -86,13 +137,32 @@ func (c *fakePacketConn) SetDeadline(t time.Time) error {
 
 func (c *fakePacketConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.closed {
+		c.mu.Unlock()
 		return 0, net.ErrClosed
 	}
 	wire := make([]byte, len(b))
 	copy(wire, b)
 	c.writes = append(c.writes, wire)
+	c.writeTimes = append(c.writeTimes, time.Now())
+	autoReply := c.autoReply
+	autoReplyDelay := c.autoReplyDelay
+	c.mu.Unlock()
+
+	if autoReply {
+		echo := parseEchoRequestWire(wire)
+		peerIP := ""
+		if ipAddr, ok := dst.(*net.IPAddr); ok && ipAddr.IP != nil {
+			peerIP = ipAddr.IP.String()
+		}
+		go func() {
+			if autoReplyDelay > 0 {
+				time.Sleep(autoReplyDelay)
+			}
+			_ = c.InjectEchoReply(echo.ID, echo.Seq, peerIP)
+		}()
+	}
+
 	return len(b), nil
 }
 
@@ -111,6 +181,14 @@ func (c *fakePacketConn) Writes() [][]byte {
 		copy(wire, item)
 		items[i] = wire
 	}
+	return items
+}
+
+func (c *fakePacketConn) WriteTimes() []time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	items := make([]time.Time, len(c.writeTimes))
+	copy(items, c.writeTimes)
 	return items
 }
 
@@ -135,14 +213,24 @@ func (c *fakePacketConn) InjectEchoReply(id, seq int, peerIP string) error {
 	return nil
 }
 
-func newTestEngine(st probeStore, workers int, settings model.Settings, conn *fakePacketConn) *Engine {
-	engine := newEngineWithDeps(st, telemetry.NewHub(), workers, settings, func() (packetConn, error) {
+func newTestEngine(st probeStore, options Options, settings model.Settings, conn *fakePacketConn) *Engine {
+	engine := newEngineWithDeps(st, telemetry.NewHub(), options, settings, func() (packetConn, error) {
 		return conn, nil
 	})
 	engine.mu.Lock()
 	engine.conn = conn
 	engine.mu.Unlock()
 	return engine
+}
+
+func defaultTestOptions() Options {
+	return Options{
+		ProbeWorkers:        4,
+		ResultWorkers:       1,
+		ResultQueueSize:     32,
+		ResultBatchSize:     8,
+		ResultFlushInterval: 25 * time.Millisecond,
+	}
 }
 
 func startReceiver(t *testing.T, engine *Engine, conn *fakePacketConn) (context.CancelFunc, chan struct{}) {
@@ -163,6 +251,42 @@ func stopReceiver(t *testing.T, cancel context.CancelFunc, conn *fakePacketConn,
 	case <-time.After(2 * time.Second):
 		t.Fatal("receiver did not stop")
 	}
+}
+
+func startResultPipeline(t *testing.T, engine *Engine) (chan resultEnvelope, func()) {
+	t.Helper()
+
+	resultCh := make(chan resultEnvelope, engine.resultQueueSize)
+	resultDone := make(chan struct{})
+	var once sync.Once
+	engine.mu.Lock()
+	engine.resultCh = resultCh
+	engine.resultDone = resultDone
+	engine.mu.Unlock()
+	go engine.runResultWorkers(resultCh, resultDone)
+
+	stop := func() {
+		once.Do(func() {
+			close(resultCh)
+			select {
+			case <-resultDone:
+			case <-time.After(2 * time.Second):
+				t.Fatal("result workers did not stop")
+			}
+			engine.mu.Lock()
+			if engine.resultCh == resultCh {
+				engine.resultCh = nil
+			}
+			if engine.resultDone == resultDone {
+				engine.resultDone = nil
+			}
+			engine.mu.Unlock()
+		})
+	}
+
+	t.Cleanup(stop)
+
+	return resultCh, stop
 }
 
 func waitForWriteCount(t *testing.T, conn *fakePacketConn, want int, timeout time.Duration) {
@@ -193,21 +317,24 @@ func waitForPendingCount(t *testing.T, engine *Engine, want int, timeout time.Du
 
 func parseEchoRequest(t *testing.T, wire []byte) *icmp.Echo {
 	t.Helper()
+	return parseEchoRequestWire(wire)
+}
 
+func parseEchoRequestWire(wire []byte) *icmp.Echo {
 	msg, err := icmp.ParseMessage(ipv4.ICMPTypeEcho.Protocol(), wire)
 	if err != nil {
-		t.Fatalf("parse echo request: %v", err)
+		panic(err)
 	}
 	echo, ok := msg.Body.(*icmp.Echo)
 	if !ok {
-		t.Fatalf("unexpected message body type %T", msg.Body)
+		panic("unexpected message body")
 	}
 	return echo
 }
 
 func TestMatchingReplyWakesOnlyRegisteredWaiter(t *testing.T) {
 	conn := newFakePacketConn()
-	engine := newTestEngine(&fakeProbeStore{}, 2, model.Settings{
+	engine := newTestEngine(&fakeProbeStore{}, defaultTestOptions(), model.Settings{
 		PingIntervalSec: 1,
 		ICMPPayloadSize: 56,
 		ICMPTimeoutMs:   500,
@@ -229,8 +356,7 @@ func TestMatchingReplyWakesOnlyRegisteredWaiter(t *testing.T) {
 		firstResult <- result{replyIP: derefString(replyIP), err: err}
 	}()
 	waitForWriteCount(t, conn, 1, time.Second)
-	firstWrite := conn.Writes()[0]
-	firstEcho := parseEchoRequest(t, firstWrite)
+	firstEcho := parseEchoRequest(t, conn.Writes()[0])
 
 	ctxSecond, cancelSecond := context.WithCancel(context.Background())
 	defer cancelSecond()
@@ -239,8 +365,7 @@ func TestMatchingReplyWakesOnlyRegisteredWaiter(t *testing.T) {
 		secondResult <- result{replyIP: derefString(replyIP), err: err}
 	}()
 	waitForWriteCount(t, conn, 2, time.Second)
-	secondWrite := conn.Writes()[1]
-	secondEcho := parseEchoRequest(t, secondWrite)
+	secondEcho := parseEchoRequest(t, conn.Writes()[1])
 
 	if firstEcho.Seq == secondEcho.Seq {
 		t.Fatal("expected unique sequence numbers")
@@ -281,7 +406,7 @@ func TestMatchingReplyWakesOnlyRegisteredWaiter(t *testing.T) {
 
 func TestForeignAndLateRepliesDoNotLeakPendingEntries(t *testing.T) {
 	conn := newFakePacketConn()
-	engine := newTestEngine(&fakeProbeStore{}, 1, model.Settings{
+	engine := newTestEngine(&fakeProbeStore{}, defaultTestOptions(), model.Settings{
 		PingIntervalSec: 1,
 		ICMPPayloadSize: 56,
 		ICMPTimeoutMs:   500,
@@ -337,6 +462,54 @@ func TestForeignAndLateRepliesDoNotLeakPendingEntries(t *testing.T) {
 	}
 }
 
+func TestRunRoundPacesDispatchAcrossSendWindow(t *testing.T) {
+	conn := newFakePacketConn()
+	conn.autoReply = true
+
+	store := &fakeProbeStore{
+		targets: []store.ProbeTarget{
+			{EndpointID: 1, IP: "10.0.0.1"},
+			{EndpointID: 2, IP: "10.0.0.2"},
+			{EndpointID: 3, IP: "10.0.0.3"},
+			{EndpointID: 4, IP: "10.0.0.4"},
+			{EndpointID: 5, IP: "10.0.0.5"},
+		},
+	}
+
+	options := defaultTestOptions()
+	options.ProbeWorkers = 5
+	engine := newTestEngine(store, options, model.Settings{
+		PingIntervalSec: 1,
+		ICMPPayloadSize: 56,
+		ICMPTimeoutMs:   200,
+	}, conn)
+
+	cancelReceiver, recvDone := startReceiver(t, engine, conn)
+	defer stopReceiver(t, cancelReceiver, conn, recvDone)
+	_, stopResults := startResultPipeline(t, engine)
+	defer stopResults()
+
+	roundStarted := time.Now()
+	tracker := newRoundTracker(1, roundStarted, time.Second)
+	engine.setActiveRound(tracker)
+	dispatched := engine.runRound(context.Background(), 1, roundStarted, tracker, engine.CurrentSettings())
+	tracker.finishProbePhase(dispatched, time.Since(roundStarted), false)
+	engine.setActiveRound(nil)
+
+	writeTimes := conn.WriteTimes()
+	if len(writeTimes) != 5 {
+		t.Fatalf("expected 5 writes, got %d", len(writeTimes))
+	}
+
+	span := writeTimes[len(writeTimes)-1].Sub(writeTimes[0])
+	if span < 500*time.Millisecond {
+		t.Fatalf("expected paced sends across the interval, got span %v", span)
+	}
+	if span > 975*time.Millisecond {
+		t.Fatalf("expected sends to stay within the configured send window, got span %v", span)
+	}
+}
+
 func TestRunRoundHonorsConfiguredWorkerLimit(t *testing.T) {
 	conn := newFakePacketConn()
 	store := &fakeProbeStore{
@@ -348,7 +521,10 @@ func TestRunRoundHonorsConfiguredWorkerLimit(t *testing.T) {
 			{EndpointID: 5, IP: "10.0.0.5"},
 		},
 	}
-	engine := newTestEngine(store, 2, model.Settings{
+
+	options := defaultTestOptions()
+	options.ProbeWorkers = 2
+	engine := newTestEngine(store, options, model.Settings{
 		PingIntervalSec: 1,
 		ICMPPayloadSize: 56,
 		ICMPTimeoutMs:   1000,
@@ -360,7 +536,12 @@ func TestRunRoundHonorsConfiguredWorkerLimit(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		engine.runRound(ctx, 1, engine.CurrentSettings())
+		roundStarted := time.Now()
+		tracker := newRoundTracker(1, roundStarted, time.Second)
+		engine.setActiveRound(tracker)
+		dispatched := engine.runRound(ctx, 1, roundStarted, tracker, engine.CurrentSettings())
+		tracker.finishProbePhase(dispatched, time.Since(roundStarted), false)
+		engine.setActiveRound(nil)
 		close(done)
 	}()
 
@@ -378,6 +559,127 @@ func TestRunRoundHonorsConfiguredWorkerLimit(t *testing.T) {
 	}
 }
 
+func TestProbeWorkersContinueWhenBatchPersistenceIsBlocked(t *testing.T) {
+	conn := newFakePacketConn()
+	conn.autoReply = true
+
+	batchStarted := make(chan struct{})
+	batchGate := make(chan struct{})
+	store := &fakeProbeStore{
+		targets: []store.ProbeTarget{
+			{EndpointID: 1, IP: "10.0.0.1"},
+			{EndpointID: 2, IP: "10.0.0.2"},
+			{EndpointID: 3, IP: "10.0.0.3"},
+			{EndpointID: 4, IP: "10.0.0.4"},
+		},
+		batchStarted: batchStarted,
+		batchGate:    batchGate,
+	}
+
+	options := defaultTestOptions()
+	options.ProbeWorkers = 4
+	options.ResultBatchSize = 64
+	engine := newTestEngine(store, options, model.Settings{
+		PingIntervalSec: 1,
+		ICMPPayloadSize: 56,
+		ICMPTimeoutMs:   200,
+	}, conn)
+
+	cancelReceiver, recvDone := startReceiver(t, engine, conn)
+	defer stopReceiver(t, cancelReceiver, conn, recvDone)
+	_, stopResults := startResultPipeline(t, engine)
+	defer stopResults()
+
+	done := make(chan struct{})
+	go func() {
+		roundStarted := time.Now()
+		tracker := newRoundTracker(1, roundStarted, time.Second)
+		engine.setActiveRound(tracker)
+		dispatched := engine.runRound(context.Background(), 1, roundStarted, tracker, engine.CurrentSettings())
+		tracker.finishProbePhase(dispatched, time.Since(roundStarted), false)
+		engine.setActiveRound(nil)
+		close(done)
+	}()
+
+	select {
+	case <-batchStarted:
+	case <-time.After(time.Second):
+		t.Fatal("batch persistence did not start")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(1300 * time.Millisecond):
+		t.Fatal("runRound stayed blocked on persistence")
+	}
+
+	close(batchGate)
+}
+
+func TestResultWorkerFlushesOnBatchSizeAndTimer(t *testing.T) {
+	t.Run("batch size", func(t *testing.T) {
+		store := &fakeProbeStore{}
+		engine := newTestEngine(store, defaultTestOptions(), model.Settings{}, newFakePacketConn())
+		engine.resultBatchSize = 2
+		engine.resultFlushInterval = time.Second
+		resultCh, stopResults := startResultPipeline(t, engine)
+		defer stopResults()
+
+		tracker := newRoundTracker(1, time.Now(), time.Second)
+		resultCh <- resultEnvelope{targetIP: "10.0.0.1", result: model.PingResult{EndpointID: 1}, tracker: tracker}
+		resultCh <- resultEnvelope{targetIP: "10.0.0.2", result: model.PingResult{EndpointID: 2}, tracker: tracker}
+		resultCh <- resultEnvelope{targetIP: "10.0.0.3", result: model.PingResult{EndpointID: 3}, tracker: tracker}
+
+		stopResults()
+
+		got := store.BatchCalls()
+		if len(got) != 2 || got[0] != 2 || got[1] != 1 {
+			t.Fatalf("unexpected batch flushes: %v", got)
+		}
+	})
+
+	t.Run("timer", func(t *testing.T) {
+		store := &fakeProbeStore{}
+		engine := newTestEngine(store, defaultTestOptions(), model.Settings{}, newFakePacketConn())
+		engine.resultBatchSize = 10
+		engine.resultFlushInterval = 20 * time.Millisecond
+		resultCh, stopResults := startResultPipeline(t, engine)
+		defer stopResults()
+
+		resultCh <- resultEnvelope{targetIP: "10.0.0.1", result: model.PingResult{EndpointID: 1}, tracker: newRoundTracker(1, time.Now(), time.Second)}
+		time.Sleep(80 * time.Millisecond)
+
+		got := store.BatchCalls()
+		if len(got) != 1 || got[0] != 1 {
+			t.Fatalf("unexpected timer flushes: %v", got)
+		}
+	})
+}
+
+func TestFailedBatchPersistenceFallsBackToIndividualWrites(t *testing.T) {
+	store := &fakeProbeStore{
+		failBatchCount: 1,
+	}
+	engine := newTestEngine(store, defaultTestOptions(), model.Settings{}, newFakePacketConn())
+	engine.resultBatchSize = 4
+	engine.resultFlushInterval = 20 * time.Millisecond
+	resultCh, stopResults := startResultPipeline(t, engine)
+
+	tracker := newRoundTracker(1, time.Now(), time.Second)
+	resultCh <- resultEnvelope{targetIP: "10.0.0.1", result: model.PingResult{EndpointID: 1}, tracker: tracker}
+	resultCh <- resultEnvelope{targetIP: "10.0.0.2", result: model.PingResult{EndpointID: 2}, tracker: tracker}
+
+	stopResults()
+
+	if store.ResultCount() != 2 {
+		t.Fatalf("expected fallback to preserve both results, got %d", store.ResultCount())
+	}
+	got := store.BatchCalls()
+	if len(got) != 1 || got[0] != 2 {
+		t.Fatalf("expected a failed batch attempt before fallback, got %v", got)
+	}
+}
+
 func TestLoopDoesNotStartOverlappingRounds(t *testing.T) {
 	conn := newFakePacketConn()
 	store := &fakeProbeStore{
@@ -385,7 +687,10 @@ func TestLoopDoesNotStartOverlappingRounds(t *testing.T) {
 			{EndpointID: 1, IP: "10.0.0.1"},
 		},
 	}
-	engine := newEngineWithDeps(store, telemetry.NewHub(), 1, model.Settings{
+
+	options := defaultTestOptions()
+	options.ProbeWorkers = 1
+	engine := newEngineWithDeps(store, telemetry.NewHub(), options, model.Settings{
 		PingIntervalSec: 1,
 		ICMPPayloadSize: 56,
 		ICMPTimeoutMs:   5000,
