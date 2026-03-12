@@ -1685,7 +1685,7 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 
 		pingDeleteCmd, err := tx.Exec(ctx, `
 			WITH doomed AS (
-				SELECT ctid
+				SELECT endpoint_id, ts
 				FROM ping_raw
 				WHERE endpoint_id = ANY($1::BIGINT[])
 				ORDER BY endpoint_id, ts DESC
@@ -1693,7 +1693,8 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 			)
 			DELETE FROM ping_raw pr
 			USING doomed d
-			WHERE pr.ctid = d.ctid
+			WHERE pr.endpoint_id = d.endpoint_id
+			  AND pr.ts = d.ts
 		`, endpointIDs, pingRowBatchSize)
 		if err != nil {
 			_ = tx.Rollback(ctx)
