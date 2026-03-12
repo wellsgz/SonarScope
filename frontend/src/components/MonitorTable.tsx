@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MonitorDataScope, MonitorEndpoint, MonitorSortField } from "../types/api";
 
 type Props = {
@@ -37,6 +37,22 @@ type LiveProbeContext = {
   probeRunning: boolean;
   probeScope: "all" | "groups" | "";
   activeProbeGroupNames: Set<string>;
+};
+
+type HorizontalScrollMetrics = {
+  hasOverflow: boolean;
+  viewportWidth: number;
+  contentWidth: number;
+  railWidth: number;
+  scrollLeft: number;
+};
+
+const defaultHorizontalScrollMetrics: HorizontalScrollMetrics = {
+  hasOverflow: false,
+  viewportWidth: 0,
+  contentWidth: 0,
+  railWidth: 0,
+  scrollLeft: 0
 };
 
 function formatDate(value: string | null): string {
@@ -201,8 +217,14 @@ export function MonitorTable({
   refreshSignal
 }: Props) {
   const sortableSet = useMemo(() => new Set<MonitorSortField>(sortableFields), [sortableFields]);
-  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
+  const verticalScrollRef = useRef<HTMLDivElement | null>(null);
+  const tableRef = useRef<HTMLTableElement | null>(null);
+  const horizontalRailRef = useRef<HTMLDivElement | null>(null);
   const relativeScrollRef = useRef(0);
+  const horizontalFrameRef = useRef(0);
+  const thumbDragRef = useRef<{ pointerID: number; startX: number; startScrollLeft: number } | null>(null);
+  const [horizontalMetrics, setHorizontalMetrics] = useState<HorizontalScrollMetrics>(defaultHorizontalScrollMetrics);
   const liveProbeContext = useMemo(
     () => ({
       probeRunning,
@@ -250,11 +272,50 @@ export function MonitorTable({
     return selected ? null : endpointID;
   };
 
+  const updateHorizontalMetrics = (next: HorizontalScrollMetrics) => {
+    setHorizontalMetrics((prev) => {
+      if (
+        prev.hasOverflow === next.hasOverflow &&
+        Math.abs(prev.viewportWidth - next.viewportWidth) < 1 &&
+        Math.abs(prev.contentWidth - next.contentWidth) < 1 &&
+        Math.abs(prev.railWidth - next.railWidth) < 1 &&
+        Math.abs(prev.scrollLeft - next.scrollLeft) < 1
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  };
+
+  const measureHorizontalOverflow = () => {
+    const horizontalScroll = horizontalScrollRef.current;
+    const table = tableRef.current;
+    if (!horizontalScroll || !table) {
+      return;
+    }
+
+    const viewportWidth = horizontalScroll.clientWidth;
+    const contentWidth = Math.max(table.scrollWidth, table.getBoundingClientRect().width);
+    const maxScrollLeft = Math.max(0, contentWidth - viewportWidth);
+    const scrollLeft = Math.max(0, Math.min(maxScrollLeft, horizontalScroll.scrollLeft));
+    if (Math.abs(horizontalScroll.scrollLeft - scrollLeft) >= 1) {
+      horizontalScroll.scrollLeft = scrollLeft;
+    }
+
+    updateHorizontalMetrics({
+      hasOverflow: maxScrollLeft > 1,
+      viewportWidth,
+      contentWidth,
+      railWidth: horizontalRailRef.current?.clientWidth ?? 0,
+      scrollLeft
+    });
+  };
+
   const captureRelativeScroll = () => {
     if (!preserveRelativeScroll) {
       return;
     }
-    const tableScroll = tableScrollRef.current;
+    const tableScroll = verticalScrollRef.current;
     if (!tableScroll) {
       return;
     }
@@ -271,7 +332,7 @@ export function MonitorTable({
     if (!preserveRelativeScroll) {
       return;
     }
-    const tableScroll = tableScrollRef.current;
+    const tableScroll = verticalScrollRef.current;
     if (!tableScroll) {
       return;
     }
@@ -285,73 +346,248 @@ export function MonitorTable({
     tableScroll.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
   }, [preserveRelativeScroll, refreshSignal]);
 
+  useLayoutEffect(() => {
+    const runMeasure = () => {
+      if (horizontalFrameRef.current !== 0) {
+        window.cancelAnimationFrame(horizontalFrameRef.current);
+      }
+      horizontalFrameRef.current = window.requestAnimationFrame(() => {
+        horizontalFrameRef.current = 0;
+        measureHorizontalOverflow();
+      });
+    };
+
+    runMeasure();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        runMeasure();
+      });
+      if (horizontalScrollRef.current) {
+        observer.observe(horizontalScrollRef.current);
+      }
+      if (tableRef.current) {
+        observer.observe(tableRef.current);
+      }
+      if (horizontalRailRef.current) {
+        observer.observe(horizontalRailRef.current);
+      }
+      return () => {
+        observer.disconnect();
+        if (horizontalFrameRef.current !== 0) {
+          window.cancelAnimationFrame(horizontalFrameRef.current);
+          horizontalFrameRef.current = 0;
+        }
+      };
+    }
+
+    window.addEventListener("resize", runMeasure);
+    return () => {
+      window.removeEventListener("resize", runMeasure);
+      if (horizontalFrameRef.current !== 0) {
+        window.cancelAnimationFrame(horizontalFrameRef.current);
+        horizontalFrameRef.current = 0;
+      }
+    };
+  }, [columns.length, horizontalMetrics.hasOverflow, refreshSignal, rows.length]);
+
+  useEffect(() => {
+    return () => {
+      thumbDragRef.current = null;
+      if (horizontalFrameRef.current !== 0) {
+        window.cancelAnimationFrame(horizontalFrameRef.current);
+      }
+    };
+  }, []);
+
+  const maxScrollLeft = Math.max(0, horizontalMetrics.contentWidth - horizontalMetrics.viewportWidth);
+  const railThumbWidth = horizontalMetrics.hasOverflow
+    ? Math.max(48, Math.min(horizontalMetrics.railWidth, horizontalMetrics.railWidth * (horizontalMetrics.viewportWidth / horizontalMetrics.contentWidth)))
+    : 0;
+  const railMaxOffset = Math.max(0, horizontalMetrics.railWidth - railThumbWidth);
+  const railThumbOffset = maxScrollLeft > 0 ? (horizontalMetrics.scrollLeft / maxScrollLeft) * railMaxOffset : 0;
+
+  const clampScrollLeft = (value: number) => {
+    return Math.max(0, Math.min(maxScrollLeft, value));
+  };
+
+  const setHorizontalScroll = (value: number) => {
+    const horizontalScroll = horizontalScrollRef.current;
+    if (!horizontalScroll) {
+      return;
+    }
+    horizontalScroll.scrollLeft = clampScrollLeft(value);
+    measureHorizontalOverflow();
+  };
+
+  const handleHorizontalScroll = () => {
+    const horizontalScroll = horizontalScrollRef.current;
+    if (!horizontalScroll) {
+      return;
+    }
+    setHorizontalMetrics((prev) => {
+      if (Math.abs(prev.scrollLeft - horizontalScroll.scrollLeft) < 1) {
+        return prev;
+      }
+      return {
+        ...prev,
+        scrollLeft: horizontalScroll.scrollLeft
+      };
+    });
+  };
+
+  const handleRailPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!horizontalMetrics.hasOverflow || event.target !== event.currentTarget) {
+      return;
+    }
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    if (railMaxOffset <= 0) {
+      setHorizontalScroll(0);
+      return;
+    }
+    const targetOffset = Math.max(0, Math.min(railMaxOffset, clickX - railThumbWidth / 2));
+    setHorizontalScroll((targetOffset / railMaxOffset) * maxScrollLeft);
+  };
+
+  const handleRailThumbPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!horizontalMetrics.hasOverflow) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    thumbDragRef.current = {
+      pointerID: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: horizontalMetrics.scrollLeft
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleRailThumbPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const dragState = thumbDragRef.current;
+    if (!dragState || dragState.pointerID !== event.pointerId || railMaxOffset <= 0 || maxScrollLeft <= 0) {
+      return;
+    }
+    const deltaX = event.clientX - dragState.startX;
+    const deltaScroll = deltaX * (maxScrollLeft / railMaxOffset);
+    setHorizontalScroll(dragState.startScrollLeft + deltaScroll);
+  };
+
+  const clearRailThumbDrag = () => {
+    thumbDragRef.current = null;
+  };
+
+  const handleRailKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!horizontalMetrics.hasOverflow) {
+      return;
+    }
+    const step = Math.max(64, Math.round(horizontalMetrics.viewportWidth * 0.2));
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setHorizontalScroll(horizontalMetrics.scrollLeft - step);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setHorizontalScroll(horizontalMetrics.scrollLeft + step);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setHorizontalScroll(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setHorizontalScroll(maxScrollLeft);
+    }
+  };
+
   return (
     <div className="panel table-panel">
-      <div className="table-scroll" ref={tableScrollRef} onScroll={captureRelativeScroll}>
-        <table className="monitor-table">
-          <thead>
-            <tr>
-              {columns.map((column) => {
-                const sortable = Boolean(column.sortable && sortableSet.has(column.sortable));
-                const active = sortable && sortBy === column.sortable;
-                const ariaSort = active ? (sortDir === "asc" ? "ascending" : "descending") : "none";
-                const indicator = !sortable ? "" : !active ? "↕" : sortDir === "desc" ? "↓" : "↑";
-
-                return (
-                  <th key={column.key} aria-sort={ariaSort}>
-                    {sortable && column.sortable ? (
-                      <button
-                        type="button"
-                        className={`table-sort-button ${active ? "table-sort-button-active" : ""}`}
-                        onClick={() => toggleSort(column.sortable!)}
-                        aria-label={`Sort by ${column.header}`}
-                      >
-                        <span>{column.header}</span>
-                        <span className="table-sort-indicator" aria-hidden>
-                          {indicator}
-                        </span>
-                      </button>
-                    ) : (
-                      column.header
-                    )}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const endpointID = row.endpoint_id;
-              const selected = selectedEndpointID === endpointID;
-              const health = endpointHealth(row, dataScope, liveProbeContext);
-              const rowClassName = `${rowHealthClassName(health)}${selected ? " row-selected" : ""}`;
-              return (
-                <tr
-                  key={endpointID}
-                  className={rowClassName}
-                  onClick={() => onSelectionChange(nextSelectionID(endpointID, selected))}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onSelectionChange(nextSelectionID(endpointID, selected));
-                    }
-                  }}
-                  tabIndex={0}
-                  aria-selected={selected}
-                >
+      <div className="table-viewport-shell">
+        <div className="table-scroll-x" ref={horizontalScrollRef} onScroll={handleHorizontalScroll}>
+          <div className="table-scroll-y" ref={verticalScrollRef} onScroll={captureRelativeScroll}>
+            <table className="monitor-table" ref={tableRef}>
+              <thead>
+                <tr>
                   {columns.map((column) => {
+                    const sortable = Boolean(column.sortable && sortableSet.has(column.sortable));
+                    const active = sortable && sortBy === column.sortable;
+                    const ariaSort = active ? (sortDir === "asc" ? "ascending" : "descending") : "none";
+                    const indicator = !sortable ? "" : !active ? "↕" : sortDir === "desc" ? "↓" : "↑";
+
                     return (
-                      <td key={`${endpointID}-${column.key}`}>
-                        {column.render(row)}
-                      </td>
+                      <th key={column.key} aria-sort={ariaSort}>
+                        {sortable && column.sortable ? (
+                          <button
+                            type="button"
+                            className={`table-sort-button ${active ? "table-sort-button-active" : ""}`}
+                            onClick={() => toggleSort(column.sortable!)}
+                            aria-label={`Sort by ${column.header}`}
+                          >
+                            <span>{column.header}</span>
+                            <span className="table-sort-indicator" aria-hidden>
+                              {indicator}
+                            </span>
+                          </button>
+                        ) : (
+                          column.header
+                        )}
+                      </th>
                     );
                   })}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const endpointID = row.endpoint_id;
+                  const selected = selectedEndpointID === endpointID;
+                  const health = endpointHealth(row, dataScope, liveProbeContext);
+                  const rowClassName = `${rowHealthClassName(health)}${selected ? " row-selected" : ""}`;
+                  return (
+                    <tr
+                      key={endpointID}
+                      className={rowClassName}
+                      onClick={() => onSelectionChange(nextSelectionID(endpointID, selected))}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onSelectionChange(nextSelectionID(endpointID, selected));
+                        }
+                      }}
+                      tabIndex={0}
+                      aria-selected={selected}
+                    >
+                      {columns.map((column) => {
+                        return <td key={`${endpointID}-${column.key}`}>{column.render(row)}</td>;
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
+
+      {horizontalMetrics.hasOverflow ? (
+        <div className="table-scroll-rail-shell">
+          <div
+            className="table-scroll-rail"
+            ref={horizontalRailRef}
+            onPointerDown={handleRailPointerDown}
+            onKeyDown={handleRailKeyDown}
+            tabIndex={0}
+            aria-label="Scroll table horizontally"
+          >
+            <div
+              className="table-scroll-rail-thumb"
+              style={{ width: `${railThumbWidth}px`, transform: `translateX(${railThumbOffset}px)` }}
+              onPointerDown={handleRailThumbPointerDown}
+              onPointerMove={handleRailThumbPointerMove}
+              onPointerUp={clearRailThumbDrag}
+              onPointerCancel={clearRailThumbDrag}
+            />
+          </div>
+        </div>
+      ) : null}
 
       <div className="table-footer">
         <div className="table-summary">
