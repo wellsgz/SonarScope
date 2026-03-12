@@ -1678,6 +1678,10 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 			_ = tx.Rollback(ctx)
 			return deletedCount, totalPingRows, err
 		}
+		if _, err := tx.Exec(ctx, `SET LOCAL timescaledb.max_tuples_decompressed_per_dml_transaction = 0`); err != nil {
+			_ = tx.Rollback(ctx)
+			return deletedCount, totalPingRows, err
+		}
 		if _, err := tx.Exec(ctx, `SET LOCAL synchronous_commit = OFF`); err != nil {
 			_ = tx.Rollback(ctx)
 			return deletedCount, totalPingRows, err
