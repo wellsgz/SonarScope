@@ -503,6 +503,12 @@
   min-width: 0;
 }
 
+.chart-empty-series-panel {
+  height: 100%;
+  min-height: 248px;
+  font-size: var(--text-base);
+}
+
 .chart-canvas {
   flex: 1 1 auto;
   height: 100%;

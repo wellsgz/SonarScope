@@ -1978,6 +1978,52 @@ func (s *Store) QueryTimeSeries(ctx context.Context, endpointIDs []int64, start 
 		}
 		series = append(series, p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// The monitor chart reads a single selected endpoint at a time. If the
+	// real-time aggregate is momentarily behind, fall back to an on-the-fly
+	// raw aggregation so the live chart does not appear blank while the table
+	// already shows current endpoint stats.
+	if len(series) == 0 && len(endpointIDs) == 1 && rollup == "1m" {
+		return s.queryTimeSeriesFromRaw(ctx, endpointIDs, start, end, "1 minute")
+	}
+
+	return series, nil
+}
+
+func (s *Store) queryTimeSeriesFromRaw(ctx context.Context, endpointIDs []int64, start time.Time, end time.Time, bucketInterval string) ([]model.TimeSeriesPoint, error) {
+	query := fmt.Sprintf(`
+		SELECT
+			endpoint_id,
+			time_bucket(INTERVAL '%s', ts) AS bucket,
+			(COUNT(*) FILTER (WHERE NOT success)::DOUBLE PRECISION / NULLIF(COUNT(*), 0)::DOUBLE PRECISION) * 100 AS loss_rate,
+			AVG(latency_ms) FILTER (WHERE success) AS avg_latency_ms,
+			MAX(latency_ms) FILTER (WHERE success) AS max_latency_ms,
+			COUNT(*)::BIGINT AS sent_count,
+			COUNT(*) FILTER (WHERE NOT success)::BIGINT AS fail_count
+		FROM ping_raw
+		WHERE endpoint_id = ANY($1)
+		  AND ts BETWEEN $2 AND $3
+		GROUP BY endpoint_id, bucket
+		ORDER BY bucket
+	`, bucketInterval)
+
+	rows, err := s.pool.Query(ctx, query, endpointIDs, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	series := []model.TimeSeriesPoint{}
+	for rows.Next() {
+		var p model.TimeSeriesPoint
+		if err := rows.Scan(&p.EndpointID, &p.Bucket, &p.LossRate, &p.AvgLatencyMs, &p.MaxLatencyMs, &p.SentCount, &p.FailCount); err != nil {
+			return nil, err
+		}
+		series = append(series, p)
+	}
 	return series, rows.Err()
 }
 

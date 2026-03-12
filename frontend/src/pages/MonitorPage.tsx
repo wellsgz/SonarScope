@@ -64,6 +64,12 @@ type CustomSearchState = {
   custom3: string;
 };
 
+type SelectedEndpointSnapshot = {
+  id: number;
+  hostname: string;
+  ipAddress: string;
+};
+
 const defaultCustomSearch: CustomSearchState = {
   custom1: "",
   custom2: "",
@@ -140,7 +146,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   const [quickRange, setQuickRange] = useState<QuickRange>("30m");
   const [customStart, setCustomStart] = useState(toDateTimeLocal(new Date(Date.now() - 30 * 60 * 1000)));
   const [customEnd, setCustomEnd] = useState(toDateTimeLocal(new Date()));
-  const [selectedEndpointID, setSelectedEndpointID] = useState<number | null>(null);
+  const [selectedEndpoint, setSelectedEndpoint] = useState<SelectedEndpointSnapshot | null>(null);
   const [hostnameSearch, setHostnameSearch] = useState("");
   const [macSearch, setMACSearch] = useState("");
   const [customSearch, setCustomSearch] = useState<CustomSearchState>(defaultCustomSearch);
@@ -240,7 +246,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     }
     lastRealtimeRefreshRef.current = now;
     queryClient.invalidateQueries({ queryKey: ["monitor-endpoints-page"] });
-    if (event.endpoint_id && selectedEndpointID === event.endpoint_id) {
+    if (event.endpoint_id && selectedEndpoint?.id === event.endpoint_id) {
       queryClient.invalidateQueries({ queryKey: ["timeseries"] });
     }
   });
@@ -364,7 +370,9 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   });
 
   const monitorRows = monitorQuery.data?.items || [];
-  const selectedEndpoint = monitorRows.find((row) => row.endpoint_id === selectedEndpointID) || null;
+  const selectedEndpointRow = selectedEndpoint
+    ? monitorRows.find((row) => row.endpoint_id === selectedEndpoint.id) || null
+    : null;
 
   useEffect(() => {
     const totalPages = monitorQuery.data?.total_pages ?? 0;
@@ -374,13 +382,22 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   }, [monitorQuery.data?.total_pages, page]);
 
   useEffect(() => {
-    if (selectedEndpointID === null || monitorQuery.isPlaceholderData) {
+    if (!selectedEndpoint || monitorQuery.isPlaceholderData) {
       return;
     }
-    if (!monitorRows.some((row) => row.endpoint_id === selectedEndpointID)) {
-      setSelectedEndpointID(null);
+    if (!selectedEndpointRow) {
+      return;
     }
-  }, [monitorRows, selectedEndpointID, monitorQuery.isPlaceholderData]);
+    const nextHostname = selectedEndpointRow.hostname || selectedEndpointRow.ip_address;
+    if (selectedEndpoint.hostname === nextHostname && selectedEndpoint.ipAddress === selectedEndpointRow.ip_address) {
+      return;
+    }
+    setSelectedEndpoint({
+      id: selectedEndpointRow.endpoint_id,
+      hostname: nextHostname,
+      ipAddress: selectedEndpointRow.ip_address
+    });
+  }, [monitorQuery.isPlaceholderData, selectedEndpoint, selectedEndpointRow]);
 
   useEffect(() => {
     if (dataScope !== "range") {
@@ -394,18 +411,35 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   }, [dataScope, sortBy]);
 
   const timeSeriesQuery = useQuery({
-    queryKey: ["timeseries", dataScope, selectedEndpointID, effectiveStart.toISOString(), effectiveEnd.toISOString()],
+    queryKey: ["timeseries", dataScope, selectedEndpoint?.id ?? null, effectiveStart.toISOString(), effectiveEnd.toISOString()],
     queryFn: () =>
       listMonitorTimeSeries({
-        endpointIds: selectedEndpointID ? [selectedEndpointID] : [],
+        endpointIds: selectedEndpoint ? [selectedEndpoint.id] : [],
         start: toApiTime(effectiveStart),
         end: toApiTime(effectiveEnd)
       }),
-    enabled: selectedEndpointID !== null,
+    enabled: selectedEndpoint !== null,
     placeholderData: keepPreviousData,
     refetchInterval: queryRefetchInterval,
     ...fixedCustomRangeQueryOptions
   });
+
+  const handleSelectionChange = (endpointID: number | null) => {
+    if (endpointID === null) {
+      setSelectedEndpoint(null);
+      return;
+    }
+    const row = monitorRows.find((item) => item.endpoint_id === endpointID);
+    if (!row) {
+      setSelectedEndpoint(null);
+      return;
+    }
+    setSelectedEndpoint({
+      id: row.endpoint_id,
+      hostname: row.hostname || row.ip_address,
+      ipAddress: row.ip_address
+    });
+  };
 
   const settingsMutation = useMutation({
     mutationFn: (settings: Settings) => updateSettings(settings),
@@ -454,8 +488,8 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     <MonitorTable
       rows={monitorRows}
       customFields={enabledCustomFields}
-      selectedEndpointID={selectedEndpointID}
-      onSelectionChange={setSelectedEndpointID}
+      selectedEndpointID={selectedEndpoint?.id ?? null}
+      onSelectionChange={handleSelectionChange}
       page={monitorQuery.data?.page ?? page}
       pageSize={(monitorQuery.data?.page_size as 50 | 100 | 200) ?? pageSize}
       totalItems={monitorQuery.data?.total_items ?? 0}
@@ -654,9 +688,9 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         </div>
 
         <div className="monitor-pane-bottom">
-          {selectedEndpointID === null ? (
+          {selectedEndpoint === null ? (
             <div className="panel state-panel empty-chart-panel">Select an endpoint row to visualize loss rate and latency.</div>
-          ) : timeSeriesQuery.isLoading ? (
+          ) : timeSeriesQuery.isLoading && !timeSeriesQuery.data ? (
             <div className="panel state-panel">Loading timeseries data…</div>
           ) : timeSeriesQuery.error ? (
             <div className="panel state-panel">Failed to load timeseries data for the selected range.</div>
@@ -666,7 +700,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
               rollup={timeSeriesQuery.data?.rollup || "1m"}
               rangeStart={effectiveStart}
               rangeEnd={effectiveEnd}
-              endpointLabel={selectedEndpoint ? `${selectedEndpoint.hostname || selectedEndpoint.ip_address} (${selectedEndpoint.ip_address})` : `ID ${selectedEndpointID}`}
+              endpointLabel={`${selectedEndpoint.hostname} (${selectedEndpoint.ipAddress})`}
             />
           )}
         </div>

@@ -332,11 +332,24 @@ function formatChartRangeLabel(rangeStart: Date, rangeEnd: Date): string {
 export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeEnd }: Props) {
   const hasProbeActivityInRange = useMemo(() => points.some((point) => point.sent_count > 0), [points]);
   const showNoProbeNote = !hasProbeActivityInRange;
+  const hasRenderableSeries = useMemo(
+    () =>
+      points.some(
+        (point) =>
+          point.sent_count > 0 &&
+          (point.loss_rate !== null ||
+            point.loss_rate !== undefined ||
+            point.avg_latency_ms !== null ||
+            point.avg_latency_ms !== undefined)
+      ),
+    [points]
+  );
   const chartRangeLabel = useMemo(() => formatChartRangeLabel(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
   const chartRangeStartMs = rangeStart.getTime();
   const chartRangeEndMs = rangeEnd.getTime();
   const chartRef = useRef<ReactECharts | null>(null);
   const chartBodyRef = useRef<HTMLDivElement | null>(null);
+  const chartKey = `${endpointLabel}-${rollup}-${chartRangeStartMs}-${chartRangeEndMs}`;
 
   const palette = {
     textMuted: readToken("--color-text-muted", "#b4c3db"),
@@ -558,7 +571,11 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
       }
       frameID = window.requestAnimationFrame(() => {
         frameID = 0;
-        chartRef.current?.getEchartsInstance().resize();
+        try {
+          chartRef.current?.getEchartsInstance().resize();
+        } catch {
+          // Ignore resize races during endpoint switches and unmount/remount cycles.
+        }
       });
     };
 
@@ -584,7 +601,7 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
         window.cancelAnimationFrame(frameID);
       }
     };
-  }, [endpointLabel, showNoProbeNote, chartRangeEndMs, chartRangeStartMs, points.length, rollup]);
+  }, [chartKey, hasRenderableSeries, showNoProbeNote]);
 
   return (
     <div className="panel chart-panel">
@@ -606,7 +623,20 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
         </div>
       ) : null}
       <div className="chart-body" ref={chartBodyRef}>
-        <ReactECharts ref={chartRef} option={option} className="chart-canvas" style={{ height: "100%", width: "100%" }} />
+        {!hasRenderableSeries ? (
+          <div className="state-panel chart-empty-series-panel">
+            No chart data is available for this endpoint in the selected period yet.
+          </div>
+        ) : (
+          <ReactECharts
+            key={chartKey}
+            ref={chartRef}
+            option={option}
+            notMerge
+            className="chart-canvas"
+            style={{ height: "100%", width: "100%" }}
+          />
+        )}
       </div>
     </div>
   );
