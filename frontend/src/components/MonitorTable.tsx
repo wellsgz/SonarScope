@@ -6,6 +6,7 @@ type Props = {
   customFields: Array<{ slot: 1 | 2 | 3; name: string }>;
   selectedEndpointID: number | null;
   onSelectionChange: (id: number | null) => void;
+  selectionMode?: "toggle" | "replace";
   page: number;
   pageSize: 50 | 100 | 200;
   totalItems: number;
@@ -181,6 +182,7 @@ export function MonitorTable({
   customFields,
   selectedEndpointID,
   onSelectionChange,
+  selectionMode = "toggle",
   page,
   pageSize,
   totalItems,
@@ -239,6 +241,13 @@ export function MonitorTable({
       return;
     }
     onSortChange(null, null);
+  };
+
+  const nextSelectionID = (endpointID: number, selected: boolean) => {
+    if (selectionMode === "replace") {
+      return endpointID;
+    }
+    return selected ? null : endpointID;
   };
 
   const captureRelativeScroll = () => {
@@ -320,11 +329,11 @@ export function MonitorTable({
                 <tr
                   key={endpointID}
                   className={rowClassName}
-                  onClick={() => onSelectionChange(selected ? null : endpointID)}
+                  onClick={() => onSelectionChange(nextSelectionID(endpointID, selected))}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      onSelectionChange(selected ? null : endpointID);
+                      onSelectionChange(nextSelectionID(endpointID, selected));
                     }
                   }}
                   tabIndex={0}

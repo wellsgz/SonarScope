@@ -64,10 +64,16 @@ type CustomSearchState = {
   custom3: string;
 };
 
-type SelectedEndpointSnapshot = {
+type ChartSnapshot = {
   id: number;
   hostname: string;
   ipAddress: string;
+  dataScope: MonitorDataScope;
+  rangeStartISO: string;
+  rangeEndISO: string;
+  controlSignature: string;
+  snapshotVersion: number;
+  capturedAtISO: string;
 };
 
 const defaultCustomSearch: CustomSearchState = {
@@ -76,6 +82,21 @@ const defaultCustomSearch: CustomSearchState = {
   custom3: ""
 };
 const liveSnapshotChartRange: QuickRange = "30m";
+
+function buildChartControlSignature(
+  dataScope: MonitorDataScope,
+  quickRange: QuickRange,
+  customStart: string,
+  customEnd: string
+): string {
+  if (dataScope === "live") {
+    return "live";
+  }
+  if (quickRange === "custom") {
+    return `range|custom|${customStart}|${customEnd}`;
+  }
+  return `range|${quickRange}`;
+}
 
 function normalizeEnabledCustomFields(fields?: CustomFieldConfig[]): EnabledCustomField[] {
   const bySlot: Record<CustomFieldSlot, EnabledCustomField | null> = {
@@ -146,7 +167,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   const [quickRange, setQuickRange] = useState<QuickRange>("30m");
   const [customStart, setCustomStart] = useState(toDateTimeLocal(new Date(Date.now() - 30 * 60 * 1000)));
   const [customEnd, setCustomEnd] = useState(toDateTimeLocal(new Date()));
-  const [selectedEndpoint, setSelectedEndpoint] = useState<SelectedEndpointSnapshot | null>(null);
+  const [chartSnapshot, setChartSnapshot] = useState<ChartSnapshot | null>(null);
   const [hostnameSearch, setHostnameSearch] = useState("");
   const [macSearch, setMACSearch] = useState("");
   const [customSearch, setCustomSearch] = useState<CustomSearchState>(defaultCustomSearch);
@@ -165,6 +186,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     return window.localStorage.getItem(monitorControlsCollapsedKey) !== "0";
   });
   const lastRealtimeRefreshRef = useRef(0);
+  const snapshotVersionRef = useRef(0);
 
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: getSettings });
   const filterOptionsQuery = useQuery({ queryKey: ["filter-options"], queryFn: listFilterOptions });
@@ -246,9 +268,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     }
     lastRealtimeRefreshRef.current = now;
     queryClient.invalidateQueries({ queryKey: ["monitor-endpoints-page"] });
-    if (event.endpoint_id && selectedEndpoint?.id === event.endpoint_id) {
-      queryClient.invalidateQueries({ queryKey: ["timeseries"] });
-    }
   });
 
   const ipListValues = useMemo(() => normalizeIPList(ipListSearch), [ipListSearch]);
@@ -306,6 +325,10 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     const { start, end } = rangeToDatesAt(quickRange, new Date(rangeAnchorMs));
     return { effectiveStart: start, effectiveEnd: end };
   }, [dataScope, quickRange, customStart, customEnd, rangeAnchorMs]);
+  const chartControlSignature = useMemo(
+    () => buildChartControlSignature(dataScope, quickRange, customStart, customEnd),
+    [customEnd, customStart, dataScope, quickRange]
+  );
 
   const displayStartValue = quickRange === "custom" ? customStart : toDateTimeLocal(effectiveStart);
   const displayEndValue = quickRange === "custom" ? customEnd : toDateTimeLocal(effectiveEnd);
@@ -370,9 +393,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   });
 
   const monitorRows = monitorQuery.data?.items || [];
-  const selectedEndpointRow = selectedEndpoint
-    ? monitorRows.find((row) => row.endpoint_id === selectedEndpoint.id) || null
-    : null;
 
   useEffect(() => {
     const totalPages = monitorQuery.data?.total_pages ?? 0;
@@ -380,24 +400,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       setPage(totalPages);
     }
   }, [monitorQuery.data?.total_pages, page]);
-
-  useEffect(() => {
-    if (!selectedEndpoint || monitorQuery.isPlaceholderData) {
-      return;
-    }
-    if (!selectedEndpointRow) {
-      return;
-    }
-    const nextHostname = selectedEndpointRow.hostname || selectedEndpointRow.ip_address;
-    if (selectedEndpoint.hostname === nextHostname && selectedEndpoint.ipAddress === selectedEndpointRow.ip_address) {
-      return;
-    }
-    setSelectedEndpoint({
-      id: selectedEndpointRow.endpoint_id,
-      hostname: nextHostname,
-      ipAddress: selectedEndpointRow.ip_address
-    });
-  }, [monitorQuery.isPlaceholderData, selectedEndpoint, selectedEndpointRow]);
 
   useEffect(() => {
     if (dataScope !== "range") {
@@ -410,34 +412,58 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     }
   }, [dataScope, sortBy]);
 
+  const chartRangeStart = useMemo(
+    () => (chartSnapshot ? new Date(chartSnapshot.rangeStartISO) : null),
+    [chartSnapshot]
+  );
+  const chartRangeEnd = useMemo(() => (chartSnapshot ? new Date(chartSnapshot.rangeEndISO) : null), [chartSnapshot]);
+  const chartCapturedAt = useMemo(
+    () => (chartSnapshot ? new Date(chartSnapshot.capturedAtISO) : null),
+    [chartSnapshot]
+  );
+  const chartControlsChanged = chartSnapshot ? chartSnapshot.controlSignature !== chartControlSignature : false;
+
   const timeSeriesQuery = useQuery({
-    queryKey: ["timeseries", dataScope, selectedEndpoint?.id ?? null, effectiveStart.toISOString(), effectiveEnd.toISOString()],
+    queryKey: [
+      "timeseries",
+      "snapshot",
+      chartSnapshot?.id ?? null,
+      chartSnapshot?.dataScope ?? null,
+      chartSnapshot?.rangeStartISO ?? "",
+      chartSnapshot?.rangeEndISO ?? "",
+      chartSnapshot?.snapshotVersion ?? 0
+    ],
     queryFn: () =>
       listMonitorTimeSeries({
-        endpointIds: selectedEndpoint ? [selectedEndpoint.id] : [],
-        start: toApiTime(effectiveStart),
-        end: toApiTime(effectiveEnd)
+        endpointIds: chartSnapshot ? [chartSnapshot.id] : [],
+        start: toApiTime(new Date(chartSnapshot!.rangeStartISO)),
+        end: toApiTime(new Date(chartSnapshot!.rangeEndISO))
       }),
-    enabled: selectedEndpoint !== null,
-    placeholderData: keepPreviousData,
-    refetchInterval: queryRefetchInterval,
-    ...fixedCustomRangeQueryOptions
+    enabled: chartSnapshot !== null,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false
   });
 
   const handleSelectionChange = (endpointID: number | null) => {
     if (endpointID === null) {
-      setSelectedEndpoint(null);
       return;
     }
     const row = monitorRows.find((item) => item.endpoint_id === endpointID);
     if (!row) {
-      setSelectedEndpoint(null);
       return;
     }
-    setSelectedEndpoint({
+    snapshotVersionRef.current += 1;
+    setChartSnapshot({
       id: row.endpoint_id,
       hostname: row.hostname || row.ip_address,
-      ipAddress: row.ip_address
+      ipAddress: row.ip_address,
+      dataScope,
+      rangeStartISO: effectiveStart.toISOString(),
+      rangeEndISO: effectiveEnd.toISOString(),
+      controlSignature: chartControlSignature,
+      snapshotVersion: snapshotVersionRef.current,
+      capturedAtISO: new Date().toISOString()
     });
   };
 
@@ -488,8 +514,9 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     <MonitorTable
       rows={monitorRows}
       customFields={enabledCustomFields}
-      selectedEndpointID={selectedEndpoint?.id ?? null}
+      selectedEndpointID={chartSnapshot?.id ?? null}
       onSelectionChange={handleSelectionChange}
+      selectionMode="replace"
       page={monitorQuery.data?.page ?? page}
       pageSize={(monitorQuery.data?.page_size as 50 | 100 | 200) ?? pageSize}
       totalItems={monitorQuery.data?.total_items ?? 0}
@@ -688,7 +715,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         </div>
 
         <div className="monitor-pane-bottom">
-          {selectedEndpoint === null ? (
+          {chartSnapshot === null || chartRangeStart === null || chartRangeEnd === null || chartCapturedAt === null ? (
             <div className="panel state-panel empty-chart-panel">Select an endpoint row to visualize loss rate and latency.</div>
           ) : timeSeriesQuery.isLoading && !timeSeriesQuery.data ? (
             <div className="panel state-panel">Loading timeseries data…</div>
@@ -698,9 +725,12 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
             <MonitorChart
               points={timeSeriesQuery.data?.series || []}
               rollup={timeSeriesQuery.data?.rollup || "1m"}
-              rangeStart={effectiveStart}
-              rangeEnd={effectiveEnd}
-              endpointLabel={`${selectedEndpoint.hostname} (${selectedEndpoint.ipAddress})`}
+              rangeStart={chartRangeStart}
+              rangeEnd={chartRangeEnd}
+              endpointLabel={`${chartSnapshot.hostname} (${chartSnapshot.ipAddress})`}
+              snapshotCapturedAt={chartCapturedAt}
+              snapshotVersion={chartSnapshot.snapshotVersion}
+              controlsChanged={chartControlsChanged}
             />
           )}
         </div>

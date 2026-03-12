@@ -1,5 +1,5 @@
 import ReactECharts from "echarts-for-react";
-import { Component, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { Component, useMemo, type ReactNode } from "react";
 import type { TimeSeriesPoint, TimeSeriesResponse } from "../types/api";
 
 type Props = {
@@ -8,21 +8,10 @@ type Props = {
   rollup: TimeSeriesResponse["rollup"];
   rangeStart: Date;
   rangeEnd: Date;
+  snapshotCapturedAt: Date;
+  snapshotVersion: number;
+  controlsChanged?: boolean;
 };
-
-type Metric = "loss_rate" | "avg_latency_ms";
-
-type ChartPoint = {
-  value: [number, number | null];
-  meta: {
-    metric: "loss" | "latency";
-    missing: boolean;
-    sentCount?: number;
-    failCount?: number;
-  };
-};
-
-const LATENCY_SERIES_COLOR = "#2563EB";
 
 type ChartErrorBoundaryProps = {
   resetKey: string;
@@ -32,6 +21,8 @@ type ChartErrorBoundaryProps = {
 type ChartErrorBoundaryState = {
   hasError: boolean;
 };
+
+const LATENCY_SERIES_COLOR = "#2563EB";
 
 class ChartErrorBoundary extends Component<ChartErrorBoundaryProps, ChartErrorBoundaryState> {
   state: ChartErrorBoundaryState = { hasError: false };
@@ -52,216 +43,10 @@ class ChartErrorBoundary extends Component<ChartErrorBoundaryProps, ChartErrorBo
 
   render() {
     if (this.state.hasError) {
-      return <div className="state-panel chart-empty-series-panel">The chart failed to render. Select the endpoint again to retry.</div>;
+      return <div className="state-panel chart-empty-series-panel">The chart failed to render for this snapshot.</div>;
     }
     return this.props.children;
   }
-}
-
-function formatPercent(value: number): string {
-  return `${value.toFixed(2)}%`;
-}
-
-function formatLatency(value: number): string {
-  return `${value.toFixed(2)} ms`;
-}
-
-function formatLatencyAxis(value: number): string {
-  return `${value.toFixed(0)} ms`;
-}
-
-function metricMeta(metric: Metric): "loss" | "latency" {
-  return metric === "loss_rate" ? "loss" : "latency";
-}
-
-function toStepMs(rollup: TimeSeriesResponse["rollup"]): number {
-  return rollup === "1h" ? 60 * 60 * 1000 : 60 * 1000;
-}
-
-function alignToStep(timestampMs: number, stepMs: number): number {
-  return Math.floor(timestampMs / stepMs) * stepMs;
-}
-
-function alignStartToIncludedBucket(timestampMs: number, stepMs: number): number {
-  return Math.ceil(timestampMs / stepMs) * stepMs;
-}
-
-function alignEndToIncludedBucket(timestampMs: number, stepMs: number): number {
-  return Math.floor(timestampMs / stepMs) * stepMs;
-}
-
-function buildBuckets(rangeStart: Date, rangeEnd: Date, stepMs: number): number[] {
-  const start = alignStartToIncludedBucket(rangeStart.getTime(), stepMs);
-  const end = alignEndToIncludedBucket(rangeEnd.getTime(), stepMs);
-  if (start > end) {
-    return [];
-  }
-  const buckets: number[] = [];
-  for (let current = start; current <= end; current += stepMs) {
-    buckets.push(current);
-  }
-  return buckets;
-}
-
-function buildMetricSeries(
-  points: TimeSeriesPoint[],
-  metric: Metric,
-  buckets: number[],
-  rollup: TimeSeriesResponse["rollup"],
-  noProbeColor: string,
-  latencyColor: string
-) {
-  const grouped = new Map<number, TimeSeriesPoint[]>();
-  points.forEach((point) => {
-    const existing = grouped.get(point.endpoint_id) || [];
-    existing.push(point);
-    grouped.set(point.endpoint_id, existing);
-  });
-
-  const measured: Array<Record<string, unknown>> = [];
-  const noProbe: Array<Record<string, unknown>> = [];
-
-  Array.from(grouped.entries()).forEach(([endpointID, data]) => {
-    const pointByBucket = new Map<number, TimeSeriesPoint>();
-    data.forEach((point) => {
-      pointByBucket.set(alignToStep(new Date(point.bucket).getTime(), toStepMs(rollup)), point);
-    });
-
-    const values: Array<number | null> = [];
-    const noProbeFlags: boolean[] = [];
-    const measuredData: Array<ChartPoint | [number, null]> = [];
-
-    for (const bucket of buckets) {
-      const point = pointByBucket.get(bucket);
-      const isNoProbe = !point || point.sent_count === 0;
-      const rawValue = point ? (metric === "loss_rate" ? point.loss_rate : point.avg_latency_ms) : null;
-      const value = rawValue === null || rawValue === undefined ? null : rawValue;
-      values.push(value);
-      noProbeFlags.push(isNoProbe);
-
-      if (isNoProbe || value === null) {
-        measuredData.push([bucket, null]);
-        continue;
-      }
-
-      measuredData.push({
-        value: [bucket, value],
-        meta: {
-          metric: metricMeta(metric),
-          missing: false,
-          sentCount: point.sent_count,
-          failCount: point.fail_count
-        }
-      });
-    }
-
-    const noProbeData: Array<ChartPoint | null> = [];
-    const appendGap = (startIdx: number, endIdx: number, prevIdx: number, nextIdx: number) => {
-      if (prevIdx >= 0 && nextIdx >= 0) {
-        const prevVal = values[prevIdx];
-        const nextVal = values[nextIdx];
-        if (prevVal === null || nextVal === null) {
-          return;
-        }
-        const span = Math.max(1, nextIdx - prevIdx);
-        for (let idx = prevIdx; idx <= nextIdx; idx++) {
-          const ratio = (idx - prevIdx) / span;
-          const interpolated = prevVal + (nextVal - prevVal) * ratio;
-          noProbeData.push({
-            value: [buckets[idx], interpolated],
-            meta: {
-              metric: metricMeta(metric),
-              missing: idx >= startIdx && idx <= endIdx
-            }
-          });
-        }
-        noProbeData.push(null);
-        return;
-      }
-
-      if (prevIdx >= 0) {
-        const prevVal = values[prevIdx];
-        if (prevVal === null) {
-          return;
-        }
-        for (let idx = prevIdx; idx <= endIdx; idx++) {
-          noProbeData.push({
-            value: [buckets[idx], prevVal],
-            meta: {
-              metric: metricMeta(metric),
-              missing: idx >= startIdx && idx <= endIdx
-            }
-          });
-        }
-        noProbeData.push(null);
-        return;
-      }
-
-      if (nextIdx >= 0) {
-        const nextVal = values[nextIdx];
-        if (nextVal === null) {
-          return;
-        }
-        for (let idx = startIdx; idx <= nextIdx; idx++) {
-          noProbeData.push({
-            value: [buckets[idx], nextVal],
-            meta: {
-              metric: metricMeta(metric),
-              missing: idx >= startIdx && idx <= endIdx
-            }
-          });
-        }
-        noProbeData.push(null);
-      }
-    };
-
-    for (let idx = 0; idx < noProbeFlags.length; idx++) {
-      if (!noProbeFlags[idx]) {
-        continue;
-      }
-      const startIdx = idx;
-      while (idx + 1 < noProbeFlags.length && noProbeFlags[idx + 1]) {
-        idx++;
-      }
-      const endIdx = idx;
-
-      let prevIdx = startIdx - 1;
-      while (prevIdx >= 0 && values[prevIdx] === null) {
-        prevIdx--;
-      }
-      let nextIdx = endIdx + 1;
-      while (nextIdx < values.length && values[nextIdx] === null) {
-        nextIdx++;
-      }
-
-      appendGap(startIdx, endIdx, prevIdx, nextIdx < values.length ? nextIdx : -1);
-    }
-
-    measured.push({
-      name: metric === "loss_rate" ? "Loss %" : "Latency",
-      type: "line",
-      smooth: true,
-      connectNulls: false,
-      showSymbol: false,
-      yAxisIndex: metric === "loss_rate" ? 0 : 1,
-      lineStyle: metric === "loss_rate" ? { width: 3 } : { width: 3, color: latencyColor },
-      data: measuredData
-    });
-
-    noProbe.push({
-      name: metric === "loss_rate" ? "No probe loss" : "No probe latency",
-      type: "line",
-      smooth: true,
-      connectNulls: false,
-      showSymbol: false,
-      yAxisIndex: metric === "loss_rate" ? 0 : 1,
-      lineStyle: { type: "dotted", width: 2, color: noProbeColor, opacity: 0.85 },
-      itemStyle: { color: noProbeColor },
-      data: noProbeData
-    });
-  });
-
-  return { measured, noProbe };
 }
 
 function readToken(name: string, fallback: string): string {
@@ -302,33 +87,16 @@ function readTokenFontSizePx(name: string, fallbackRem: number): number {
   return fallbackRem * rootFontSizePx;
 }
 
-function resolveLossColor(lossValue: number | null, palette: { success: string; danger: string; textSubtle: string }): string {
-  if (lossValue === null) {
-    return palette.textSubtle;
-  }
-  if (lossValue <= 0) {
-    return palette.success;
-  }
-  return palette.danger;
+function formatPercent(value: number): string {
+  return `${value.toFixed(2)}%`;
 }
 
-function getLatestLossValue(points: TimeSeriesPoint[]): number | null {
-  let latestTs = Number.NEGATIVE_INFINITY;
-  let latestLoss: number | null = null;
-  for (const point of points) {
-    if (point.sent_count <= 0 || point.loss_rate === null || point.loss_rate === undefined) {
-      continue;
-    }
-    const ts = new Date(point.bucket).getTime();
-    if (Number.isNaN(ts)) {
-      continue;
-    }
-    if (ts >= latestTs) {
-      latestTs = ts;
-      latestLoss = point.loss_rate;
-    }
-  }
-  return latestLoss;
+function formatLatency(value: number): string {
+  return `${value.toFixed(2)} ms`;
+}
+
+function formatLatencyAxis(value: number): string {
+  return `${value.toFixed(0)} ms`;
 }
 
 function formatChartRangeLabel(rangeStart: Date, rangeEnd: Date): string {
@@ -363,25 +131,60 @@ function formatChartRangeLabel(rangeStart: Date, rangeEnd: Date): string {
   return `Chart range: ${startLabel} - ${endLabel}${dayLabel} (local)`;
 }
 
-export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeEnd }: Props) {
-  const hasProbeActivityInRange = useMemo(() => points.some((point) => point.sent_count > 0), [points]);
-  const showNoProbeNote = !hasProbeActivityInRange;
-  const hasRenderableSeries = useMemo(
-    () =>
-      points.some(
-        (point) =>
-          point.sent_count > 0 &&
-          ((typeof point.loss_rate === "number" && Number.isFinite(point.loss_rate)) ||
-            (typeof point.avg_latency_ms === "number" && Number.isFinite(point.avg_latency_ms)))
-      ),
-    [points]
-  );
+function formatSnapshotLabel(capturedAt: Date): string {
+  if (Number.isNaN(capturedAt.getTime())) {
+    return "Snapshot captured: unavailable";
+  }
+  return `Snapshot captured: ${new Intl.DateTimeFormat(undefined, {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  }).format(capturedAt)} (local)`;
+}
+
+function buildSeriesPoints(points: TimeSeriesPoint[], metric: "loss_rate" | "avg_latency_ms") {
+  return points
+    .filter((point) => point.sent_count > 0)
+    .map((point) => {
+      const timestamp = new Date(point.bucket).getTime();
+      const value = metric === "loss_rate" ? point.loss_rate : point.avg_latency_ms;
+      if (!Number.isFinite(timestamp) || typeof value !== "number" || !Number.isFinite(value)) {
+        return null;
+      }
+      return [timestamp, value] as [number, number];
+    })
+    .filter((point): point is [number, number] => point !== null);
+}
+
+function resolveLossColor(lossPoints: Array<[number, number]>, success: string, danger: string): string {
+  const latest = lossPoints.length > 0 ? lossPoints[lossPoints.length - 1][1] : null;
+  if (latest === null) {
+    return success;
+  }
+  return latest <= 0 ? success : danger;
+}
+
+export function MonitorChart({
+  points,
+  endpointLabel,
+  rollup,
+  rangeStart,
+  rangeEnd,
+  snapshotCapturedAt,
+  snapshotVersion,
+  controlsChanged = false
+}: Props) {
   const chartRangeLabel = useMemo(() => formatChartRangeLabel(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
-  const chartRangeStartMs = rangeStart.getTime();
-  const chartRangeEndMs = rangeEnd.getTime();
-  const chartRef = useRef<ReactECharts | null>(null);
-  const chartBodyRef = useRef<HTMLDivElement | null>(null);
-  const chartKey = `${endpointLabel}-${rollup}-${chartRangeStartMs}-${chartRangeEndMs}`;
+  const snapshotLabel = useMemo(() => formatSnapshotLabel(snapshotCapturedAt), [snapshotCapturedAt]);
+  const rangeStartMs = rangeStart.getTime();
+  const rangeEndMs = rangeEnd.getTime();
+  const hasProbeActivity = useMemo(() => points.some((point) => point.sent_count > 0), [points]);
+  const lossSeries = useMemo(() => buildSeriesPoints(points, "loss_rate"), [points]);
+  const latencySeries = useMemo(() => buildSeriesPoints(points, "avg_latency_ms"), [points]);
+  const hasRenderableSeries = lossSeries.length > 0 || latencySeries.length > 0;
 
   const palette = {
     textMuted: readToken("--color-text-muted", "#b4c3db"),
@@ -393,70 +196,27 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
   const legendFontSizePx = readTokenFontSizePx("--text-sm", 0.74);
 
   const option = useMemo(() => {
-    const buckets = buildBuckets(rangeStart, rangeEnd, toStepMs(rollup));
-    const loss = buildMetricSeries(points, "loss_rate", buckets, rollup, palette.textSubtle, palette.success);
-    const latency = buildMetricSeries(points, "avg_latency_ms", buckets, rollup, palette.textSubtle, LATENCY_SERIES_COLOR);
-    const latestLossValue = getLatestLossValue(points);
-    const lossLegendColor = resolveLossColor(latestLossValue, palette);
-    const lossMeasured = loss.measured.map((seriesDef) => ({
-      ...seriesDef,
-      color: lossLegendColor,
-      lineStyle: { ...(seriesDef.lineStyle as Record<string, unknown>), color: lossLegendColor },
-      itemStyle: { color: lossLegendColor }
-    }));
-    const latencyMeasured = latency.measured.map((seriesDef) => ({
-      ...seriesDef,
-      color: LATENCY_SERIES_COLOR,
-      lineStyle: { ...(seriesDef.lineStyle as Record<string, unknown>), color: LATENCY_SERIES_COLOR },
-      itemStyle: { color: LATENCY_SERIES_COLOR }
-    }));
-
-    const maxLatency = points.reduce((acc, point) => {
-      if (point.avg_latency_ms === null || point.avg_latency_ms === undefined) {
-        return acc;
-      }
-      return Math.max(acc, point.avg_latency_ms);
-    }, 0);
+    const lossColor = resolveLossColor(lossSeries, palette.success, palette.danger);
+    const maxLatency = latencySeries.reduce((acc, [, value]) => Math.max(acc, value), 0);
     const latencyAxisMax = Math.max(20, Math.ceil(maxLatency / 20) * 20);
 
-    const measuredLossCount = lossMeasured.length;
-    const lossLegendNames = Array.from(
-      new Set(loss.measured.map((item) => ((item as { name?: string }).name ?? "Loss %")))
-    );
-    const latencyLegendNames = Array.from(
-      new Set(latency.measured.map((item) => ((item as { name?: string }).name ?? "Latency")))
-    );
-    const noProbeLegendName = "No probe period (dotted)";
-    const lossSeriesIndices = Array.from({ length: measuredLossCount }, (_, index) => index);
-    const noProbeLegendSeries = {
-      name: noProbeLegendName,
-      type: "line",
-      smooth: false,
-      connectNulls: false,
-      showSymbol: false,
-      symbol: "none",
-      yAxisIndex: 0,
-      silent: true,
-      tooltip: { show: false },
-      lineStyle: { type: "dotted", width: 2, color: palette.textSubtle, opacity: 0.85 },
-      itemStyle: { color: palette.textSubtle },
-      data: [[buckets[0] ?? rangeStart.getTime(), null]]
-    };
-
-    const series = [...lossMeasured, ...loss.noProbe, ...latencyMeasured, ...latency.noProbe, noProbeLegendSeries];
-
     return {
+      animation: false,
       backgroundColor: "transparent",
       tooltip: {
         trigger: "axis",
         formatter: (rawParams: unknown) => {
-          const params = (Array.isArray(rawParams) ? rawParams : [rawParams]) as Array<any>;
+          const params = (Array.isArray(rawParams) ? rawParams : [rawParams]) as Array<{
+            axisValue?: number | string;
+            seriesName?: string;
+            value?: unknown;
+          }>;
           if (params.length === 0) {
             return "";
           }
 
           const axisValue = params[0]?.axisValue;
-          const timestamp = typeof axisValue === "number" ? axisValue : new Date(axisValue).getTime();
+          const timestamp = typeof axisValue === "number" ? axisValue : new Date(axisValue ?? "").getTime();
           const header = Number.isNaN(timestamp)
             ? String(axisValue ?? "")
             : new Intl.DateTimeFormat(undefined, {
@@ -469,68 +229,28 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
 
           let lossValue: number | null = null;
           let latencyValue: number | null = null;
-          let noProbeLoss = false;
-          let noProbeLatency = false;
-          let sentCount: number | null = null;
-          let failCount: number | null = null;
-
           for (const param of params) {
-            const data = typeof param?.data === "object" && param?.data !== null ? param.data : null;
-            const meta = data?.meta;
-            const value = Array.isArray(param?.value) ? param.value[1] : null;
-
-            if (meta?.metric === "loss") {
-              if (meta.missing) {
-                noProbeLoss = true;
-              } else if (typeof value === "number") {
-                lossValue = value;
-                if (typeof meta.sentCount === "number") {
-                  sentCount = meta.sentCount;
-                }
-                if (typeof meta.failCount === "number") {
-                  failCount = meta.failCount;
-                }
-              }
+            const value = Array.isArray(param.value) ? param.value[1] : null;
+            if (typeof value !== "number" || !Number.isFinite(value)) {
+              continue;
             }
-
-            if (meta?.metric === "latency") {
-              if (meta.missing) {
-                noProbeLatency = true;
-              } else if (typeof value === "number") {
-                latencyValue = value;
-              }
+            if (param.seriesName === "Loss %") {
+              lossValue = value;
+            }
+            if (param.seriesName === "Latency") {
+              latencyValue = value;
             }
           }
 
-          const lines: string[] = [header];
-          lines.push(`Loss Rate: ${noProbeLoss ? "No probe data" : lossValue === null ? "—" : formatPercent(lossValue)}`);
-          lines.push(`Latency: ${noProbeLatency ? "No probe data" : latencyValue === null ? "—" : formatLatency(latencyValue)}`);
-
-          if (sentCount !== null && failCount !== null) {
-            lines.push(`Sent/Fail: ${sentCount}/${failCount}`);
-          }
-          if (noProbeLoss || noProbeLatency) {
-            lines.push("Dotted segments indicate no probe activity.");
-          }
-          return lines.join("<br/>");
+          return [header, `Loss Rate: ${lossValue === null ? "—" : formatPercent(lossValue)}`, `Latency: ${latencyValue === null ? "—" : formatLatency(latencyValue)}`].join(
+            "<br/>"
+          );
         }
       },
       legend: {
-        data: [...lossLegendNames, ...latencyLegendNames, noProbeLegendName],
+        data: ["Loss %", "Latency"],
         textStyle: { color: palette.textMuted, fontSize: legendFontSizePx }
       },
-      visualMap: [
-        {
-          show: false,
-          type: "piecewise",
-          dimension: 1,
-          seriesIndex: lossSeriesIndices,
-          pieces: [
-            { lte: 0, color: palette.success },
-            { gt: 0, color: palette.danger }
-          ]
-        }
-      ],
       grid: {
         left: 64,
         right: 56,
@@ -539,8 +259,8 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
       },
       xAxis: {
         type: "time",
-        min: chartRangeStartMs,
-        max: chartRangeEndMs,
+        min: rangeStartMs,
+        max: rangeEndMs,
         axisLabel: { color: palette.textSubtle },
         axisLine: { lineStyle: { color: palette.border } },
         splitLine: { lineStyle: { color: palette.border } }
@@ -573,99 +293,81 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
           splitLine: { show: false }
         }
       ],
-      series
+      series: [
+        {
+          name: "Loss %",
+          type: "line",
+          smooth: true,
+          showSymbol: false,
+          connectNulls: false,
+          yAxisIndex: 0,
+          data: lossSeries,
+          lineStyle: { width: 3, color: lossColor },
+          itemStyle: { color: lossColor }
+        },
+        {
+          name: "Latency",
+          type: "line",
+          smooth: true,
+          showSymbol: false,
+          connectNulls: false,
+          yAxisIndex: 1,
+          data: latencySeries,
+          lineStyle: { width: 3, color: LATENCY_SERIES_COLOR },
+          itemStyle: { color: LATENCY_SERIES_COLOR }
+        }
+      ]
     };
   }, [
     legendFontSizePx,
+    latencySeries,
+    lossSeries,
     palette.border,
     palette.danger,
     palette.success,
     palette.textMuted,
     palette.textSubtle,
-    points,
-    chartRangeEndMs,
-    chartRangeStartMs,
-    rangeEnd,
-    rangeStart,
-    rollup
+    rangeEndMs,
+    rangeStartMs
   ]);
-
-  useEffect(() => {
-    const chartBody = chartBodyRef.current;
-    if (!chartBody) {
-      return;
-    }
-
-    let frameID = 0
-    const resizeChart = () => {
-      if (frameID !== 0) {
-        window.cancelAnimationFrame(frameID);
-      }
-      frameID = window.requestAnimationFrame(() => {
-        frameID = 0;
-        try {
-          chartRef.current?.getEchartsInstance().resize();
-        } catch {
-          // Ignore resize races during endpoint switches and unmount/remount cycles.
-        }
-      });
-    };
-
-    resizeChart();
-
-    if (typeof ResizeObserver !== "undefined") {
-      const observer = new ResizeObserver(() => {
-        resizeChart();
-      });
-      observer.observe(chartBody);
-      return () => {
-        observer.disconnect();
-        if (frameID !== 0) {
-          window.cancelAnimationFrame(frameID);
-        }
-      };
-    }
-
-    window.addEventListener("resize", resizeChart);
-    return () => {
-      window.removeEventListener("resize", resizeChart);
-      if (frameID !== 0) {
-        window.cancelAnimationFrame(frameID);
-      }
-    };
-  }, [chartKey, hasRenderableSeries, showNoProbeNote]);
 
   return (
     <div className="panel chart-panel">
       <div className="chart-header">
         <div>
           <div className="chart-title-row">
-            <div className="chart-title">Loss & Latency Timeline</div>
+            <div className="chart-title">Loss &amp; Latency Timeline</div>
             <div className="chart-time-range" aria-label={chartRangeLabel}>
               {chartRangeLabel}
             </div>
           </div>
           <div className="chart-subtitle">Selected endpoint: {endpointLabel}</div>
+          <div className="chart-subtitle">{snapshotLabel}</div>
+          <div className="chart-subtitle">Rollup: {rollup}</div>
         </div>
       </div>
-      {showNoProbeNote ? (
-        <div className="info-banner chart-no-probe-banner" role="status" aria-live="polite">
-          <span className="chart-no-probe-dot" aria-hidden />
-          <span>No probe activity in this selected period. This is expected when probing was stopped or no probes ran in this window.</span>
+      {controlsChanged ? (
+        <div className="info-banner chart-snapshot-note" role="status" aria-live="polite">
+          Controls changed. Reselect an endpoint to refresh this chart snapshot.
         </div>
       ) : null}
-      <div className="chart-body" ref={chartBodyRef}>
-        <ChartErrorBoundary resetKey={chartKey}>
+      {!hasProbeActivity ? (
+        <div className="info-banner chart-no-probe-banner" role="status" aria-live="polite">
+          <span className="chart-no-probe-dot" aria-hidden />
+          <span>No probe activity was recorded in this captured period.</span>
+        </div>
+      ) : null}
+      <div className="chart-body">
+        <ChartErrorBoundary resetKey={String(snapshotVersion)}>
           {!hasRenderableSeries ? (
             <div className="state-panel chart-empty-series-panel">
-              No chart data is available for this endpoint in the selected period yet.
+              No chart data is available for this captured snapshot.
             </div>
           ) : (
             <ReactECharts
-              key={chartKey}
-              ref={chartRef}
               option={option}
               notMerge
+              lazyUpdate
               className="chart-canvas"
               style={{ height: "100%", width: "100%" }}
             />

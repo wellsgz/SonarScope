@@ -488,6 +488,11 @@
   font-weight: 600;
 }
 
+.chart-snapshot-note {
+  margin: var(--space-2) var(--space-4) 0;
+  font-weight: 600;
+}
+
 .chart-no-probe-dot {
   width: 0.52rem;
   height: 0.52rem;
