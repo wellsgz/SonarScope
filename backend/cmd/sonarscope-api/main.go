@@ -88,6 +88,7 @@ func main() {
 	<-signalCh
 
 	probeEngine.Stop()
+	hub.Close()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer shutdownCancel()
