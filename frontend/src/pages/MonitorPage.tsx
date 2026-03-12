@@ -374,13 +374,13 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   }, [monitorQuery.data?.total_pages, page]);
 
   useEffect(() => {
-    if (!monitorRows.length || selectedEndpointID === null) {
+    if (selectedEndpointID === null || monitorQuery.isPlaceholderData) {
       return;
     }
     if (!monitorRows.some((row) => row.endpoint_id === selectedEndpointID)) {
       setSelectedEndpointID(null);
     }
-  }, [monitorRows, selectedEndpointID]);
+  }, [monitorRows, selectedEndpointID, monitorQuery.isPlaceholderData]);
 
   useEffect(() => {
     if (dataScope !== "range") {

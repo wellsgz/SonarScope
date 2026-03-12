@@ -1,5 +1,5 @@
 import ReactECharts from "echarts-for-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { TimeSeriesPoint, TimeSeriesResponse } from "../types/api";
 
 type Props = {
@@ -335,6 +335,8 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
   const chartRangeLabel = useMemo(() => formatChartRangeLabel(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
   const chartRangeStartMs = rangeStart.getTime();
   const chartRangeEndMs = rangeEnd.getTime();
+  const chartRef = useRef<ReactECharts | null>(null);
+  const chartBodyRef = useRef<HTMLDivElement | null>(null);
 
   const palette = {
     textMuted: readToken("--color-text-muted", "#b4c3db"),
@@ -543,6 +545,47 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
     rollup
   ]);
 
+  useEffect(() => {
+    const chartBody = chartBodyRef.current;
+    if (!chartBody) {
+      return;
+    }
+
+    let frameID = 0
+    const resizeChart = () => {
+      if (frameID !== 0) {
+        window.cancelAnimationFrame(frameID);
+      }
+      frameID = window.requestAnimationFrame(() => {
+        frameID = 0;
+        chartRef.current?.getEchartsInstance().resize();
+      });
+    };
+
+    resizeChart();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        resizeChart();
+      });
+      observer.observe(chartBody);
+      return () => {
+        observer.disconnect();
+        if (frameID !== 0) {
+          window.cancelAnimationFrame(frameID);
+        }
+      };
+    }
+
+    window.addEventListener("resize", resizeChart);
+    return () => {
+      window.removeEventListener("resize", resizeChart);
+      if (frameID !== 0) {
+        window.cancelAnimationFrame(frameID);
+      }
+    };
+  }, [endpointLabel, showNoProbeNote, chartRangeEndMs, chartRangeStartMs, points.length, rollup]);
+
   return (
     <div className="panel chart-panel">
       <div className="chart-header">
@@ -562,7 +605,9 @@ export function MonitorChart({ points, endpointLabel, rollup, rangeStart, rangeE
           <span>No probe activity in this selected period. This is expected when probing was stopped or no probes ran in this window.</span>
         </div>
       ) : null}
-      <ReactECharts option={option} className="chart-canvas" />
+      <div className="chart-body" ref={chartBodyRef}>
+        <ReactECharts ref={chartRef} option={option} className="chart-canvas" style={{ height: "100%", width: "100%" }} />
+      </div>
     </div>
   );
 }
