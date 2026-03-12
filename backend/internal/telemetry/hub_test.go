@@ -151,6 +151,30 @@ func TestHubReadPumpDisconnectAndClose(t *testing.T) {
 	waitForSignal(t, writeDoneB, "clientB write pump exit after close")
 }
 
+func TestHubWriteClientPayloadAttemptsWriteAfterDoneClosed(t *testing.T) {
+	hub := NewHub()
+
+	conn, peer := newPipeWebSocketConn(t)
+	defer peer.Close()
+
+	c := newClient(conn)
+	close(c.done)
+
+	written := awaitPeerRead(peer)
+	if err := hub.writeClientPayload(c, []byte(`{"type":"probe_update","endpoint_id":99}`)); err != nil {
+		t.Fatalf("write client payload: %v", err)
+	}
+
+	select {
+	case n := <-written:
+		if n <= 0 {
+			t.Fatal("expected websocket payload bytes after done was closed")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for websocket payload")
+	}
+}
+
 func newPipeWebSocketConn(t *testing.T) (*websocket.Conn, net.Conn) {
 	t.Helper()
 

@@ -108,20 +108,18 @@ func (h *Hub) writePump(c *client) {
 		case <-c.done:
 			return
 		case payload := <-c.send:
-			select {
-			case <-c.done:
-				return
-			default:
-			}
-
-			if err := c.conn.SetWriteDeadline(time.Now().Add(clientWriteTimeout)); err != nil {
-				return
-			}
-			if err := c.conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+			if err := h.writeClientPayload(c, payload); err != nil {
 				return
 			}
 		}
 	}
+}
+
+func (h *Hub) writeClientPayload(c *client, payload []byte) error {
+	if err := c.conn.SetWriteDeadline(time.Now().Add(clientWriteTimeout)); err != nil {
+		return err
+	}
+	return c.conn.WriteMessage(websocket.TextMessage, payload)
 }
 
 func (h *Hub) Broadcast(event any) {
