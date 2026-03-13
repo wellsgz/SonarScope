@@ -2056,7 +2056,7 @@ export function InventoryPage() {
                 </div>
               </div>
 
-              <div className="inventory-danger-card">
+              <div className="inventory-danger-card inventory-danger-card-full">
                 <h4>Delete All Endpoints</h4>
                 <div className="inventory-danger-card-body">
                   <p className="inventory-danger-card-help">

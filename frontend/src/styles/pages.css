@@ -972,6 +972,10 @@
   min-height: 100%;
 }
 
+.inventory-danger-card-full {
+  grid-column: 1 / -1;
+}
+
 .inventory-danger-card-body {
   display: flex;
   flex-direction: column;
