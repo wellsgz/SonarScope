@@ -19,6 +19,8 @@ import type {
 } from "../types/api";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const IMPORT_PREVIEW_TIMEOUT_MS = 120_000;
 
 function buildURL(path: string): string {
   if (!API_BASE) {
@@ -34,8 +36,68 @@ function buildWSURL(path: string): string {
   return `${protocol}//${base.host}${path}`;
 }
 
+function formatTimeoutMessage(timeoutMs: number): string {
+  const seconds = timeoutMs / 1000;
+  if (Number.isInteger(seconds)) {
+    return `Request timed out after ${seconds} seconds`;
+  }
+  return `Request timed out after ${timeoutMs} ms`;
+}
+
+function createTimeoutSignal(timeoutMs: number, existingSignal?: AbortSignal | null) {
+  const controller = new AbortController();
+  let timeoutTriggered = false;
+
+  const abortFromExistingSignal = () => {
+    if (!controller.signal.aborted) {
+      controller.abort(existingSignal?.reason);
+    }
+  };
+
+  if (existingSignal) {
+    if (existingSignal.aborted) {
+      abortFromExistingSignal();
+    } else {
+      existingSignal.addEventListener("abort", abortFromExistingSignal, { once: true });
+    }
+  }
+
+  const timeoutID = setTimeout(() => {
+    timeoutTriggered = true;
+    if (!controller.signal.aborted) {
+      controller.abort(new DOMException("Request timed out", "TimeoutError"));
+    }
+  }, timeoutMs);
+
+  return {
+    signal: controller.signal,
+    didTimeout: () => timeoutTriggered,
+    cleanup: () => {
+      clearTimeout(timeoutID);
+      existingSignal?.removeEventListener("abort", abortFromExistingSignal);
+    }
+  };
+}
+
+async function fetchWithTimeout(path: string, init?: RequestInit, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS): Promise<Response> {
+  const { signal, didTimeout, cleanup } = createTimeoutSignal(timeoutMs, init?.signal);
+  try {
+    return await fetch(buildURL(path), {
+      ...init,
+      signal
+    });
+  } catch (error) {
+    if (didTimeout()) {
+      throw new Error(formatTimeoutMessage(timeoutMs));
+    }
+    throw error;
+  } finally {
+    cleanup();
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(buildURL(path), {
+  const response = await fetchWithTimeout(path, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -393,10 +455,10 @@ export async function importInventoryPreview(file: File): Promise<ImportPreview>
   const form = new FormData();
   form.append("file", file);
 
-  const response = await fetch(buildURL("/api/inventory/import-preview"), {
+  const response = await fetchWithTimeout("/api/inventory/import-preview", {
     method: "POST",
     body: form
-  });
+  }, IMPORT_PREVIEW_TIMEOUT_MS);
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
     try {
@@ -415,7 +477,7 @@ export async function importInventoryPreview(file: File): Promise<ImportPreview>
 export async function cancelInventoryPreview(
   previewID: string
 ): Promise<{ deleted: boolean; preview_id: string; not_found?: boolean }> {
-  const response = await fetch(buildURL(`/api/inventory/import-preview/${encodeURIComponent(previewID)}`), {
+  const response = await fetchWithTimeout(`/api/inventory/import-preview/${encodeURIComponent(previewID)}`, {
     method: "DELETE"
   });
   if (response.status === 404) {

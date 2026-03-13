@@ -110,6 +110,7 @@ type Engine struct {
 	engineID          int
 	packetConnFactory packetConnFactory
 
+	lifecycleMu sync.Mutex
 	mu         sync.Mutex
 	running    bool
 	cancel     context.CancelFunc
@@ -126,6 +127,9 @@ type Engine struct {
 
 	roundMu     sync.Mutex
 	activeRound *roundTracker
+
+	payloadMu    sync.Mutex
+	payloadCache map[int][]byte
 }
 
 type Status struct {
@@ -151,6 +155,7 @@ func newEngineWithDeps(st probeStore, hub *telemetry.Hub, options Options, initi
 		engineID:            os.Getpid() & 0xffff,
 		packetConnFactory:   factory,
 		pending:             map[int]*pendingProbe{},
+		payloadCache:        map[int][]byte{},
 	}
 	engine.settings.Store(initialSettings)
 	return engine
@@ -187,7 +192,10 @@ func (e *Engine) Start(scope string, groupIDs []int64) error {
 		return errors.New("group_ids required for groups scope")
 	}
 
-	e.Stop()
+	e.lifecycleMu.Lock()
+	defer e.lifecycleMu.Unlock()
+
+	e.stopLocked()
 
 	conn, err := e.packetConnFactory()
 	if err != nil {
@@ -222,6 +230,12 @@ func (e *Engine) Start(scope string, groupIDs []int64) error {
 }
 
 func (e *Engine) Stop() bool {
+	e.lifecycleMu.Lock()
+	defer e.lifecycleMu.Unlock()
+	return e.stopLocked()
+}
+
+func (e *Engine) stopLocked() bool {
 	e.mu.Lock()
 	if !e.running {
 		e.mu.Unlock()
@@ -800,7 +814,7 @@ func (e *Engine) sendICMPEcho(ctx context.Context, ip string, payloadSize, timeo
 	}
 	defer e.unregisterPendingProbe(seq, pending)
 
-	payload := bytes.Repeat([]byte{0x42}, payloadSize)
+	payload := e.payloadBytes(payloadSize)
 	msg := icmp.Message{
 		Type: ipv4.ICMPTypeEcho,
 		Code: 0,
@@ -839,6 +853,19 @@ func (e *Engine) sendICMPEcho(ctx context.Context, ip string, payloadSize, timeo
 		latency := reply.latencyMs
 		return &latency, &replyIP, reply.ttl, nil
 	}
+}
+
+func (e *Engine) payloadBytes(payloadSize int) []byte {
+	e.payloadMu.Lock()
+	defer e.payloadMu.Unlock()
+
+	if payload, ok := e.payloadCache[payloadSize]; ok {
+		return payload
+	}
+
+	payload := bytes.Repeat([]byte{0x42}, payloadSize)
+	e.payloadCache[payloadSize] = payload
+	return payload
 }
 
 func (e *Engine) currentConn() packetConn {

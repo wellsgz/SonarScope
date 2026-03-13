@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -190,6 +191,12 @@ func (c *fakePacketConn) WriteTimes() []time.Time {
 	items := make([]time.Time, len(c.writeTimes))
 	copy(items, c.writeTimes)
 	return items
+}
+
+func (c *fakePacketConn) Closed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
 }
 
 func (c *fakePacketConn) InjectEchoReply(id, seq int, peerIP string) error {
@@ -708,6 +715,124 @@ func TestLoopDoesNotStartOverlappingRounds(t *testing.T) {
 
 	if got := conn.WriteCount(); got != 1 {
 		t.Fatalf("expected a single in-flight round write, got %d", got)
+	}
+}
+
+func TestConcurrentStartSerializesLifecycle(t *testing.T) {
+	store := &fakeProbeStore{}
+	options := defaultTestOptions()
+
+	firstFactoryEntered := make(chan struct{})
+	secondFactoryEntered := make(chan struct{})
+	releaseFirstFactory := make(chan struct{})
+
+	var factoryCalls atomic.Int32
+	var connsMu sync.Mutex
+	conns := make([]*fakePacketConn, 0, 2)
+
+	engine := newEngineWithDeps(store, telemetry.NewHub(), options, model.Settings{
+		PingIntervalSec: 1,
+		ICMPPayloadSize: 56,
+		ICMPTimeoutMs:   500,
+	}, func() (packetConn, error) {
+		conn := newFakePacketConn()
+
+		connsMu.Lock()
+		conns = append(conns, conn)
+		connsMu.Unlock()
+
+		switch factoryCalls.Add(1) {
+		case 1:
+			close(firstFactoryEntered)
+			<-releaseFirstFactory
+		case 2:
+			close(secondFactoryEntered)
+		}
+
+		return conn, nil
+	})
+
+	start1 := make(chan error, 1)
+	start2 := make(chan error, 1)
+	go func() { start1 <- engine.Start("all", nil) }()
+
+	select {
+	case <-firstFactoryEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first Start did not reach packetConnFactory")
+	}
+
+	go func() { start2 <- engine.Start("all", nil) }()
+
+	select {
+	case <-secondFactoryEntered:
+		t.Fatal("second Start reached packetConnFactory before first Start completed")
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	close(releaseFirstFactory)
+
+	select {
+	case err := <-start1:
+		if err != nil {
+			t.Fatalf("first Start error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first Start")
+	}
+
+	select {
+	case <-secondFactoryEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second Start did not reach packetConnFactory")
+	}
+
+	select {
+	case err := <-start2:
+		if err != nil {
+			t.Fatalf("second Start error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for second Start")
+	}
+
+	if !engine.Stop() {
+		t.Fatal("expected final Stop to stop the running engine")
+	}
+
+	connsMu.Lock()
+	defer connsMu.Unlock()
+	if len(conns) != 2 {
+		t.Fatalf("packetConnFactory calls = %d, want 2", len(conns))
+	}
+	for i, conn := range conns {
+		if !conn.Closed() {
+			t.Fatalf("connection %d was not closed", i+1)
+		}
+	}
+}
+
+func TestPayloadBytesReusesCachedPayloadBySize(t *testing.T) {
+	engine := newTestEngine(&fakeProbeStore{}, defaultTestOptions(), model.Settings{}, newFakePacketConn())
+
+	first := engine.payloadBytes(56)
+	second := engine.payloadBytes(56)
+	other := engine.payloadBytes(64)
+
+	if len(first) != 56 {
+		t.Fatalf("first payload len = %d, want 56", len(first))
+	}
+	for i, b := range first {
+		if b != 0x42 {
+			t.Fatalf("first payload byte %d = %x, want 42", i, b)
+		}
+	}
+
+	if len(second) == 0 || &first[0] != &second[0] {
+		t.Fatal("expected same-size payload requests to reuse cached slice")
+	}
+	if len(other) == 0 || &first[0] == &other[0] {
+		t.Fatal("expected different-size payload requests to use a distinct cached slice")
 	}
 }
 
