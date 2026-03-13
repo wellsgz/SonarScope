@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent } from
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
-  applyInventoryBatchGroupAssignment,
   cancelInventoryPreview,
   createInventoryEndpoint,
   downloadInventoryImportTemplateCSV,
@@ -16,7 +15,6 @@ import {
   listInventoryEndpoints,
   listInventoryFilterOptions,
   previewInventoryBatchDelete,
-  previewInventoryBatchGroupAssignment,
   stopProbe,
   startDeleteAllJob,
   startDeleteByGroupJob,
@@ -28,8 +26,6 @@ import type {
   ImportCandidate,
   ImportPreview,
   InventoryBatchDeletePreviewResponse,
-  InventoryBatchGroupApplyResponse,
-  InventoryBatchGroupPreviewResponse,
   InventoryBatchMatchField,
   InventoryBatchMatchSpec,
   InventoryDeleteJobStatus,
@@ -341,7 +337,6 @@ export function InventoryPage() {
   const [selection, setSelection] = useState<Record<string, "add" | "update">>({});
   const [importExpanded, setImportExpanded] = useState(false);
   const [singleEndpointExpanded, setSingleEndpointExpanded] = useState(false);
-  const [batchGroupExpanded, setBatchGroupExpanded] = useState(false);
   const [lastImportSummary, setLastImportSummary] = useState<{
     added: number;
     updated: number;
@@ -370,12 +365,6 @@ export function InventoryPage() {
   const [lastAddedEndpoint, setLastAddedEndpoint] = useState<{ ip_address: string; hostname: string } | null>(null);
   const [showAddSuccessNotice, setShowAddSuccessNotice] = useState(false);
   const [singleEndpointAdvancedOpen, setSingleEndpointAdvancedOpen] = useState(false);
-  const [batchGroupMatch, setBatchGroupMatch] = useState<InventoryBatchMatchFormState>(defaultBatchMatchState);
-  const [batchGroupTargetMode, setBatchGroupTargetMode] = useState<"existing" | "create">("existing");
-  const [batchGroupTargetID, setBatchGroupTargetID] = useState("");
-  const [batchGroupTargetName, setBatchGroupTargetName] = useState("");
-  const [batchGroupPreview, setBatchGroupPreview] = useState<InventoryBatchGroupPreviewResponse | null>(null);
-  const [batchGroupResult, setBatchGroupResult] = useState<InventoryBatchGroupApplyResponse | null>(null);
   const [batchDeleteMatch, setBatchDeleteMatch] = useState<InventoryBatchMatchFormState>(defaultBatchMatchState);
   const [batchDeletePreview, setBatchDeletePreview] = useState<InventoryBatchDeletePreviewResponse | null>(null);
   const [batchDeleteConfirmOpen, setBatchDeleteConfirmOpen] = useState(false);
@@ -604,24 +593,6 @@ export function InventoryPage() {
     }
   });
 
-  const batchGroupPreviewMutation = useMutation({
-    mutationFn: (payload: { match: InventoryBatchMatchSpec; target: { mode: "existing" | "create"; group_id?: number; group_name?: string } }) =>
-      previewInventoryBatchGroupAssignment(payload),
-    onSuccess: (data) => {
-      setBatchGroupPreview(data);
-      setBatchGroupResult(null);
-    }
-  });
-
-  const batchGroupApplyMutation = useMutation({
-    mutationFn: (payload: { endpoint_ids: number[]; target: { mode: "existing" | "create"; group_id?: number; group_name?: string } }) =>
-      applyInventoryBatchGroupAssignment(payload),
-    onSuccess: (data) => {
-      setBatchGroupResult(data);
-      invalidateInventoryAndMonitorQueries();
-    }
-  });
-
   const batchDeletePreviewMutation = useMutation({
     mutationFn: (payload: { match: InventoryBatchMatchSpec }) => previewInventoryBatchDelete(payload),
     onSuccess: (data) => {
@@ -763,42 +734,10 @@ export function InventoryPage() {
     exportCSVMutation.isPending || inventoryQuery.isLoading || (inventoryQuery.data?.length || 0) === 0;
   const filteredEndpointCount = inventoryQuery.data?.length ?? 0;
   const inventoryTableColumnCount = 11 + enabledCustomFields.length;
-  const batchGroupTargetInvalid =
-    batchGroupTargetMode === "existing" ? !batchGroupTargetID : batchGroupTargetName.trim() === "";
-  const batchGroupMatchInvalid =
-    batchGroupMatch.mode === "criteria"
-      ? !batchGroupMatch.regex.trim()
-      : splitBatchIPList(batchGroupMatch.ipListText).length === 0;
   const batchDeleteMatchInvalid =
     batchDeleteMatch.mode === "criteria"
       ? !batchDeleteMatch.regex.trim()
       : splitBatchIPList(batchDeleteMatch.ipListText).length === 0;
-
-  const batchGroupTargetPayload = useMemo(
-    () =>
-      batchGroupTargetMode === "existing"
-        ? ({
-            mode: "existing" as const,
-            group_id: batchGroupTargetID ? Number(batchGroupTargetID) : undefined
-          })
-        : ({
-            mode: "create" as const,
-            group_name: batchGroupTargetName.trim()
-          }),
-    [batchGroupTargetID, batchGroupTargetMode, batchGroupTargetName]
-  );
-
-  function resetBatchGroupPreviewState() {
-    setBatchGroupPreview(null);
-    setBatchGroupResult(null);
-    batchGroupPreviewMutation.reset();
-    batchGroupApplyMutation.reset();
-  }
-
-  function updateBatchGroupMatch(next: InventoryBatchMatchFormState) {
-    setBatchGroupMatch(next);
-    resetBatchGroupPreviewState();
-  }
 
   function updateBatchDeleteMatch(next: InventoryBatchMatchFormState) {
     setBatchDeleteMatch(next);
@@ -848,10 +787,6 @@ export function InventoryPage() {
 
   useEffect(() => {
     const availableFields = new Set(batchMatchFieldOptions.map((option) => option.value));
-    if (!availableFields.has(batchGroupMatch.field)) {
-      setBatchGroupMatch((prev) => ({ ...prev, field: "hostname" }));
-      resetBatchGroupPreviewState();
-    }
     if (!availableFields.has(batchDeleteMatch.field)) {
       setBatchDeleteMatch((prev) => ({ ...prev, field: "hostname" }));
       setBatchDeletePreview(null);
@@ -859,7 +794,7 @@ export function InventoryPage() {
       batchDeletePreviewMutation.reset();
       startDeleteMatchJobMutation.reset();
     }
-  }, [batchDeleteMatch.field, batchGroupMatch.field, batchMatchFieldOptions]);
+  }, [batchDeleteMatch.field, batchMatchFieldOptions]);
 
   const handleApplySelected = async () => {
     if (!preview || Object.keys(selection).length === 0 || groupAssignmentInvalid || isPreparingImportApply || applyMutation.isPending) {
@@ -882,27 +817,6 @@ export function InventoryPage() {
     } finally {
       setIsPreparingImportApply(false);
     }
-  };
-
-  const handlePreviewBatchGroup = () => {
-    if (batchGroupMatchInvalid || batchGroupTargetInvalid) {
-      return;
-    }
-    setBatchGroupResult(null);
-    batchGroupPreviewMutation.mutate({
-      match: buildBatchMatchSpec(batchGroupMatch),
-      target: batchGroupTargetPayload
-    });
-  };
-
-  const handleApplyBatchGroup = () => {
-    if (!batchGroupPreview || batchGroupPreview.preview.endpoint_ids.length === 0 || batchGroupTargetInvalid) {
-      return;
-    }
-    batchGroupApplyMutation.mutate({
-      endpoint_ids: batchGroupPreview.preview.endpoint_ids,
-      target: batchGroupTargetPayload
-    });
   };
 
   const handlePreviewBatchDelete = () => {
@@ -1504,168 +1418,6 @@ export function InventoryPage() {
         ) : null}
       </section>
 
-      <section
-        className={`panel inventory-batch-panel inventory-collapsible ${batchGroupExpanded ? "is-expanded" : "is-collapsed"}`}
-      >
-        <div className="panel-header inventory-section-header">
-          <div className="inventory-section-heading">
-            <h2 className="panel-title">Batch Group Assignment</h2>
-            <p className="panel-subtitle">
-              Match endpoints across the full inventory, preview the result, then move the matches into an existing or new
-              group.
-            </p>
-            {batchGroupResult ? (
-              <div className="inventory-inline-summary" role="status" aria-live="polite">
-                Last batch assignment: {batchGroupResult.assigned_added} endpoint(s) moved to "{batchGroupResult.group_name}".
-              </div>
-            ) : null}
-          </div>
-          <button className="btn btn-small" type="button" onClick={() => setBatchGroupExpanded((current) => !current)}>
-            {batchGroupExpanded ? "Collapse" : "Expand"}
-          </button>
-        </div>
-
-        {batchGroupExpanded ? (
-          <div className="inventory-panel-body">
-            <InventoryBatchMatchBuilder
-              value={batchGroupMatch}
-              onChange={updateBatchGroupMatch}
-              fieldOptions={batchMatchFieldOptions}
-            />
-
-            <div className="inventory-batch-target-grid">
-              <label>
-                Assignment Mode
-                <select
-                  value={batchGroupTargetMode}
-                  onChange={(event) => {
-                    setBatchGroupTargetMode(event.target.value as "existing" | "create");
-                    setBatchGroupTargetID("");
-                    setBatchGroupTargetName("");
-                    resetBatchGroupPreviewState();
-                  }}
-                >
-                  <option value="existing">Existing Group</option>
-                  <option value="create">Create Group</option>
-                </select>
-              </label>
-
-              {batchGroupTargetMode === "existing" ? (
-                <label>
-                  Select Group
-                  <select
-                    value={batchGroupTargetID}
-                    onChange={(event) => {
-                      setBatchGroupTargetID(event.target.value);
-                      resetBatchGroupPreviewState();
-                    }}
-                    disabled={groupsQuery.isLoading}
-                  >
-                    <option value="">Select a group</option>
-                    {(groupsQuery.data || [])
-                      .filter((group) => !group.is_system)
-                      .map((group) => (
-                        <option key={group.id} value={String(group.id)}>
-                          {group.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              ) : (
-                <label>
-                  New Group Name
-                  <input
-                    value={batchGroupTargetName}
-                    onChange={(event) => {
-                      setBatchGroupTargetName(event.target.value);
-                      resetBatchGroupPreviewState();
-                    }}
-                    placeholder="ROW-N"
-                  />
-                </label>
-              )}
-            </div>
-
-            <div className="field-help">
-              This action evaluates the full inventory, not the filters in the table below. Endpoints already in the target
-              group stay there; matched endpoints not already in that group will be moved into it.
-            </div>
-
-            {batchGroupPreviewMutation.error && (
-              <div className="error-banner" role="alert" aria-live="assertive">
-                {(batchGroupPreviewMutation.error as Error).message}
-              </div>
-            )}
-            {batchGroupApplyMutation.error && (
-              <div className="error-banner" role="alert" aria-live="assertive">
-                {(batchGroupApplyMutation.error as Error).message}
-              </div>
-            )}
-            {batchGroupResult ? (
-              <div className="success-banner" role="status" aria-live="polite">
-                Moved {batchGroupResult.assigned_added} endpoint(s) into "{batchGroupResult.group_name}".
-                {batchGroupResult.already_in_group > 0 ? ` ${batchGroupResult.already_in_group} already matched that group.` : ""}
-              </div>
-            ) : null}
-            {batchGroupPreview?.used_existing_by_name ? (
-              <div className="info-banner" role="status" aria-live="polite">
-                Group "{batchGroupPreview.group_name}" already exists; the preview uses the existing group.
-              </div>
-            ) : null}
-
-            <div className="inventory-actions">
-              <button
-                className="btn"
-                type="button"
-                disabled={batchGroupMatchInvalid || batchGroupTargetInvalid || batchGroupPreviewMutation.isPending}
-                onClick={handlePreviewBatchGroup}
-              >
-                {batchGroupPreviewMutation.isPending ? "Previewing..." : "Preview Matches"}
-              </button>
-              <button
-                className="btn btn-primary"
-                type="button"
-                disabled={
-                  !batchGroupPreview ||
-                  batchGroupPreview.preview.endpoint_ids.length === 0 ||
-                  batchGroupTargetInvalid ||
-                  batchGroupApplyMutation.isPending
-                }
-                onClick={handleApplyBatchGroup}
-              >
-                {batchGroupApplyMutation.isPending ? "Applying..." : "Apply Group Assignment"}
-              </button>
-            </div>
-
-            {batchGroupPreview ? (
-              <div className="inventory-batch-preview-card">
-                <InventoryBatchStatsChips
-                  matchedCount={batchGroupPreview.preview.stats.matched_count}
-                  submittedCount={batchGroupPreview.preview.stats.submitted_count}
-                  uniqueCount={batchGroupPreview.preview.stats.unique_count}
-                  invalidCount={batchGroupPreview.preview.stats.invalid_count}
-                  unmatchedCount={batchGroupPreview.preview.stats.unmatched_count}
-                />
-                <div className="summary-row inventory-batch-summary-row">
-                  <span className="status-chip">Already in target: {batchGroupPreview.already_in_group}</span>
-                  <span className="status-chip">Will assign: {batchGroupPreview.would_assign}</span>
-                  <span className="status-chip">Target: {batchGroupPreview.group_name || "New group"}</span>
-                </div>
-                {batchGroupPreview.preview.stats.unmatched_sample?.length ? (
-                  <div className="field-help">
-                    Unmatched sample: {batchGroupPreview.preview.stats.unmatched_sample.join(", ")}
-                  </div>
-                ) : null}
-                <InventoryBatchPreviewTable
-                  rows={batchGroupPreview.preview.sample}
-                  emptyMessage="No endpoints matched the current batch group assignment preview."
-                />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </section>
-
       <section className="panel inventory-list-panel">
         <div className="panel-header">
           <div className="inventory-title-row">
@@ -1781,8 +1533,6 @@ export function InventoryPage() {
             exportCSVMutation.error ||
             updateMutation.error ||
             deleteEndpointMutation.error ||
-            batchGroupPreviewMutation.error ||
-            batchGroupApplyMutation.error ||
             batchDeletePreviewMutation.error ||
             startDeleteMatchJobMutation.error ||
             startDeleteByGroupJobMutation.error ||
@@ -1794,8 +1544,6 @@ export function InventoryPage() {
                 (exportCSVMutation.error as Error | undefined)?.message ||
                 (updateMutation.error as Error | undefined)?.message ||
                 (deleteEndpointMutation.error as Error | undefined)?.message ||
-                (batchGroupPreviewMutation.error as Error | undefined)?.message ||
-                (batchGroupApplyMutation.error as Error | undefined)?.message ||
                 (batchDeletePreviewMutation.error as Error | undefined)?.message ||
                 (startDeleteMatchJobMutation.error as Error | undefined)?.message ||
                 (startDeleteByGroupJobMutation.error as Error | undefined)?.message ||

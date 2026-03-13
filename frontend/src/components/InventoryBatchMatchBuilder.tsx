@@ -16,33 +16,47 @@ type Props = {
   value: InventoryBatchMatchFormState;
   onChange: (next: InventoryBatchMatchFormState) => void;
   fieldOptions: InventoryBatchMatchFieldOption[];
+  modeOptions?: InventoryBatchMatchMode[];
 };
 
-export function InventoryBatchMatchBuilder({ value, onChange, fieldOptions }: Props) {
+export function InventoryBatchMatchBuilder({
+  value,
+  onChange,
+  fieldOptions,
+  modeOptions = ["criteria", "ip_list"]
+}: Props) {
   const selectedFieldLabel = fieldOptions.find((option) => option.value === value.field)?.label || "selected field";
+  const showModeToggle = modeOptions.length > 1;
+  const effectiveMode = showModeToggle ? value.mode : modeOptions[0];
 
   return (
     <div className="inventory-batch-builder">
-      <div className="inventory-batch-mode-row" role="group" aria-label="Batch match mode">
-        <button
-          className={`btn btn-small ${value.mode === "criteria" ? "btn-primary" : ""}`}
-          type="button"
-          onClick={() => onChange({ ...value, mode: "criteria" })}
-          aria-pressed={value.mode === "criteria"}
-        >
-          Regex Match
-        </button>
-        <button
-          className={`btn btn-small ${value.mode === "ip_list" ? "btn-primary" : ""}`}
-          type="button"
-          onClick={() => onChange({ ...value, mode: "ip_list" })}
-          aria-pressed={value.mode === "ip_list"}
-        >
-          IP List
-        </button>
-      </div>
+      {showModeToggle ? (
+        <div className="inventory-batch-mode-row" role="group" aria-label="Batch match mode">
+          {modeOptions.includes("criteria") ? (
+            <button
+              className={`btn btn-small ${value.mode === "criteria" ? "btn-primary" : ""}`}
+              type="button"
+              onClick={() => onChange({ ...value, mode: "criteria" })}
+              aria-pressed={value.mode === "criteria"}
+            >
+              Regex Match
+            </button>
+          ) : null}
+          {modeOptions.includes("ip_list") ? (
+            <button
+              className={`btn btn-small ${value.mode === "ip_list" ? "btn-primary" : ""}`}
+              type="button"
+              onClick={() => onChange({ ...value, mode: "ip_list" })}
+              aria-pressed={value.mode === "ip_list"}
+            >
+              IP List
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
-      {value.mode === "criteria" ? (
+      {effectiveMode === "criteria" ? (
         <div className="inventory-batch-grid">
           <label>
             Field
