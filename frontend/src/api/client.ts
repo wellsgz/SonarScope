@@ -4,6 +4,11 @@ import type {
   FilterOptions,
   Group,
   ImportApplyResponse,
+  InventoryBatchDeletePreviewResponse,
+  InventoryBatchGroupApplyResponse,
+  InventoryBatchGroupAssignmentTarget,
+  InventoryBatchGroupPreviewResponse,
+  InventoryBatchMatchSpec,
   ImportGroupAssignmentRequest,
   InventoryEndpoint,
   InventoryEndpointCreateRequest,
@@ -407,6 +412,35 @@ export async function deleteInventoryEndpointsByGroup(groupID: number): Promise<
   });
 }
 
+export async function previewInventoryBatchGroupAssignment(payload: {
+  match: InventoryBatchMatchSpec;
+  target: InventoryBatchGroupAssignmentTarget;
+}): Promise<InventoryBatchGroupPreviewResponse> {
+  return request<InventoryBatchGroupPreviewResponse>("/api/inventory/batch/group/preview", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function applyInventoryBatchGroupAssignment(payload: {
+  endpoint_ids: number[];
+  target: InventoryBatchGroupAssignmentTarget;
+}): Promise<InventoryBatchGroupApplyResponse> {
+  return request<InventoryBatchGroupApplyResponse>("/api/inventory/batch/group/apply", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function previewInventoryBatchDelete(payload: {
+  match: InventoryBatchMatchSpec;
+}): Promise<InventoryBatchDeletePreviewResponse> {
+  return request<InventoryBatchDeletePreviewResponse>("/api/inventory/batch/delete/preview", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function deleteAllInventoryEndpoints(confirmPhrase: string): Promise<DeleteAllInventoryResponse> {
   return request<DeleteAllInventoryResponse>("/api/inventory/endpoints/delete-all", {
     method: "POST",
@@ -424,6 +458,16 @@ export async function startDeleteAllJob(confirmPhrase: string): Promise<Inventor
   return request<InventoryDeleteJobStatus>("/api/inventory/delete-jobs/all", {
     method: "POST",
     body: JSON.stringify({ confirm_phrase: confirmPhrase })
+  });
+}
+
+export async function startDeleteMatchJob(payload: {
+  endpoint_ids: number[];
+  target_summary?: string;
+}): Promise<InventoryDeleteJobStatus> {
+  return request<InventoryDeleteJobStatus>("/api/inventory/delete-jobs/match", {
+    method: "POST",
+    body: JSON.stringify(payload)
   });
 }
 

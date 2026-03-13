@@ -575,6 +575,7 @@
 }
 
 .inventory-import-panel,
+.inventory-batch-panel,
 .inventory-list-panel {
   padding: 0;
   display: flex;
@@ -729,6 +730,62 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
+}
+
+.inventory-batch-builder,
+.inventory-batch-preview-card {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.inventory-batch-mode-row {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.inventory-batch-grid,
+.inventory-batch-target-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.inventory-batch-help {
+  grid-column: 1 / -1;
+  margin-top: calc(var(--space-2) * -1);
+}
+
+.inventory-batch-textarea {
+  min-height: 7.8rem;
+  resize: vertical;
+}
+
+.inventory-batch-preview-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+  padding: var(--space-3);
+}
+
+.inventory-batch-preview-card-danger {
+  border-color: color-mix(in srgb, var(--color-danger) 40%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 6%, var(--color-surface-elevated));
+}
+
+.inventory-batch-summary-row {
+  margin: 0;
+}
+
+.inventory-batch-preview-table {
+  max-height: 18rem;
+}
+
+.inventory-batch-preview-empty {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--color-text-subtle);
 }
 
 .inventory-single-grid {
@@ -1220,6 +1277,11 @@
   }
 
   .inventory-import-assignment-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-batch-grid,
+  .inventory-batch-target-grid {
     grid-template-columns: 1fr;
   }
 

@@ -252,6 +252,107 @@ type DeleteInventoryByGroupResponse struct {
 	GroupID      int64 `json:"group_id"`
 }
 
+type InventoryBatchMatchMode string
+
+const (
+	InventoryBatchMatchModeCriteria InventoryBatchMatchMode = "criteria"
+	InventoryBatchMatchModeIPList   InventoryBatchMatchMode = "ip_list"
+)
+
+type InventoryBatchMatchField string
+
+const (
+	InventoryBatchMatchFieldHostname    InventoryBatchMatchField = "hostname"
+	InventoryBatchMatchFieldIPAddress   InventoryBatchMatchField = "ip_address"
+	InventoryBatchMatchFieldMACAddress  InventoryBatchMatchField = "mac_address"
+	InventoryBatchMatchFieldVLAN        InventoryBatchMatchField = "vlan"
+	InventoryBatchMatchFieldSwitch      InventoryBatchMatchField = "switch"
+	InventoryBatchMatchFieldPort        InventoryBatchMatchField = "port"
+	InventoryBatchMatchFieldPortType    InventoryBatchMatchField = "port_type"
+	InventoryBatchMatchFieldDescription InventoryBatchMatchField = "description"
+	InventoryBatchMatchFieldCustom1     InventoryBatchMatchField = "custom_field_1_value"
+	InventoryBatchMatchFieldCustom2     InventoryBatchMatchField = "custom_field_2_value"
+	InventoryBatchMatchFieldCustom3     InventoryBatchMatchField = "custom_field_3_value"
+)
+
+type InventoryBatchMatchSpec struct {
+	Mode  InventoryBatchMatchMode  `json:"mode"`
+	Field InventoryBatchMatchField `json:"field,omitempty"`
+	Regex string                   `json:"regex,omitempty"`
+	IPs   []string                 `json:"ips,omitempty"`
+}
+
+type InventoryBatchMatchStats struct {
+	Mode            InventoryBatchMatchMode `json:"mode"`
+	SubmittedCount  int                     `json:"submitted_count,omitempty"`
+	UniqueCount     int                     `json:"unique_count,omitempty"`
+	InvalidCount    int                     `json:"invalid_count,omitempty"`
+	MatchedCount    int                     `json:"matched_count"`
+	UnmatchedCount  int                     `json:"unmatched_count,omitempty"`
+	UnmatchedSample []string                `json:"unmatched_sample,omitempty"`
+}
+
+type InventoryBatchMatchPreview struct {
+	Stats       InventoryBatchMatchStats `json:"stats"`
+	EndpointIDs []int64                  `json:"endpoint_ids"`
+	Sample      []InventoryEndpointView  `json:"sample"`
+}
+
+type InventoryBatchGroupAssignmentMode string
+
+const (
+	InventoryBatchGroupAssignmentExisting InventoryBatchGroupAssignmentMode = "existing"
+	InventoryBatchGroupAssignmentCreate   InventoryBatchGroupAssignmentMode = "create"
+)
+
+type InventoryBatchGroupAssignmentTarget struct {
+	Mode      InventoryBatchGroupAssignmentMode `json:"mode"`
+	GroupID   int64                             `json:"group_id,omitempty"`
+	GroupName string                            `json:"group_name,omitempty"`
+}
+
+type InventoryBatchGroupPreviewRequest struct {
+	Match  InventoryBatchMatchSpec             `json:"match"`
+	Target InventoryBatchGroupAssignmentTarget `json:"target"`
+}
+
+type InventoryBatchGroupPreviewResponse struct {
+	Preview            InventoryBatchMatchPreview `json:"preview"`
+	GroupID            *int64                     `json:"group_id,omitempty"`
+	GroupName          string                     `json:"group_name"`
+	AlreadyInGroup     int                        `json:"already_in_group"`
+	WouldAssign        int                        `json:"would_assign"`
+	UsedExistingByName bool                       `json:"used_existing_by_name,omitempty"`
+}
+
+type InventoryBatchGroupApplyRequest struct {
+	EndpointIDs []int64                             `json:"endpoint_ids"`
+	Target      InventoryBatchGroupAssignmentTarget `json:"target"`
+}
+
+type InventoryBatchGroupApplyResponse struct {
+	MatchedCount       int    `json:"matched_count"`
+	GroupID            int64  `json:"group_id"`
+	GroupName          string `json:"group_name"`
+	AlreadyInGroup     int    `json:"already_in_group"`
+	AssignedAdded      int    `json:"assigned_added"`
+	UsedExistingByName bool   `json:"used_existing_by_name,omitempty"`
+}
+
+type InventoryBatchDeletePreviewRequest struct {
+	Match InventoryBatchMatchSpec `json:"match"`
+}
+
+type InventoryBatchDeletePreviewResponse struct {
+	Preview       InventoryBatchMatchPreview `json:"preview"`
+	TargetSummary string                     `json:"target_summary"`
+}
+
+type InventoryDeleteJobMatchRequest struct {
+	EndpointIDs   []int64 `json:"endpoint_ids"`
+	TargetSummary string  `json:"target_summary,omitempty"`
+}
+
 type DeleteAllInventoryRequest struct {
 	ConfirmPhrase string `json:"confirm_phrase"`
 }
@@ -266,6 +367,7 @@ type InventoryDeleteJobMode string
 const (
 	InventoryDeleteJobModeByGroup InventoryDeleteJobMode = "by_group"
 	InventoryDeleteJobModeAll     InventoryDeleteJobMode = "all"
+	InventoryDeleteJobModeMatch   InventoryDeleteJobMode = "match"
 )
 
 type InventoryDeleteJobState string
@@ -285,6 +387,7 @@ type InventoryDeleteJobStatusResponse struct {
 	JobID              string                  `json:"job_id,omitempty"`
 	Mode               InventoryDeleteJobMode  `json:"mode,omitempty"`
 	GroupID            *int64                  `json:"group_id,omitempty"`
+	TargetSummary      string                  `json:"target_summary,omitempty"`
 	State              InventoryDeleteJobState `json:"state,omitempty"`
 	MatchedEndpoints   int64                   `json:"matched_endpoints"`
 	ProcessedEndpoints int64                   `json:"processed_endpoints"`

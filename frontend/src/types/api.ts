@@ -173,12 +173,80 @@ export type DeleteInventoryByGroupResponse = {
   group_id: number;
 };
 
+export type InventoryBatchMatchMode = "criteria" | "ip_list";
+export type InventoryBatchMatchField =
+  | "hostname"
+  | "ip_address"
+  | "mac_address"
+  | "vlan"
+  | "switch"
+  | "port"
+  | "port_type"
+  | "description"
+  | "custom_field_1_value"
+  | "custom_field_2_value"
+  | "custom_field_3_value";
+
+export type InventoryBatchMatchSpec = {
+  mode: InventoryBatchMatchMode;
+  field?: InventoryBatchMatchField;
+  regex?: string;
+  ips?: string[];
+};
+
+export type InventoryBatchMatchStats = {
+  mode: InventoryBatchMatchMode;
+  submitted_count?: number;
+  unique_count?: number;
+  invalid_count?: number;
+  matched_count: number;
+  unmatched_count?: number;
+  unmatched_sample?: string[];
+};
+
+export type InventoryBatchMatchPreview = {
+  stats: InventoryBatchMatchStats;
+  endpoint_ids: number[];
+  sample: InventoryEndpoint[];
+};
+
+export type InventoryBatchGroupAssignmentMode = "existing" | "create";
+
+export type InventoryBatchGroupAssignmentTarget = {
+  mode: InventoryBatchGroupAssignmentMode;
+  group_id?: number;
+  group_name?: string;
+};
+
+export type InventoryBatchGroupPreviewResponse = {
+  preview: InventoryBatchMatchPreview;
+  group_id?: number;
+  group_name: string;
+  already_in_group: number;
+  would_assign: number;
+  used_existing_by_name?: boolean;
+};
+
+export type InventoryBatchGroupApplyResponse = {
+  matched_count: number;
+  group_id: number;
+  group_name: string;
+  already_in_group: number;
+  assigned_added: number;
+  used_existing_by_name?: boolean;
+};
+
+export type InventoryBatchDeletePreviewResponse = {
+  preview: InventoryBatchMatchPreview;
+  target_summary: string;
+};
+
 export type DeleteAllInventoryResponse = {
   deleted: boolean;
   deleted_count: number;
 };
 
-export type InventoryDeleteJobMode = "by_group" | "all";
+export type InventoryDeleteJobMode = "by_group" | "all" | "match";
 export type InventoryDeleteJobState = "running" | "completed" | "failed";
 
 export type InventoryDeleteJobStatus = {
@@ -186,6 +254,7 @@ export type InventoryDeleteJobStatus = {
   job_id?: string;
   mode?: InventoryDeleteJobMode;
   group_id?: number;
+  target_summary?: string;
   state?: InventoryDeleteJobState;
   matched_endpoints?: number;
   processed_endpoints?: number;

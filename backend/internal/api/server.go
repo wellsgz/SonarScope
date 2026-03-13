@@ -99,6 +99,7 @@ type inventoryDeleteJobState struct {
 	JobID              string
 	Mode               model.InventoryDeleteJobMode
 	GroupID            *int64
+	TargetSummary      string
 	State              model.InventoryDeleteJobState
 	MatchedEndpoints   int64
 	ProcessedEndpoints int64
@@ -144,6 +145,7 @@ func (s *Server) deleteJobSnapshot() model.InventoryDeleteJobStatusResponse {
 		JobID:              job.JobID,
 		Mode:               job.Mode,
 		GroupID:            cloneInt64Ptr(job.GroupID),
+		TargetSummary:      job.TargetSummary,
 		State:              job.State,
 		MatchedEndpoints:   job.MatchedEndpoints,
 		ProcessedEndpoints: job.ProcessedEndpoints,
@@ -166,7 +168,7 @@ func (s *Server) isDeleteJobRunning() bool {
 	return s.deleteJob != nil && s.deleteJob.Active && s.deleteJob.State == model.InventoryDeleteJobStateRunning
 }
 
-func (s *Server) beginDeleteJob(mode model.InventoryDeleteJobMode, groupID *int64) (*inventoryDeleteJobState, error) {
+func (s *Server) beginDeleteJob(mode model.InventoryDeleteJobMode, groupID *int64, targetSummary string) (*inventoryDeleteJobState, error) {
 	s.deleteJobMu.Lock()
 	defer s.deleteJobMu.Unlock()
 
@@ -180,6 +182,7 @@ func (s *Server) beginDeleteJob(mode model.InventoryDeleteJobMode, groupID *int6
 		JobID:              newPreviewID(),
 		Mode:               mode,
 		GroupID:            cloneInt64Ptr(groupID),
+		TargetSummary:      strings.TrimSpace(targetSummary),
 		State:              model.InventoryDeleteJobStateRunning,
 		MatchedEndpoints:   0,
 		ProcessedEndpoints: 0,
@@ -392,12 +395,16 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/endpoints", s.handleInventoryEndpoints)
 			r.Get("/endpoints/export.csv", s.handleInventoryEndpointsExportCSV)
 			r.Get("/import-template.csv", s.handleInventoryImportTemplateCSV)
+			r.Post("/batch/group/preview", s.handleInventoryBatchGroupPreview)
+			r.Post("/batch/group/apply", s.handleInventoryBatchGroupApply)
+			r.Post("/batch/delete/preview", s.handleInventoryBatchDeletePreview)
 			r.Put("/endpoints/{endpointID}", s.handleInventoryEndpointUpdate)
 			r.Delete("/endpoints/{endpointID}", s.handleInventoryEndpointDelete)
 			r.Delete("/endpoints/by-group/{groupID}", s.handleInventoryDeleteByGroup)
 			r.Post("/endpoints/delete-all", s.handleInventoryDeleteAll)
 			r.Post("/delete-jobs/by-group/{groupID}", s.handleInventoryDeleteJobByGroup)
 			r.Post("/delete-jobs/all", s.handleInventoryDeleteJobAll)
+			r.Post("/delete-jobs/match", s.handleInventoryDeleteJobMatch)
 			r.Get("/delete-jobs/current", s.handleInventoryDeleteJobCurrent)
 			r.Get("/filter-options", s.handleInventoryFilters)
 			r.Post("/import-preview", s.handleInventoryImportPreview)
@@ -1071,7 +1078,7 @@ func (s *Server) handleInventoryDeleteJobByGroup(w http.ResponseWriter, r *http.
 	}
 
 	groupIDCopy := groupID
-	job, err := s.beginDeleteJob(model.InventoryDeleteJobModeByGroup, &groupIDCopy)
+	job, err := s.beginDeleteJob(model.InventoryDeleteJobModeByGroup, &groupIDCopy, "")
 	if err != nil {
 		util.WriteError(w, http.StatusConflict, err.Error())
 		return
@@ -1100,7 +1107,7 @@ func (s *Server) handleInventoryDeleteJobAll(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	job, err := s.beginDeleteJob(model.InventoryDeleteJobModeAll, nil)
+	job, err := s.beginDeleteJob(model.InventoryDeleteJobModeAll, nil, "")
 	if err != nil {
 		util.WriteError(w, http.StatusConflict, err.Error())
 		return
