@@ -500,6 +500,9 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       ? `Showing ${monitorQuery.data.total_items} endpoints`
       : "No endpoints in current scope";
   const showTableLoading = monitorQuery.isPending && !monitorQuery.data;
+  const realtimeStatusLabel = socketConnected
+    ? "Realtime connected"
+    : `Realtime reconnecting - polling every ${Math.max(1, Math.round(autoRefreshMs / 1000))}s`;
 
   const tableContent = showTableLoading ? (
     <div className="panel state-panel">
@@ -508,8 +511,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         <p className="state-loading-copy">Loading endpoint telemetry…</p>
       </div>
     </div>
-  ) : monitorRows.length === 0 ? (
-    <div className="panel state-panel">No endpoints match the active filters.</div>
   ) : (
     <MonitorTable
       rows={monitorRows}
@@ -538,6 +539,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         setSortDir(nextSortDir);
         setPage(1);
       }}
+      emptyMessage="No endpoints match the active filters."
       preserveRelativeScroll={tableDashboardMode}
       refreshSignal={monitorQuery.dataUpdatedAt}
     />
@@ -710,6 +712,13 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         <div className="monitor-pane-middle">
           <div className="monitor-pane-middle-head">
             <span className="monitor-pane-middle-title">Endpoint Snapshot</span>
+            {allowRealtimeInvalidation ? (
+              <div className="monitor-pane-middle-head-meta">
+                <span className={`status-chip ${socketConnected ? "status-chip-live" : "status-chip-warning"}`} aria-live="polite">
+                  {realtimeStatusLabel}
+                </span>
+              </div>
+            ) : null}
           </div>
           {tableContent}
         </div>

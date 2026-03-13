@@ -321,7 +321,8 @@
 }
 
 .topbar-control input {
-  width: 4.4rem;
+  inline-size: clamp(3.5rem, 18vw, 4.4rem);
+  max-inline-size: 100%;
   text-align: right;
   min-height: var(--topbar-control-height);
   padding-block: 0.3rem;
@@ -455,6 +456,23 @@
   .topbar-controls {
     width: 100%;
     justify-content: flex-end;
+  }
+}
+
+@media (max-width: 480px) {
+  .topbar-controls {
+    justify-content: stretch;
+  }
+
+  .topbar-control {
+    flex: 1 1 auto;
+    min-width: 0;
+    justify-content: space-between;
+  }
+
+  .topbar-control input {
+    inline-size: min(100%, 4.4rem);
+    flex: 0 1 4.4rem;
   }
 }
 

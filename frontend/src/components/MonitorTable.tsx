@@ -23,6 +23,7 @@ type Props = {
   onSortChange: (sortBy: MonitorSortField | null, sortDir: "asc" | "desc" | null) => void;
   preserveRelativeScroll?: boolean;
   refreshSignal?: number;
+  emptyMessage?: string;
 };
 
 type MonitorColumn = {
@@ -214,7 +215,8 @@ export function MonitorTable({
   activeProbeGroupNames,
   onSortChange,
   preserveRelativeScroll = false,
-  refreshSignal
+  refreshSignal,
+  emptyMessage = "No endpoints match the active filters."
 }: Props) {
   const sortableSet = useMemo(() => new Set<MonitorSortField>(sortableFields), [sortableFields]);
   const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
@@ -536,31 +538,37 @@ export function MonitorTable({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => {
-                  const endpointID = row.endpoint_id;
-                  const selected = selectedEndpointID === endpointID;
-                  const health = endpointHealth(row, dataScope, liveProbeContext);
-                  const rowClassName = `${rowHealthClassName(health)}${selected ? " row-selected" : ""}`;
-                  return (
-                    <tr
-                      key={endpointID}
-                      className={rowClassName}
-                      onClick={() => onSelectionChange(nextSelectionID(endpointID, selected))}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          onSelectionChange(nextSelectionID(endpointID, selected));
-                        }
-                      }}
-                      tabIndex={0}
-                      aria-selected={selected}
-                    >
-                      {columns.map((column) => {
-                        return <td key={`${endpointID}-${column.key}`}>{column.render(row)}</td>;
-                      })}
-                    </tr>
-                  );
-                })}
+                {rows.length === 0 ? (
+                  <tr className="monitor-table-empty-row">
+                    <td colSpan={columns.length}>{emptyMessage}</td>
+                  </tr>
+                ) : (
+                  rows.map((row) => {
+                    const endpointID = row.endpoint_id;
+                    const selected = selectedEndpointID === endpointID;
+                    const health = endpointHealth(row, dataScope, liveProbeContext);
+                    const rowClassName = `${rowHealthClassName(health)}${selected ? " row-selected" : ""}`;
+                    return (
+                      <tr
+                        key={endpointID}
+                        className={rowClassName}
+                        onClick={() => onSelectionChange(nextSelectionID(endpointID, selected))}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onSelectionChange(nextSelectionID(endpointID, selected));
+                          }
+                        }}
+                        tabIndex={0}
+                        aria-selected={selected}
+                      >
+                        {columns.map((column) => {
+                          return <td key={`${endpointID}-${column.key}`}>{column.render(row)}</td>;
+                        })}
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>

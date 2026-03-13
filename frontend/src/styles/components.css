@@ -139,6 +139,12 @@
   background: color-mix(in srgb, var(--color-danger) 11%, var(--color-surface-elevated));
 }
 
+.status-chip-warning {
+  color: var(--color-warning);
+  border-color: color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-warning) 11%, var(--color-surface-elevated));
+}
+
 input,
 select,
 textarea {
@@ -246,8 +252,10 @@ label {
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text);
-  padding: 0.2rem 0.28rem;
+  min-height: 2.75rem;
+  padding: 0.44rem 0.5rem;
   border-radius: var(--radius-sm);
+  cursor: pointer;
 }
 
 .sidebar-group-picker-item-name {
@@ -266,8 +274,9 @@ label {
 }
 
 .sidebar-group-picker-item input[type="checkbox"] {
-  width: 0.84rem;
-  height: 0.84rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
 }
 
 .sidebar-group-picker-empty {
@@ -505,6 +514,15 @@ label {
     background-color var(--motion-fast) ease,
     color var(--motion-fast) ease,
     box-shadow var(--motion-fast) ease;
+}
+
+.monitor-table tbody tr.monitor-table-empty-row td {
+  white-space: normal;
+  text-align: center;
+  color: var(--color-text-subtle);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--color-accent-soft) 34%, transparent);
+  padding: var(--space-5) var(--space-4);
 }
 
 .monitor-table tbody tr.monitor-row-health-no-data:hover td {
