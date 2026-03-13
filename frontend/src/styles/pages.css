@@ -904,24 +904,69 @@
 }
 
 .inventory-danger-zone {
-  border-top: 1px solid var(--color-border);
-  margin-top: var(--space-2);
-  padding-top: var(--space-3);
+  margin-top: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-surface-elevated) 94%, transparent);
+  overflow: hidden;
+}
+
+.inventory-danger-header {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: var(--space-3);
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: left;
+}
+
+.inventory-danger-header:hover {
+  background: color-mix(in srgb, var(--color-surface) 84%, transparent);
+}
+
+.inventory-danger-header-main {
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+.inventory-danger-chevron {
+  font-size: var(--text-base);
+  color: var(--color-text-subtle);
+  line-height: 1;
+}
+
+.inventory-danger-dot {
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-danger) 72%, var(--color-warning));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-danger) 10%, transparent);
+  flex: 0 0 auto;
 }
 
 .inventory-danger-title {
   font-family: var(--font-heading);
   font-size: var(--text-lg);
-  color: var(--color-danger);
+  color: var(--color-text);
 }
 
-.inventory-danger-grid {
+.inventory-danger-summary {
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+  text-align: right;
+}
+
+.inventory-danger-body {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
-  align-items: stretch;
+  padding: 0 var(--space-3) var(--space-3);
+  border-top: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-danger) 3%, var(--color-surface-elevated));
 }
 
 .inventory-delete-progress {
@@ -961,55 +1006,113 @@
   transition: width 180ms ease;
 }
 
-.inventory-danger-card {
-  border: 1px dashed color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-danger) 6%, var(--color-surface-elevated));
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-height: 100%;
+.inventory-danger-rows {
+  display: grid;
+  gap: var(--space-3);
 }
 
-.inventory-danger-card-full {
-  grid-column: 1 / -1;
+.inventory-danger-row {
+  display: grid;
+  gap: var(--space-2);
 }
 
-.inventory-danger-card-body {
-  display: flex;
-  flex-direction: column;
+.inventory-danger-row + .inventory-danger-row {
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  padding-top: var(--space-3);
+}
+
+.inventory-danger-row-main {
+  display: grid;
+  grid-template-columns: minmax(10rem, 12rem) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.inventory-danger-row-copy {
+  display: grid;
   gap: var(--space-2);
-  flex: 1 1 auto;
   min-height: 0;
 }
 
-.inventory-danger-card-help {
-  font-size: var(--text-base);
-  color: var(--color-text-subtle);
-  font-weight: 500;
-}
-
-.inventory-danger-trigger-row {
-  width: 100%;
-  margin-top: auto;
-  padding-top: var(--space-1);
-}
-
-.inventory-danger-trigger {
-  width: 100%;
-  justify-content: center;
-}
-
-.inventory-danger-card h4 {
+.inventory-danger-row-copy h4 {
+  margin: 0;
   font-size: var(--text-md);
   font-weight: 700;
   color: var(--color-text);
 }
 
+.inventory-danger-row-copy p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+  font-weight: 500;
+}
+
+.inventory-danger-row-content {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.inventory-danger-row-controls {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.inventory-danger-row-controls-group {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.inventory-danger-inline-field {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.inventory-danger-inline-field > span {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.inventory-danger-row-actions {
+  justify-content: flex-start;
+  gap: var(--space-2);
+}
+
+.inventory-danger-row .inventory-batch-builder {
+  gap: var(--space-2);
+}
+
+.inventory-danger-row .inventory-batch-grid {
+  grid-template-columns: minmax(11rem, 0.9fr) minmax(0, 1.1fr);
+  gap: var(--space-2);
+}
+
+.inventory-danger-row .inventory-batch-help {
+  margin-top: 0;
+}
+
+.inventory-danger-row .inventory-batch-preview-card-danger {
+  margin-top: var(--space-1);
+  border-color: color-mix(in srgb, var(--color-danger) 26%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 4%, var(--color-surface-elevated));
+}
+
 .inventory-delete-all-confirm {
   display: grid;
   gap: var(--space-2);
+}
+
+.inventory-danger-link-trigger {
+  justify-self: start;
+  color: var(--color-text-subtle);
+  font-size: var(--text-base);
+}
+
+.inventory-danger-link-trigger:hover {
+  color: var(--color-danger);
 }
 
 .inventory-danger-inline-confirm {
@@ -1042,6 +1145,14 @@
 .inventory-danger-arm-actions {
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+.inventory-danger-footer {
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
 }
 
 .groups-layout {
@@ -1305,7 +1416,18 @@
     grid-template-columns: 1fr;
   }
 
-  .inventory-danger-grid {
+  .inventory-danger-header {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .inventory-danger-summary {
+    text-align: left;
+  }
+
+  .inventory-danger-row-main,
+  .inventory-danger-row-controls-group,
+  .inventory-danger-row .inventory-batch-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -1361,6 +1483,12 @@
   }
 
   .inventory-danger-inline-confirm-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .inventory-danger-row-actions,
+  .inventory-danger-arm-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
   }
