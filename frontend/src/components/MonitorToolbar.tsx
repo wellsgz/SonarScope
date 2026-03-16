@@ -1,5 +1,5 @@
 import { useMemo, type ChangeEvent } from "react";
-import type { FilterOptions, MonitorDataScope, Settings } from "../types/api";
+import type { FilterOptions, MonitorDataScope } from "../types/api";
 import type { QuickRange } from "../hooks/time";
 
 export type FilterState = {
@@ -25,7 +25,6 @@ type Props = {
   customStart: string;
   customEnd: string;
   dataScope: MonitorDataScope;
-  settings?: Settings;
   onFilterChange: (next: FilterState) => void;
   onClearFilter: (key: keyof FilterState) => void;
   onClearAllFilters: () => void;
@@ -41,7 +40,6 @@ type Props = {
   onCustomStartChange: (value: string) => void;
   onCustomEndChange: (value: string) => void;
   onDataScopeChange: (next: MonitorDataScope) => void;
-  onSettingsPatch: (next: Settings) => void;
 };
 
 function multiSelectValue(event: ChangeEvent<HTMLSelectElement>): string[] {
@@ -69,7 +67,6 @@ export function MonitorToolbar({
   customStart,
   customEnd,
   dataScope,
-  settings,
   onFilterChange,
   onClearFilter,
   onClearAllFilters,
@@ -84,8 +81,7 @@ export function MonitorToolbar({
   onQuickRangeChange,
   onCustomStartChange,
   onCustomEndChange,
-  onDataScopeChange,
-  onSettingsPatch
+  onDataScopeChange
 }: Props) {
   const filterCards: Array<{ key: keyof FilterState; label: string; options: string[] }> = [
     { key: "vlan", label: "VLAN", options: options?.vlan || [] },
@@ -333,57 +329,6 @@ export function MonitorToolbar({
           </div>
         </section>
 
-        <section className="toolbar-block" aria-label="Global settings controls">
-          <div className="toolbar-title">Global Settings</div>
-          <label>
-            Ping Interval (1-30s)
-            <input
-              type="number"
-              min={1}
-              max={30}
-              value={settings?.ping_interval_sec ?? 1}
-              onChange={(event) =>
-                settings &&
-                onSettingsPatch({
-                  ...settings,
-                  ping_interval_sec: Number(event.target.value)
-                })
-              }
-            />
-          </label>
-          <label>
-            ICMP Payload (8-1400 bytes)
-            <input
-              type="number"
-              min={8}
-              max={1400}
-              value={settings?.icmp_payload_bytes ?? 56}
-              onChange={(event) =>
-                settings &&
-                onSettingsPatch({
-                  ...settings,
-                  icmp_payload_bytes: Number(event.target.value)
-                })
-              }
-            />
-          </label>
-          <label>
-            ICMP Timeout (20-1000ms)
-            <input
-              type="number"
-              min={20}
-              max={1000}
-              value={settings?.icmp_timeout_ms ?? 500}
-              onChange={(event) =>
-                settings &&
-                onSettingsPatch({
-                  ...settings,
-                  icmp_timeout_ms: Number(event.target.value)
-                })
-              }
-            />
-          </label>
-        </section>
       </div>
     </div>
   );

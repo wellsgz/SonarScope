@@ -831,7 +831,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
               setDataScope(next);
               setPage(1);
             }}
-            onSettingsPatch={(settings) => settingsMutation.mutate(settings)}
           />
         )}
       </aside>

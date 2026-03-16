@@ -191,35 +191,6 @@ function formatSnapshotLabel(capturedAt: Date): string {
   }).format(capturedAt)} (local)`;
 }
 
-function resolveLossColor(lossValue: number | null, palette: { success: string; danger: string; textSubtle: string }): string {
-  if (lossValue === null) {
-    return palette.textSubtle;
-  }
-  if (lossValue <= 0) {
-    return palette.success;
-  }
-  return palette.danger;
-}
-
-function getLatestLossValue(points: TimeSeriesPoint[]): number | null {
-  let latestTs = Number.NEGATIVE_INFINITY;
-  let latestLoss: number | null = null;
-  for (const point of points) {
-    if (point.sent_count <= 0 || point.loss_rate === null || point.loss_rate === undefined) {
-      continue;
-    }
-    const ts = new Date(point.bucket).getTime();
-    if (Number.isNaN(ts)) {
-      continue;
-    }
-    if (ts >= latestTs) {
-      latestTs = ts;
-      latestLoss = point.loss_rate;
-    }
-  }
-  return latestLoss;
-}
-
 function buildMetricSeries(
   points: TimeSeriesPoint[],
   metric: Metric,
@@ -390,6 +361,7 @@ export function MonitorChart({
     textSubtle: readToken("--color-text-subtle", "#94a7c4"),
     border: readToken("--color-border", "#21324d"),
     success: readToken("--color-success", "#10b981"),
+    warning: readToken("--color-warning", "#d97706"),
     danger: readToken("--color-danger", "#ef4444")
   };
   const legendFontSizePx = readTokenFontSizePx("--text-sm", 0.74);
@@ -411,13 +383,8 @@ export function MonitorChart({
   }, [latency.measuredSeries.data, loss.measuredSeries.data]);
 
   const option = useMemo(() => {
-    const latestLossValue = getLatestLossValue(points);
-    const lossColor = resolveLossColor(latestLossValue, palette);
     const lossMeasured = {
-      ...loss.measuredSeries,
-      color: lossColor,
-      lineStyle: { ...(loss.measuredSeries.lineStyle as Record<string, unknown>), color: lossColor },
-      itemStyle: { color: lossColor }
+      ...loss.measuredSeries
     };
     const latencyMeasured = {
       ...latency.measuredSeries,
@@ -525,6 +492,17 @@ export function MonitorChart({
       legend: {
         data: ["Loss %", "Latency", NO_PROBE_LEGEND_NAME],
         textStyle: { color: palette.textMuted, fontSize: legendFontSizePx }
+      },
+      visualMap: {
+        show: false,
+        type: "piecewise",
+        seriesIndex: 0,
+        dimension: 1,
+        pieces: [
+          { lte: 0, color: palette.success },
+          { gt: 0, lt: 100, color: palette.warning },
+          { gte: 100, color: palette.danger }
+        ]
       },
       grid: {
         left: 64,
