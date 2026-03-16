@@ -204,6 +204,13 @@
   gap: var(--space-1);
 }
 
+.monitor-dashboard-no-probe {
+  padding: var(--space-3);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
 .monitor-dashboard-lookback-row {
   display: flex;
   flex-wrap: wrap;
