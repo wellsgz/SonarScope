@@ -124,7 +124,7 @@
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: var(--space-2);
   overflow: hidden;
 }
@@ -198,6 +198,12 @@
   gap: var(--space-2);
 }
 
+.monitor-dashboard-unreachable-panel {
+  padding: var(--space-2) var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
 .monitor-dashboard-lookback-row {
   display: flex;
   flex-wrap: wrap;
@@ -218,8 +224,8 @@
 }
 
 .monitor-dashboard-summary-block {
-  min-width: min(13rem, 100%);
-  padding: var(--space-3);
+  min-width: min(9rem, 100%);
+  padding: var(--space-2);
   border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
   border-radius: var(--radius-md);
   background:
@@ -254,7 +260,7 @@
 
 .monitor-dashboard-summary-value {
   font-family: var(--font-heading);
-  font-size: clamp(1.2rem, 1rem + 0.8vw, 1.7rem);
+  font-size: var(--text-xl);
   color: var(--color-text);
 }
 

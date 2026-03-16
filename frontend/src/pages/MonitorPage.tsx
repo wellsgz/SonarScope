@@ -656,55 +656,57 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
           </div>
         </div>
 
-        {dataScope === "live" ? (
-          <div className="monitor-dashboard-lookback-row">
-            {(["", "30s", "1m", "5m"] as const).map((value) => {
-              const label = value === "" ? "Live" : value;
-              const isActive = dashboardLookback === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  className={`status-chip ${isActive ? "status-chip-live" : ""}`}
-                  onClick={() => setDashboardLookback(value)}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-
-        <div className="monitor-dashboard-summary-row">
-          <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-total">
-            <span className="monitor-dashboard-summary-label">
-              Unreachable Endpoints
-              {dataScope === "live" && dashboardLookback ? ` (${dashboardLookback})` : ""}
-            </span>
-            <strong className="monitor-dashboard-summary-value">
-              {dashboardSummaryQuery.isPending && !dashboardSummary ? "…" : dashboardSummary?.total_unreachable ?? 0}
-            </strong>
-          </div>
-          {(dashboardSummary?.by_switch || []).map((item) => (
-            <div key={`dashboard-switch-${item.switch_name}`} className="monitor-dashboard-summary-block">
-              <span className="monitor-dashboard-summary-label">{item.switch_name}</span>
-              <strong className="monitor-dashboard-summary-value">{item.unreachable_count}</strong>
-            </div>
-          ))}
-          {hiddenDashboardSwitchCount > 0 ? (
-            <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-more">
-              <span className="monitor-dashboard-summary-label">Additional switches</span>
-              <strong className="monitor-dashboard-summary-value">+{hiddenDashboardSwitchCount} more</strong>
+        <div className="panel monitor-dashboard-unreachable-panel">
+          {dataScope === "live" ? (
+            <div className="monitor-dashboard-lookback-row">
+              {(["", "30s", "1m", "5m"] as const).map((value) => {
+                const label = value === "" ? "Live" : value;
+                const isActive = dashboardLookback === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`status-chip ${isActive ? "status-chip-live" : ""}`}
+                    onClick={() => setDashboardLookback(value)}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           ) : null}
-          {dashboardSummaryQuery.error ? (
-            <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-warning">
-              <span className="monitor-dashboard-summary-label">Summary</span>
-              <strong className="monitor-dashboard-summary-value monitor-dashboard-summary-message">
-                {dashboardSummaryErrorMessage}
+
+          <div className="monitor-dashboard-summary-row">
+            <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-total">
+              <span className="monitor-dashboard-summary-label">
+                Unreachable Endpoints
+                {dataScope === "live" && dashboardLookback ? ` (${dashboardLookback})` : ""}
+              </span>
+              <strong className="monitor-dashboard-summary-value">
+                {dashboardSummaryQuery.isPending && !dashboardSummary ? "…" : dashboardSummary?.total_unreachable ?? 0}
               </strong>
             </div>
-          ) : null}
+            {(dashboardSummary?.by_switch || []).map((item) => (
+              <div key={`dashboard-switch-${item.switch_name}`} className="monitor-dashboard-summary-block">
+                <span className="monitor-dashboard-summary-label">{item.switch_name}</span>
+                <strong className="monitor-dashboard-summary-value">{item.unreachable_count}</strong>
+              </div>
+            ))}
+            {hiddenDashboardSwitchCount > 0 ? (
+              <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-more">
+                <span className="monitor-dashboard-summary-label">Additional switches</span>
+                <strong className="monitor-dashboard-summary-value">+{hiddenDashboardSwitchCount} more</strong>
+              </div>
+            ) : null}
+            {dashboardSummaryQuery.error ? (
+              <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-warning">
+                <span className="monitor-dashboard-summary-label">Summary</span>
+                <strong className="monitor-dashboard-summary-value monitor-dashboard-summary-message">
+                  {dashboardSummaryErrorMessage}
+                </strong>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className="monitor-dashboard-table">{tableContent}</div>
