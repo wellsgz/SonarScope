@@ -246,6 +246,13 @@
   color: var(--color-text);
 }
 
+.monitor-dashboard-summary-message {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .monitor-dashboard-table {
   height: 100%;
   min-height: 0;
@@ -1273,10 +1280,6 @@
   height: 100%;
 }
 
-.settings-switch-directory {
-  grid-column: 1 / -1;
-}
-
 .settings-page {
   display: flex;
   flex-direction: column;
@@ -1330,39 +1333,39 @@
   border-top: none;
 }
 
-.settings-switch-directory-tabs {
+.inventory-switch-directory-tabs {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
 }
 
-.settings-switch-directory-form {
+.inventory-switch-directory-form {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
   align-items: end;
 }
 
-.settings-switch-directory-form-actions {
+.inventory-switch-directory-form-actions {
   justify-content: flex-start;
 }
 
-.settings-switch-directory-table {
+.inventory-switch-directory-table {
   max-height: 22rem;
 }
 
-.settings-switch-directory-import-actions {
+.inventory-switch-directory-import-actions {
   margin-top: 0;
 }
 
-.settings-switch-directory-preview-action {
+.inventory-switch-directory-preview-action {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
 }
 
-.settings-switch-directory-empty {
+.inventory-switch-directory-empty {
   border: 1px dashed color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-accent-soft) 14%, transparent);
@@ -1490,7 +1493,7 @@
     grid-template-columns: 1fr;
   }
 
-  .settings-switch-directory-form {
+  .inventory-switch-directory-form {
     grid-template-columns: 1fr;
   }
 

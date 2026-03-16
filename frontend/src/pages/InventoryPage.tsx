@@ -38,6 +38,7 @@ import {
   type InventoryBatchMatchFieldOption,
   type InventoryBatchMatchFormState
 } from "../components/InventoryBatchMatchBuilder";
+import { SwitchDirectory } from "../components/SwitchDirectory";
 
 type FilterState = {
   vlan: string[];
@@ -1193,6 +1194,8 @@ export function InventoryPage() {
           </div>
         ) : null}
       </section>
+
+      <SwitchDirectory />
 
       <section
         className={`panel inventory-single-add-panel inventory-collapsible ${singleEndpointExpanded ? "is-expanded" : "is-collapsed"}`}

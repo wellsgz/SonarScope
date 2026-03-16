@@ -374,16 +374,16 @@ label {
   top: calc(100% + var(--space-2));
   right: 0;
   z-index: 20;
-  width: min(21rem, calc(100vw - var(--space-6)));
+  width: min(18rem, calc(100vw - var(--space-6)));
   border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border));
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface) 96%, transparent);
   box-shadow:
     0 18px 36px -28px color-mix(in srgb, var(--color-bg-strong) 40%, transparent),
     0 10px 18px -18px color-mix(in srgb, var(--color-accent) 28%, transparent);
-  padding: var(--space-3);
+  padding: var(--space-2);
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .column-visibility-menu-head {
@@ -408,22 +408,37 @@ label {
 
 .column-visibility-menu-list {
   display: grid;
-  gap: var(--space-1);
-  max-height: 18rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-2);
+  row-gap: 0.35rem;
+  max-height: 14rem;
   overflow-y: auto;
   padding-inline-end: var(--space-1);
 }
 
 .column-visibility-item {
   display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
+  align-items: flex-start;
+  gap: 0.4rem;
+  min-width: 0;
+  font-size: var(--text-xs);
+  line-height: 1.35;
   color: var(--color-text-muted);
+}
+
+.column-visibility-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .column-visibility-item.is-locked {
   color: var(--color-text-subtle);
+}
+
+@media (max-width: 720px) {
+  .column-visibility-menu-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 .chart-panel {

@@ -547,6 +547,10 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     0,
     (dashboardSummary?.total_switch_count ?? 0) - (dashboardSummary?.by_switch.length ?? 0)
   );
+  const dashboardSummaryErrorMessage =
+    dashboardSummaryQuery.error instanceof Error && dashboardSummaryQuery.error.message.trim().length > 0
+      ? dashboardSummaryQuery.error.message.trim()
+      : "Summary request failed";
 
   const tableContent = showTableLoading ? (
     <div className="panel state-panel">
@@ -659,7 +663,9 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
           {dashboardSummaryQuery.error ? (
             <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-warning">
               <span className="monitor-dashboard-summary-label">Summary</span>
-              <strong className="monitor-dashboard-summary-value">Unavailable</strong>
+              <strong className="monitor-dashboard-summary-value monitor-dashboard-summary-message">
+                {dashboardSummaryErrorMessage}
+              </strong>
             </div>
           ) : null}
         </div>
