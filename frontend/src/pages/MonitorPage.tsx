@@ -755,7 +755,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
             customStart={displayStartValue}
             customEnd={displayEndValue}
             dataScope={dataScope}
-            settings={settingsQuery.data}
             onFilterChange={(next) => {
               setFilters(next);
               setPage(1);
