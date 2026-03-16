@@ -1,4 +1,4 @@
-import { useMemo, type ChangeEvent } from "react";
+import { useMemo, useState } from "react";
 import type { FilterOptions, MonitorDataScope } from "../types/api";
 import type { QuickRange } from "../hooks/time";
 
@@ -42,10 +42,6 @@ type Props = {
   onDataScopeChange: (next: MonitorDataScope) => void;
 };
 
-function multiSelectValue(event: ChangeEvent<HTMLSelectElement>): string[] {
-  return Array.from(event.target.selectedOptions).map((option) => option.value);
-}
-
 function customSearchValueBySlot(
   customSearch: { custom1: string; custom2: string; custom3: string },
   slot: 1 | 2 | 3
@@ -83,12 +79,19 @@ export function MonitorToolbar({
   onCustomEndChange,
   onDataScopeChange
 }: Props) {
+  const initialFilterSearch: Record<keyof FilterState, string> = {
+    vlan: "",
+    switches: "",
+    ports: "",
+    groups: ""
+  };
   const filterCards: Array<{ key: keyof FilterState; label: string; options: string[] }> = [
     { key: "vlan", label: "VLAN", options: options?.vlan || [] },
     { key: "switches", label: "Switch", options: options?.switch || [] },
     { key: "ports", label: "Port", options: options?.port || [] },
     { key: "groups", label: "Group", options: options?.group || [] }
   ];
+  const [filterSearch, setFilterSearch] = useState<Record<keyof FilterState, string>>(initialFilterSearch);
   const selectedFilterCount = filterCards.reduce((total, card) => total + filters[card.key].length, 0);
   const ipListCount = useMemo(
     () =>
@@ -175,7 +178,14 @@ export function MonitorToolbar({
         <section className="toolbar-block toolbar-block-filters" aria-label="Endpoint filters">
           <div className="toolbar-title toolbar-title-row">
             <span>Filters</span>
-            <button className="btn btn-small" type="button" onClick={onClearAllFilters}>
+            <button
+              className="btn btn-small"
+              type="button"
+              onClick={() => {
+                onClearAllFilters();
+                setFilterSearch(initialFilterSearch);
+              }}
+            >
               Clear All
             </button>
           </div>
@@ -285,6 +295,10 @@ export function MonitorToolbar({
                 <div className="filter-stack">
                   {filterCards.map((filterCard) => {
                     const selectedValues = filters[filterCard.key];
+                    const searchValue = filterSearch[filterCard.key];
+                    const filteredOptions = filterCard.options.filter((option) =>
+                      searchValue.trim() === "" ? true : option.toLowerCase().includes(searchValue.trim().toLowerCase())
+                    );
                     return (
                       <div key={filterCard.key} className="filter-card">
                         <div className="filter-card-summary filter-card-summary-static">
@@ -294,28 +308,76 @@ export function MonitorToolbar({
                         <div className="filter-card-body">
                           <div className="filter-card-actions">
                             <span>{selectedValues.length} selected</span>
-                            <button className="btn-link" type="button" onClick={() => onClearFilter(filterCard.key)}>
+                            <button
+                              className="btn-link"
+                              type="button"
+                              onClick={() => {
+                                onClearFilter(filterCard.key);
+                                setFilterSearch((prev) => ({ ...prev, [filterCard.key]: "" }));
+                              }}
+                            >
                               Clear
                             </button>
                           </div>
                           {filterCard.options.length > 0 ? (
-                            <select
-                              multiple
-                              value={selectedValues}
-                              onChange={(event) =>
-                                onFilterChange({
-                                  ...filters,
-                                  [filterCard.key]: multiSelectValue(event)
-                                })
-                              }
-                              aria-label={`${filterCard.label} filter`}
-                            >
-                              {filterCard.options.map((item) => (
-                                <option key={item} value={item}>
-                                  {item}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="filter-search-select">
+                              {selectedValues.length > 0 ? (
+                                <div className="filter-chips">
+                                  {selectedValues.map((value) => (
+                                    <span key={value} className="filter-chip">
+                                      {value}
+                                      <button
+                                        type="button"
+                                        className="filter-chip-remove"
+                                        aria-label={`Remove ${value} from ${filterCard.label} filter`}
+                                        onClick={() =>
+                                          onFilterChange({
+                                            ...filters,
+                                            [filterCard.key]: selectedValues.filter((item) => item !== value)
+                                          })
+                                        }
+                                      >
+                                        ×
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                              <input
+                                type="text"
+                                value={searchValue}
+                                onChange={(event) =>
+                                  setFilterSearch((prev) => ({ ...prev, [filterCard.key]: event.target.value }))
+                                }
+                                placeholder={`Search ${filterCard.label}...`}
+                                aria-label={`Search ${filterCard.label} options`}
+                              />
+                              <div className="filter-options-list" aria-label={`${filterCard.label} filter options`}>
+                                {filteredOptions.map((option) => {
+                                  const isSelected = selectedValues.includes(option);
+                                  return (
+                                    <button
+                                      key={option}
+                                      type="button"
+                                      className={`filter-option ${isSelected ? "is-selected" : ""}`}
+                                      aria-pressed={isSelected}
+                                      onClick={() => {
+                                        const nextValues = isSelected
+                                          ? selectedValues.filter((item) => item !== option)
+                                          : [...selectedValues, option];
+                                        onFilterChange({
+                                          ...filters,
+                                          [filterCard.key]: nextValues
+                                        });
+                                      }}
+                                    >
+                                      <span>{option}</span>
+                                      {isSelected ? <span aria-hidden="true">✓</span> : null}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           ) : (
                             <span className="field-help">No options available yet.</span>
                           )}

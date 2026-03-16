@@ -518,8 +518,80 @@
   color: var(--color-text-subtle);
 }
 
-.filter-card select[multiple] {
-  min-height: 5.2rem;
+.filter-search-select {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  max-width: 100%;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-accent-soft) 60%, transparent);
+  color: var(--color-accent-strong);
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+}
+
+.filter-chip-remove {
+  all: unset;
+  cursor: pointer;
+  color: var(--color-text-subtle);
+  font-size: var(--text-2xs);
+  padding-inline: 0.1rem;
+}
+
+.filter-chip-remove:hover,
+.filter-chip-remove:focus-visible {
+  color: var(--color-danger);
+}
+
+.filter-options-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 8rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.filter-option {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.filter-option:last-child {
+  border-bottom: none;
+}
+
+.filter-option:hover,
+.filter-option:focus-visible {
+  background: color-mix(in srgb, var(--color-accent-soft) 30%, transparent);
+}
+
+.filter-option.is-selected {
+  background: color-mix(in srgb, var(--color-accent-soft) 50%, transparent);
+  color: var(--color-accent-strong);
+  font-weight: 600;
 }
 
 .chart-header {

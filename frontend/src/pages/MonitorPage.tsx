@@ -720,10 +720,12 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
               </div>
               {dashboardSummarySwitches.length > 0 ? (
                 <div className="monitor-dashboard-summary-legend">
-                  Showing top {dashboardSummarySwitches.length} switch{dashboardSummarySwitches.length !== 1 ? "es" : ""}
+                  Showing top {dashboardSummarySwitches.length} switch{dashboardSummarySwitches.length !== 1 ? "es" : ""} by
+                  {" "}unreachable endpoint count
                   {hiddenDashboardSwitchCount > 0
-                    ? ` of ${dashboardSummarySwitches.length + hiddenDashboardSwitchCount} with unreachable endpoints`
-                    : " with unreachable endpoints"}
+                    ? `, ${dashboardSummarySwitches.length + hiddenDashboardSwitchCount} total`
+                    : ""}
+                  {" "}(top 10 limit)
                 </div>
               ) : null}
             </>
