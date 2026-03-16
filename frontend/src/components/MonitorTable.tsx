@@ -297,7 +297,15 @@ export function MonitorTable({
           if (!ipAddress) {
             return value;
           }
-          return <span title={`Mgmt IP: ${ipAddress}`}>{value}</span>;
+          return (
+            <span
+              className="switch-cell-has-ip"
+              data-tooltip={`Mgmt IP: ${ipAddress}`}
+              aria-label={`${value} (Mgmt IP: ${ipAddress})`}
+            >
+              {value}
+            </span>
+          );
         }
       };
     });

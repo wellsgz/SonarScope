@@ -824,6 +824,39 @@ label {
   font-weight: 700;
 }
 
+.switch-cell-has-ip {
+  position: relative;
+  display: inline-flex;
+  cursor: help;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--color-text-subtle);
+  text-underline-offset: 2px;
+}
+
+.switch-cell-has-ip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-elevated);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-text) 10%, transparent);
+  color: var(--color-text);
+  font-size: var(--text-2xs);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 10;
+}
+
+.switch-cell-has-ip:hover::after {
+  opacity: 1;
+}
+
 .error-banner,
 .success-banner,
 .info-banner {
