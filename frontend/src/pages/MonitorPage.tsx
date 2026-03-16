@@ -718,6 +718,14 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
                   </div>
                 ) : null}
               </div>
+              {dashboardSummarySwitches.length > 0 ? (
+                <div className="monitor-dashboard-summary-legend">
+                  Showing top {dashboardSummarySwitches.length} switch{dashboardSummarySwitches.length !== 1 ? "es" : ""}
+                  {hiddenDashboardSwitchCount > 0
+                    ? ` of ${dashboardSummarySwitches.length + hiddenDashboardSwitchCount} with unreachable endpoints`
+                    : " with unreachable endpoints"}
+                </div>
+              ) : null}
             </>
           )}
         </div>

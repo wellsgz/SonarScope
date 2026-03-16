@@ -256,6 +256,12 @@
   background: color-mix(in srgb, var(--color-accent-soft) 16%, var(--color-surface-elevated));
 }
 
+.monitor-dashboard-summary-legend {
+  font-size: var(--text-2xs);
+  color: var(--color-text-subtle);
+  text-align: right;
+}
+
 .monitor-dashboard-summary-label {
   font-size: var(--text-xs);
   letter-spacing: 0.04em;

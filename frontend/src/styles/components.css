@@ -418,7 +418,9 @@ label {
 
 .column-visibility-item {
   display: inline-flex;
+  flex-direction: row-reverse;
   align-items: flex-start;
+  justify-content: space-between;
   gap: 0.4rem;
   min-width: 0;
   font-size: var(--text-xs);

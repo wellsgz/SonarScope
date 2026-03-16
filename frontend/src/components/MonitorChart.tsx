@@ -360,9 +360,9 @@ export function MonitorChart({
     textMuted: readToken("--color-text-muted", "#b4c3db"),
     textSubtle: readToken("--color-text-subtle", "#94a7c4"),
     border: readToken("--color-border", "#21324d"),
-    success: readToken("--color-success", "#10b981"),
-    warning: readToken("--color-warning", "#d97706"),
-    danger: readToken("--color-danger", "#ef4444")
+    success: "#22c55e",
+    warning: "#f59e0b",
+    danger: "#ef4444"
   };
   const legendFontSizePx = readTokenFontSizePx("--text-sm", 0.74);
 
@@ -499,9 +499,9 @@ export function MonitorChart({
         seriesIndex: 0,
         dimension: 1,
         pieces: [
-          { lte: 0, color: palette.success },
-          { gt: 0, lt: 100, color: palette.warning },
-          { gte: 100, color: palette.danger }
+          { lt: 0.5, color: palette.success },
+          { gte: 0.5, lt: 99.5, color: palette.warning },
+          { gte: 99.5, color: palette.danger }
         ]
       },
       grid: {
