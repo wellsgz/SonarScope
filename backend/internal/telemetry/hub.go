@@ -10,9 +10,18 @@ import (
 )
 
 const (
-	clientSendQueueSize = 16
-	clientWriteTimeout  = 2 * time.Second
+	defaultClientSendQueueSize = 64
+	defaultClientWriteTimeout  = 2 * time.Second
+	defaultPingInterval        = 30 * time.Second
+	defaultPongWait            = 45 * time.Second
 )
+
+type hubConfig struct {
+	clientSendQueueSize int
+	clientWriteTimeout  time.Duration
+	pingInterval        time.Duration
+	pongWait            time.Duration
+}
 
 type client struct {
 	conn      *websocket.Conn
@@ -25,9 +34,31 @@ type Hub struct {
 	mu       sync.RWMutex
 	clients  map[*client]struct{}
 	upgrader websocket.Upgrader
+	config   hubConfig
 }
 
 func NewHub() *Hub {
+	return newHubWithConfig(hubConfig{
+		clientSendQueueSize: defaultClientSendQueueSize,
+		clientWriteTimeout:  defaultClientWriteTimeout,
+		pingInterval:        defaultPingInterval,
+		pongWait:            defaultPongWait,
+	})
+}
+
+func newHubWithConfig(cfg hubConfig) *Hub {
+	if cfg.clientSendQueueSize <= 0 {
+		cfg.clientSendQueueSize = defaultClientSendQueueSize
+	}
+	if cfg.clientWriteTimeout <= 0 {
+		cfg.clientWriteTimeout = defaultClientWriteTimeout
+	}
+	if cfg.pingInterval <= 0 {
+		cfg.pingInterval = defaultPingInterval
+	}
+	if cfg.pongWait <= 0 {
+		cfg.pongWait = defaultPongWait
+	}
 	return &Hub{
 		clients: map[*client]struct{}{},
 		upgrader: websocket.Upgrader{
@@ -37,13 +68,14 @@ func NewHub() *Hub {
 				return true
 			},
 		},
+		config: cfg,
 	}
 }
 
-func newClient(conn *websocket.Conn) *client {
+func newClient(conn *websocket.Conn, sendQueueSize int) *client {
 	return &client{
 		conn: conn,
-		send: make(chan []byte, clientSendQueueSize),
+		send: make(chan []byte, sendQueueSize),
 		done: make(chan struct{}),
 	}
 }
@@ -83,7 +115,11 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := newClient(conn)
+	// Own deadlines inside the websocket pumps rather than inheriting HTTP timeouts.
+	_ = conn.SetReadDeadline(time.Time{})
+	_ = conn.SetWriteDeadline(time.Time{})
+
+	client := newClient(conn, h.config.clientSendQueueSize)
 	h.registerClient(client)
 
 	go h.writePump(client)
@@ -92,6 +128,13 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 func (h *Hub) readPump(c *client) {
 	defer h.unregisterClient(c)
+
+	if err := c.conn.SetReadDeadline(time.Now().Add(h.config.pongWait)); err != nil {
+		return
+	}
+	c.conn.SetPongHandler(func(string) error {
+		return c.conn.SetReadDeadline(time.Now().Add(h.config.pongWait))
+	})
 
 	for {
 		if _, _, err := c.conn.ReadMessage(); err != nil {
@@ -103,6 +146,9 @@ func (h *Hub) readPump(c *client) {
 func (h *Hub) writePump(c *client) {
 	defer h.unregisterClient(c)
 
+	ticker := time.NewTicker(h.config.pingInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-c.done:
@@ -111,15 +157,27 @@ func (h *Hub) writePump(c *client) {
 			if err := h.writeClientPayload(c, payload); err != nil {
 				return
 			}
+		case <-ticker.C:
+			if err := h.writeClientPing(c); err != nil {
+				return
+			}
 		}
 	}
 }
 
 func (h *Hub) writeClientPayload(c *client, payload []byte) error {
-	if err := c.conn.SetWriteDeadline(time.Now().Add(clientWriteTimeout)); err != nil {
+	if err := c.conn.SetWriteDeadline(time.Now().Add(h.config.clientWriteTimeout)); err != nil {
 		return err
 	}
 	return c.conn.WriteMessage(websocket.TextMessage, payload)
+}
+
+func (h *Hub) writeClientPing(c *client) error {
+	deadline := time.Now().Add(h.config.clientWriteTimeout)
+	if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		return err
+	}
+	return c.conn.WriteControl(websocket.PingMessage, nil, deadline)
 }
 
 func (h *Hub) Broadcast(event any) {
@@ -138,6 +196,7 @@ func (h *Hub) Broadcast(event any) {
 		select {
 		case c.send <- payload:
 		default:
+			h.unregisterClient(c)
 		}
 	}
 }

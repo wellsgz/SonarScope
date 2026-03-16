@@ -55,17 +55,31 @@ docker compose -f docker-compose.yml --env-file .env.deploy down
 
 ### Run from local source (dev mode)
 
-1. Copy dev variables:
+1. Update to the latest monitor-capable revision:
+
+```bash
+git fetch origin
+git checkout main
+git pull --ff-only
+git rev-parse --short HEAD   # should be 55f83fb or newer
+```
+
+2. Copy dev variables:
 
 ```bash
 cp deploy/.env.dev.example deploy/.env.dev
 ```
 
-2. Build and start:
+3. Rebuild both API and web containers in detached mode:
 
 ```bash
-cd deploy
-docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --build
+make up-dev-detached
+```
+
+4. Smoke-check the monitor APIs before debugging the UI:
+
+```bash
+make smoke-dev-monitor
 ```
 
 Optional stop:
@@ -87,6 +101,15 @@ echo <GITHUB_TOKEN> | docker login ghcr.io -u <GITHUB_USERNAME> --password-stdin
 ```
 
 For anonymous pulls, set package visibility to public in GitHub Packages.
+
+Helpful dev targets:
+
+```bash
+make up-dev              # full Docker Compose dev stack in foreground
+make up-dev-detached     # rebuild api + web in detached dev mode
+make smoke-dev-monitor   # verify monitor summary and switch APIs respond
+make down-dev            # stop dev stack
+```
 
 ## Container Publishing (GHCR)
 

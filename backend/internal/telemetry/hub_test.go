@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"net"
@@ -34,11 +35,16 @@ func TestHubBroadcastReturnsPromptlyWithFullQueue(t *testing.T) {
 		t.Fatalf("broadcast blocked for %s", elapsed)
 	}
 
-	if got := hub.ClientCount(); got != 2 {
-		t.Fatalf("client count = %d, want 2", got)
+	if got := hub.ClientCount(); got != 1 {
+		t.Fatalf("client count = %d, want 1", got)
 	}
 	if got := len(slow.send); got != 1 {
 		t.Fatalf("slow client queue len = %d, want 1", got)
+	}
+	select {
+	case <-slow.done:
+	default:
+		t.Fatal("slow client was not removed after queue overflow")
 	}
 
 	select {
@@ -55,24 +61,27 @@ func TestHubBroadcastReturnsPromptlyWithFullQueue(t *testing.T) {
 	}
 }
 
-func TestHubBroadcastDropsFullQueueWithoutRemovingClient(t *testing.T) {
+func TestHubBroadcastRemovesSlowClientWithFullQueue(t *testing.T) {
 	hub := NewHub()
 	full := &client{send: make(chan []byte, 1), done: make(chan struct{})}
 	full.send <- []byte(`"busy"`)
 	hub.registerClient(full)
 
-	for i := 0; i < 3; i++ {
-		hub.Broadcast(map[string]any{
-			"type":        "probe_update",
-			"endpoint_id": i + 1,
-		})
-	}
+	hub.Broadcast(map[string]any{
+		"type":        "probe_update",
+		"endpoint_id": 1,
+	})
 
-	if got := hub.ClientCount(); got != 1 {
-		t.Fatalf("client count = %d, want 1", got)
+	if got := hub.ClientCount(); got != 0 {
+		t.Fatalf("client count = %d, want 0", got)
 	}
 	if got := len(full.send); got != 1 {
 		t.Fatalf("full client queue len = %d, want 1", got)
+	}
+	select {
+	case <-full.done:
+	default:
+		t.Fatal("full client was not removed")
 	}
 }
 
@@ -83,8 +92,8 @@ func TestHubWriteFailureRemovesOnlyFailingClient(t *testing.T) {
 	healthyConn, healthyPeer := newPipeWebSocketConn(t)
 	defer healthyPeer.Close()
 
-	failingClient := newClient(failingConn)
-	healthyClient := newClient(healthyConn)
+	failingClient := newClient(failingConn, hub.config.clientSendQueueSize)
+	healthyClient := newClient(healthyConn, hub.config.clientSendQueueSize)
 	hub.registerClient(failingClient)
 	hub.registerClient(healthyClient)
 
@@ -129,8 +138,8 @@ func TestHubReadPumpDisconnectAndClose(t *testing.T) {
 	clientBConn, peerB := newPipeWebSocketConn(t)
 	defer peerB.Close()
 
-	clientA := newClient(clientAConn)
-	clientB := newClient(clientBConn)
+	clientA := newClient(clientAConn, hub.config.clientSendQueueSize)
+	clientB := newClient(clientBConn, hub.config.clientSendQueueSize)
 	hub.registerClient(clientA)
 	hub.registerClient(clientB)
 
@@ -157,7 +166,7 @@ func TestHubWriteClientPayloadAttemptsWriteAfterDoneClosed(t *testing.T) {
 	conn, peer := newPipeWebSocketConn(t)
 	defer peer.Close()
 
-	c := newClient(conn)
+	c := newClient(conn, hub.config.clientSendQueueSize)
 	close(c.done)
 
 	written := awaitPeerRead(peer)
@@ -173,6 +182,58 @@ func TestHubWriteClientPayloadAttemptsWriteAfterDoneClosed(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for websocket payload")
 	}
+}
+
+func TestHubKeepaliveRetainsResponsiveIdleClient(t *testing.T) {
+	hub := newHubWithConfig(hubConfig{
+		clientSendQueueSize: 4,
+		clientWriteTimeout:  50 * time.Millisecond,
+		pingInterval:        10 * time.Millisecond,
+		pongWait:            35 * time.Millisecond,
+	})
+	serverConn, peer := newPipeWebSocketConn(t)
+	defer peer.Close()
+
+	c := newClient(serverConn, hub.config.clientSendQueueSize)
+	hub.registerClient(c)
+
+	readDone := runPump(func() { hub.readPump(c) })
+	writeDone := runPump(func() { hub.writePump(c) })
+	clientDone := runPeerFrameLoop(peer, true)
+
+	time.Sleep(4 * hub.config.pingInterval)
+	if got := hub.ClientCount(); got != 1 {
+		t.Fatalf("client count = %d, want 1", got)
+	}
+
+	hub.Close()
+	waitForClientCount(t, hub, 0)
+	waitForSignal(t, readDone, "responsive keepalive read pump exit")
+	waitForSignal(t, writeDone, "responsive keepalive write pump exit")
+	waitForSignal(t, clientDone, "responsive keepalive client reader exit")
+}
+
+func TestHubKeepaliveRemovesClientWithoutPong(t *testing.T) {
+	hub := newHubWithConfig(hubConfig{
+		clientSendQueueSize: 4,
+		clientWriteTimeout:  50 * time.Millisecond,
+		pingInterval:        10 * time.Millisecond,
+		pongWait:            35 * time.Millisecond,
+	})
+	serverConn, peer := newPipeWebSocketConn(t)
+	defer peer.Close()
+
+	c := newClient(serverConn, hub.config.clientSendQueueSize)
+	hub.registerClient(c)
+
+	readDone := runPump(func() { hub.readPump(c) })
+	writeDone := runPump(func() { hub.writePump(c) })
+	clientDone := runPeerFrameLoop(peer, false)
+
+	waitForClientCount(t, hub, 0)
+	waitForSignal(t, readDone, "no-pong read pump exit")
+	waitForSignal(t, writeDone, "no-pong write pump exit")
+	waitForSignal(t, clientDone, "no-pong client reader exit")
 }
 
 func newPipeWebSocketConn(t *testing.T) (*websocket.Conn, net.Conn) {
@@ -234,6 +295,86 @@ func awaitPeerRead(peer net.Conn) <-chan int {
 		result <- n
 	}()
 	return result
+}
+
+func runPeerFrameLoop(peer net.Conn, respondToPing bool) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			opcode, payload, err := readPeerFrame(peer)
+			if err != nil {
+				return
+			}
+			if opcode == websocket.PingMessage && respondToPing {
+				if err := writeMaskedControlFrame(peer, websocket.PongMessage, payload); err != nil {
+					return
+				}
+			}
+		}
+	}()
+	return done
+}
+
+func readPeerFrame(peer net.Conn) (int, []byte, error) {
+	header := make([]byte, 2)
+	if _, err := io.ReadFull(peer, header); err != nil {
+		return 0, nil, err
+	}
+
+	payloadLen := int64(header[1] & 0x7f)
+	switch payloadLen {
+	case 126:
+		extended := make([]byte, 2)
+		if _, err := io.ReadFull(peer, extended); err != nil {
+			return 0, nil, err
+		}
+		payloadLen = int64(binary.BigEndian.Uint16(extended))
+	case 127:
+		extended := make([]byte, 8)
+		if _, err := io.ReadFull(peer, extended); err != nil {
+			return 0, nil, err
+		}
+		payloadLen = int64(binary.BigEndian.Uint64(extended))
+	}
+
+	if header[1]&0x80 != 0 {
+		maskKey := make([]byte, 4)
+		if _, err := io.ReadFull(peer, maskKey); err != nil {
+			return 0, nil, err
+		}
+	}
+
+	payload := make([]byte, payloadLen)
+	if _, err := io.ReadFull(peer, payload); err != nil {
+		return 0, nil, err
+	}
+	return int(header[0] & 0x0f), payload, nil
+}
+
+func writeMaskedControlFrame(peer net.Conn, opcode int, payload []byte) error {
+	if len(payload) > 125 {
+		return io.ErrShortBuffer
+	}
+
+	header := []byte{0x80 | byte(opcode), 0x80 | byte(len(payload))}
+	mask := []byte{0, 0, 0, 0}
+	maskedPayload := append([]byte(nil), payload...)
+	for i := range maskedPayload {
+		maskedPayload[i] ^= mask[i%len(mask)]
+	}
+
+	if _, err := peer.Write(header); err != nil {
+		return err
+	}
+	if _, err := peer.Write(mask); err != nil {
+		return err
+	}
+	if len(maskedPayload) == 0 {
+		return nil
+	}
+	_, err := peer.Write(maskedPayload)
+	return err
 }
 
 func runPump(fn func()) <-chan struct{} {
