@@ -407,6 +407,7 @@ export async function getMonitorDashboardSummary(filters: {
   statsScope?: MonitorDataScope;
   start?: string;
   end?: string;
+  lookback?: string;
 }): Promise<DashboardUnreachableSummary> {
   const path = buildQuery("/api/monitor/dashboard-summary", {
     vlan: filters.vlan?.join(","),
@@ -421,7 +422,8 @@ export async function getMonitorDashboardSummary(filters: {
     ip_list: filters.ipList?.join(","),
     stats_scope: filters.statsScope,
     start: filters.start,
-    end: filters.end
+    end: filters.end,
+    lookback: filters.lookback || undefined
   });
   return request<DashboardUnreachableSummary>(path);
 }

@@ -21,7 +21,7 @@ const viewMeta: AppViewMeta[] = [
   {
     key: "inventory",
     label: "Inventory",
-    title: "Endpoint Inventory",
+    title: "Network Inventory",
     subtitle: "Import, filter, and maintain monitored infrastructure targets.",
     icon: "inventory"
   },

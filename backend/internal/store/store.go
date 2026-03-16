@@ -48,6 +48,7 @@ type MonitorPageQuery struct {
 	StatsScope string
 	Start      time.Time
 	End        time.Time
+	Lookback   time.Duration
 }
 
 type rangeFailureStreakStats struct {
@@ -1099,11 +1100,47 @@ func (s *Store) DashboardUnreachableSummary(
 		query.IPList,
 	)
 
+	summaryQuery, summaryArgs := buildDashboardSummaryQuery(query, whereClause, args)
+	rows, err := s.pool.Query(ctx, summaryQuery, summaryArgs...)
+	if err != nil {
+		return model.DashboardUnreachableSummary{}, err
+	}
+	defer rows.Close()
+
+	queryRows := make([]dashboardSummaryQueryRow, 0, 11)
+	for rows.Next() {
+		var row dashboardSummaryQueryRow
+		if err := rows.Scan(
+			&row.RowType,
+			&row.TotalUnreachable,
+			&row.TotalSwitchCount,
+			&row.SwitchName,
+			&row.UnreachableCount,
+		); err != nil {
+			return model.DashboardUnreachableSummary{}, err
+		}
+		queryRows = append(queryRows, row)
+	}
+	if err := rows.Err(); err != nil {
+		return model.DashboardUnreachableSummary{}, err
+	}
+
+	return dashboardSummaryFromQueryRows(queryRows)
+}
+
+type dashboardSummaryQueryRow struct {
+	RowType          string
+	TotalUnreachable int64
+	TotalSwitchCount int64
+	SwitchName       string
+	UnreachableCount int64
+}
+
+func buildDashboardSummaryQuery(query MonitorPageQuery, whereClause string, args []any) (string, []any) {
 	switchLabelExpr := "CASE WHEN NULLIF(btrim(ie.switch_name), '') IS NULL THEN 'Unassigned' ELSE ie.switch_name END"
 
 	baseArgs := append([]any{}, args...)
-	var totalQuery string
-	var bySwitchQuery string
+	var unreachableCTE string
 
 	if query.StatsScope == "range" {
 		viewName := "ping_1m"
@@ -1113,10 +1150,10 @@ func (s *Store) DashboardUnreachableSummary(
 
 		startPos := len(baseArgs) + 1
 		endPos := len(baseArgs) + 2
-		rangeArgs := append(baseArgs, query.Start, query.End)
+		baseArgs = append(baseArgs, query.Start, query.End)
 
-		rangeCTE := fmt.Sprintf(`
-			WITH range_stats AS (
+		unreachableCTE = fmt.Sprintf(`
+			range_stats AS (
 				SELECT
 					endpoint_id,
 					SUM(fail_count)::BIGINT AS failed_count
@@ -1134,24 +1171,25 @@ func (s *Store) DashboardUnreachableSummary(
 				  AND COALESCE(rs.failed_count, 0) > 0
 			)
 		`, viewName, startPos, endPos, switchLabelExpr, whereClause)
+	} else if query.Lookback > 0 {
+		intervalPos := len(baseArgs) + 1
+		baseArgs = append(baseArgs, fmt.Sprintf("%d seconds", int(query.Lookback.Seconds())))
 
-		totalQuery = rangeCTE + `
-			SELECT
-				COUNT(*)::BIGINT AS total_unreachable,
-				COUNT(DISTINCT switch_name)::BIGINT AS total_switch_count
-			FROM unreachable
-		`
-		bySwitchQuery = rangeCTE + `
-			SELECT switch_name, COUNT(*)::BIGINT AS unreachable_count
-			FROM unreachable
-			GROUP BY switch_name
-			ORDER BY unreachable_count DESC, switch_name ASC
-			LIMIT 10
-		`
-		baseArgs = rangeArgs
+		unreachableCTE = fmt.Sprintf(`
+			unreachable AS (
+				SELECT DISTINCT
+					ie.id,
+					%s AS switch_name
+				FROM inventory_endpoint ie
+				INNER JOIN ping_raw pr ON pr.endpoint_id = ie.id
+				%s
+				  AND pr.ts >= NOW() - $%d::INTERVAL
+				  AND NOT pr.success
+			)
+		`, switchLabelExpr, whereClause, intervalPos)
 	} else {
-		liveCTE := fmt.Sprintf(`
-			WITH unreachable AS (
+		unreachableCTE = fmt.Sprintf(`
+			unreachable AS (
 				SELECT
 					ie.id,
 					%s AS switch_name
@@ -1168,42 +1206,69 @@ func (s *Store) DashboardUnreachableSummary(
 				  )
 			)
 		`, switchLabelExpr, whereClause)
+	}
 
-		totalQuery = liveCTE + `
-			SELECT
-				COUNT(*)::BIGINT AS total_unreachable,
-				COUNT(DISTINCT switch_name)::BIGINT AS total_switch_count
-			FROM unreachable
-		`
-		bySwitchQuery = liveCTE + `
+	summaryQuery := fmt.Sprintf(`
+		WITH %s,
+		grouped AS (
 			SELECT switch_name, COUNT(*)::BIGINT AS unreachable_count
 			FROM unreachable
 			GROUP BY switch_name
+		),
+		meta AS (
+			SELECT
+				COALESCE(SUM(unreachable_count), 0)::BIGINT AS total_unreachable,
+				COUNT(*)::BIGINT AS total_switch_count
+			FROM grouped
+		),
+		limited AS (
+			SELECT switch_name, unreachable_count
+			FROM grouped
 			ORDER BY unreachable_count DESC, switch_name ASC
 			LIMIT 10
-		`
-	}
+		)
+		SELECT row_type, total_unreachable, total_switch_count, switch_name, unreachable_count
+		FROM (
+			SELECT
+				0 AS row_order,
+				'summary'::text AS row_type,
+				meta.total_unreachable,
+				meta.total_switch_count,
+				''::text AS switch_name,
+				0::BIGINT AS unreachable_count
+			FROM meta
+			UNION ALL
+			SELECT
+				1 AS row_order,
+				'switch'::text AS row_type,
+				0::BIGINT AS total_unreachable,
+				0::BIGINT AS total_switch_count,
+				limited.switch_name,
+				limited.unreachable_count
+			FROM limited
+		) summary_rows
+		ORDER BY row_order ASC, unreachable_count DESC NULLS LAST, switch_name ASC
+	`, unreachableCTE)
 
+	return summaryQuery, baseArgs
+}
+
+func dashboardSummaryFromQueryRows(rows []dashboardSummaryQueryRow) (model.DashboardUnreachableSummary, error) {
 	var summary model.DashboardUnreachableSummary
-	if err := s.pool.QueryRow(ctx, totalQuery, baseArgs...).Scan(&summary.TotalUnreachable, &summary.TotalSwitchCount); err != nil {
-		return model.DashboardUnreachableSummary{}, err
-	}
 
-	rows, err := s.pool.Query(ctx, bySwitchQuery, baseArgs...)
-	if err != nil {
-		return model.DashboardUnreachableSummary{}, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var item model.SwitchUnreachableCount
-		if err := rows.Scan(&item.SwitchName, &item.UnreachableCount); err != nil {
-			return model.DashboardUnreachableSummary{}, err
+	for _, row := range rows {
+		switch row.RowType {
+		case "summary":
+			summary.TotalUnreachable = row.TotalUnreachable
+			summary.TotalSwitchCount = row.TotalSwitchCount
+		case "switch":
+			summary.BySwitch = append(summary.BySwitch, model.SwitchUnreachableCount{
+				SwitchName:       row.SwitchName,
+				UnreachableCount: row.UnreachableCount,
+			})
+		default:
+			return model.DashboardUnreachableSummary{}, fmt.Errorf("unexpected dashboard summary row type %q", row.RowType)
 		}
-		summary.BySwitch = append(summary.BySwitch, item)
-	}
-	if err := rows.Err(); err != nil {
-		return model.DashboardUnreachableSummary{}, err
 	}
 
 	return summary, nil

@@ -124,7 +124,7 @@
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: var(--space-2);
   overflow: hidden;
 }
@@ -196,6 +196,18 @@
   justify-content: flex-start;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+.monitor-dashboard-lookback-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.monitor-dashboard-lookback-row .status-chip {
+  cursor: pointer;
+  user-select: none;
 }
 
 .monitor-dashboard-summary-row {
@@ -959,7 +971,6 @@
 }
 
 .inventory-danger-zone {
-  margin-top: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface-elevated) 94%, transparent);

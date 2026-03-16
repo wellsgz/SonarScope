@@ -181,6 +181,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
   const [dataScope, setDataScope] = useState<MonitorDataScope>("live");
   const [rangeAnchorMs, setRangeAnchorMs] = useState<number>(Date.now());
+  const [dashboardLookback, setDashboardLookback] = useState<string>("");
   const [internalDashboardMode, setInternalDashboardMode] = useState(false);
   const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") {
@@ -214,6 +215,12 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   useEffect(() => {
     lastRealtimeRefreshRef.current = 0;
   }, [autoRefreshMs]);
+
+  useEffect(() => {
+    if (dataScope === "range" && dashboardLookback !== "") {
+      setDashboardLookback("");
+    }
+  }, [dashboardLookback, dataScope]);
 
   useEffect(() => {
     const usesRollingWindow = dataScope === "live" || quickRange !== "custom";
@@ -409,6 +416,13 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     queryKey: ["monitor-switch-ips"],
     queryFn: getMonitorSwitchIPs
   });
+  const dashboardSummaryFilters = useMemo(
+    () => ({
+      ...monitorQueryFilters,
+      lookback: monitorQueryFilters.statsScope === "live" && dashboardLookback ? dashboardLookback : undefined
+    }),
+    [dashboardLookback, monitorQueryFilters]
+  );
   const dashboardSummaryQuery = useQuery({
     queryKey: [
       "monitor-dashboard-summary",
@@ -424,9 +438,10 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       monitorQueryFilters.ipList,
       monitorQueryFilters.statsScope,
       monitorQueryFilters.start,
-      monitorQueryFilters.end
+      monitorQueryFilters.end,
+      monitorQueryFilters.statsScope === "live" ? dashboardLookback : ""
     ],
-    queryFn: () => getMonitorDashboardSummary(monitorQueryFilters),
+    queryFn: () => getMonitorDashboardSummary(dashboardSummaryFilters),
     enabled: tableDashboardMode,
     refetchInterval: tableDashboardMode ? autoRefreshMs : false
   });
@@ -641,9 +656,31 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
           </div>
         </div>
 
+        {dataScope === "live" ? (
+          <div className="monitor-dashboard-lookback-row">
+            {(["", "30s", "1m", "5m"] as const).map((value) => {
+              const label = value === "" ? "Live" : value;
+              const isActive = dashboardLookback === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  className={`status-chip ${isActive ? "status-chip-live" : ""}`}
+                  onClick={() => setDashboardLookback(value)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
         <div className="monitor-dashboard-summary-row">
           <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-total">
-            <span className="monitor-dashboard-summary-label">Unreachable Endpoints</span>
+            <span className="monitor-dashboard-summary-label">
+              Unreachable Endpoints
+              {dataScope === "live" && dashboardLookback ? ` (${dashboardLookback})` : ""}
+            </span>
             <strong className="monitor-dashboard-summary-value">
               {dashboardSummaryQuery.isPending && !dashboardSummary ? "…" : dashboardSummary?.total_unreachable ?? 0}
             </strong>

@@ -338,6 +338,7 @@ export function InventoryPage() {
   const [selection, setSelection] = useState<Record<string, "add" | "update">>({});
   const [importExpanded, setImportExpanded] = useState(false);
   const [singleEndpointExpanded, setSingleEndpointExpanded] = useState(false);
+  const [inventoryListExpanded, setInventoryListExpanded] = useState(false);
   const [lastImportSummary, setLastImportSummary] = useState<{
     added: number;
     updated: number;
@@ -1195,8 +1196,6 @@ export function InventoryPage() {
         ) : null}
       </section>
 
-      <SwitchDirectory />
-
       <section
         className={`panel inventory-single-add-panel inventory-collapsible ${singleEndpointExpanded ? "is-expanded" : "is-collapsed"}`}
       >
@@ -1430,35 +1429,39 @@ export function InventoryPage() {
         ) : null}
       </section>
 
-      <section className="panel inventory-list-panel">
-        <div className="panel-header">
-          <div className="inventory-title-row">
-            <h2 className="panel-title">Current Inventory</h2>
-            <div className="button-row inventory-header-actions">
-              <button
-                className="btn btn-small"
-                type="button"
-                disabled={exportDisabled}
-                onClick={() => exportCSVMutation.mutate()}
-              >
-                {exportCSVMutation.isPending ? "Exporting..." : "Export CSV"}
-              </button>
-              <button
-                className="btn btn-small"
-                type="button"
-                onClick={() => {
-                  setFilters(defaultFilters);
-                  setCustomSearch(defaultCustomSearch);
-                }}
-              >
-                Clear All Filters
-              </button>
-            </div>
+      <section className={`panel inventory-list-panel inventory-collapsible ${inventoryListExpanded ? "is-expanded" : "is-collapsed"}`}>
+        <div className="panel-header inventory-section-header">
+          <div className="inventory-section-heading">
+            <h2 className="panel-title">Endpoints</h2>
+            <p className="panel-subtitle">Filter and maintain endpoint metadata (IP is immutable).</p>
           </div>
-          <p className="panel-subtitle">Filter and maintain endpoint metadata (IP is immutable).</p>
+          <button className="btn btn-small inventory-section-toggle" type="button" onClick={() => setInventoryListExpanded((v) => !v)}>
+            {inventoryListExpanded ? "Collapse" : "Expand"}
+          </button>
         </div>
 
-        <div className="inventory-panel-body">
+        {inventoryListExpanded ? <div className="inventory-panel-body">
+          <div className="button-row inventory-header-actions">
+            <button
+              className="btn btn-small"
+              type="button"
+              disabled={exportDisabled}
+              onClick={() => exportCSVMutation.mutate()}
+            >
+              {exportCSVMutation.isPending ? "Exporting..." : "Export CSV"}
+            </button>
+            <button
+              className="btn btn-small"
+              type="button"
+              onClick={() => {
+                setFilters(defaultFilters);
+                setCustomSearch(defaultCustomSearch);
+              }}
+            >
+              Clear All Filters
+            </button>
+          </div>
+
           <div className="inventory-filter-section">
             <div className="inventory-filter-meta-row">
               <div className="inventory-filter-meta-label">Filters</div>
@@ -1849,11 +1852,15 @@ export function InventoryPage() {
               </table>
             </div>
           )}
+        </div> : null}
+      </section>
 
-          <section
-            className={`inventory-danger-zone ${dangerZoneExpanded ? "is-expanded" : "is-collapsed"}`}
-            aria-label="Inventory danger zone"
-          >
+      <SwitchDirectory />
+
+      <section
+        className={`inventory-danger-zone ${dangerZoneExpanded ? "is-expanded" : "is-collapsed"}`}
+        aria-label="Inventory danger zone"
+      >
             <button
               className="inventory-danger-header"
               type="button"
@@ -2186,8 +2193,6 @@ export function InventoryPage() {
                 </p>
               </div>
             ) : null}
-          </section>
-        </div>
       </section>
     </div>
   );

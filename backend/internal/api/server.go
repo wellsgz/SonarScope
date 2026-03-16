@@ -1605,6 +1605,34 @@ type monitorRequestParseError struct {
 	Message string
 }
 
+var allowedDashboardLookbacks = map[string]time.Duration{
+	"30s": 30 * time.Second,
+	"1m":  time.Minute,
+	"5m":  5 * time.Minute,
+}
+
+func parseDashboardLookback(raw string, statsScope string) (time.Duration, *monitorRequestParseError) {
+	lookbackRaw := strings.TrimSpace(raw)
+	if lookbackRaw == "" {
+		return 0, nil
+	}
+	if statsScope != "live" {
+		return 0, &monitorRequestParseError{
+			Status:  http.StatusBadRequest,
+			Message: "lookback is only supported when stats_scope=live",
+		}
+	}
+
+	lookback, ok := allowedDashboardLookbacks[lookbackRaw]
+	if !ok {
+		return 0, &monitorRequestParseError{
+			Status:  http.StatusBadRequest,
+			Message: "lookback must be one of 30s, 1m, or 5m",
+		}
+	}
+	return lookback, nil
+}
+
 func (s *Server) monitorPageQueryFromRequest(
 	r *http.Request,
 	options monitorRequestOptions,
@@ -1650,6 +1678,12 @@ func (s *Server) monitorPageQueryFromRequest(
 		}
 	}
 	query.StatsScope = statsScope
+
+	lookback, lookbackErr := parseDashboardLookback(r.URL.Query().Get("lookback"), statsScope)
+	if lookbackErr != nil {
+		return store.MonitorPageQuery{}, lookbackErr
+	}
+	query.Lookback = lookback
 
 	if options.includeSort {
 		sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
