@@ -5,6 +5,7 @@ import {
   cancelSwitchDirectoryPreview,
   deleteSwitchDirectoryEntry,
   downloadSwitchDirectoryImportTemplateCSV,
+  exportSwitchDirectoryCSV,
   importSwitchDirectoryPreview,
   listSwitchDirectory,
   upsertSwitchDirectoryEntry
@@ -72,8 +73,8 @@ export function SwitchDirectory() {
     if (lastSwitchDirectorySave) {
       return `Last saved: ${lastSwitchDirectorySave.name} (${lastSwitchDirectorySave.ip_address})`;
     }
-    return `Current mappings: ${switchDirectoryQuery.data?.length ?? 0}`;
-  }, [lastSwitchDirectoryImportSummary, lastSwitchDirectorySave, switchDirectoryQuery.data?.length]);
+    return "";
+  }, [lastSwitchDirectoryImportSummary, lastSwitchDirectorySave]);
 
   function invalidateSwitchDirectoryQueries() {
     queryClient.invalidateQueries({ queryKey: ["switch-directory"] });
@@ -113,6 +114,12 @@ export function SwitchDirectory() {
   });
   const switchDirectoryTemplateMutation = useMutation({
     mutationFn: () => downloadSwitchDirectoryImportTemplateCSV(),
+    onSuccess: ({ blob, filename }) => {
+      downloadBlob(blob, filename);
+    }
+  });
+  const switchDirectoryExportMutation = useMutation({
+    mutationFn: () => exportSwitchDirectoryCSV(),
     onSuccess: ({ blob, filename }) => {
       downloadBlob(blob, filename);
     }
@@ -169,9 +176,11 @@ export function SwitchDirectory() {
         <div className="inventory-section-heading">
           <h2 className="panel-title">Switch Directory</h2>
           <p className="panel-subtitle">Maintain switch management IP mappings used by the monitor tooltip and dashboard workflows.</p>
-          <div className="inventory-inline-summary" role="status" aria-live="polite">
-            {headerSummary}
-          </div>
+          {headerSummary ? (
+            <div className="inventory-inline-summary" role="status" aria-live="polite">
+              {headerSummary}
+            </div>
+          ) : null}
         </div>
         <button className="btn btn-small" type="button" onClick={() => setExpanded((current) => !current)}>
           {expanded ? "Collapse" : "Expand"}
@@ -180,6 +189,25 @@ export function SwitchDirectory() {
 
       {expanded ? (
         <div className="inventory-panel-body">
+          <div className="button-row inventory-header-actions">
+            <button
+              className="btn btn-small"
+              type="button"
+              onClick={() => switchDirectoryTemplateMutation.mutate()}
+              disabled={switchDirectoryTemplateMutation.isPending}
+            >
+              {switchDirectoryTemplateMutation.isPending ? "Downloading..." : "Download Template"}
+            </button>
+            <button
+              className="btn btn-small"
+              type="button"
+              onClick={() => switchDirectoryExportMutation.mutate()}
+              disabled={switchDirectoryExportMutation.isPending}
+            >
+              {switchDirectoryExportMutation.isPending ? "Exporting..." : "Export CSV"}
+            </button>
+          </div>
+
           <div className="inventory-switch-directory-tabs">
             <button
               type="button"

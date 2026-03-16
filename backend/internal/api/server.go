@@ -437,6 +437,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/", s.handleListSwitchDirectory)
 			r.Post("/", s.handleUpsertSwitchDirectoryEntry)
 			r.Delete("/{switchID}", s.handleDeleteSwitchDirectoryEntry)
+			r.Get("/export.csv", s.handleSwitchDirectoryExportCSV)
 			r.Get("/import-template.csv", s.handleSwitchDirectoryImportTemplateCSV)
 			r.Post("/import-preview", s.handleSwitchDirectoryImportPreview)
 			r.Delete("/import-preview/{previewID}", s.handleSwitchDirectoryImportPreviewDelete)
@@ -1454,6 +1455,43 @@ func (s *Server) handleSwitchDirectoryImportTemplateCSV(w http.ResponseWriter, _
 	w.Header().Set("Content-Disposition", `attachment; filename="switch-directory-import-template.csv"`)
 	if _, err := w.Write(csvBuffer.Bytes()); err != nil {
 		log.Printf("write switch directory import template response: %v", err)
+	}
+}
+
+func (s *Server) handleSwitchDirectoryExportCSV(w http.ResponseWriter, r *http.Request) {
+	items, err := s.store.ListSwitchDirectory(r.Context())
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var csvBuffer bytes.Buffer
+	csvWriter := csv.NewWriter(&csvBuffer)
+
+	if err := csvWriter.Write([]string{"name", "ip_address"}); err != nil {
+		util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("write csv header: %v", err))
+		return
+	}
+
+	for _, item := range items {
+		if err := csvWriter.Write([]string{item.Name, item.IPAddress}); err != nil {
+			util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("write csv row: %v", err))
+			return
+		}
+	}
+
+	csvWriter.Flush()
+	if err := csvWriter.Error(); err != nil {
+		util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("flush csv: %v", err))
+		return
+	}
+
+	filename := fmt.Sprintf("switch-directory-export-%s.csv", time.Now().UTC().Format("20060102-150405"))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(csvBuffer.Bytes()); err != nil {
+		log.Printf("switch directory export write response: %v", err)
 	}
 }
 

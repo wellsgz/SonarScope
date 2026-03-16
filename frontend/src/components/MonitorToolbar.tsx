@@ -102,6 +102,14 @@ export function MonitorToolbar({
         .filter((value) => value.length > 0).length,
     [ipListSearch]
   );
+  const activeTextSearchCount = useMemo(
+    () =>
+      [hostnameSearch, macSearch, ...customFields.map((field) => customSearchValueBySlot(customSearch, field.slot))]
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0).length,
+    [customFields, customSearch, hostnameSearch, macSearch]
+  );
+  const hasAnyTextSearch = activeTextSearchCount > 0;
 
   return (
     <div className="panel toolbar-panel">
@@ -176,70 +184,80 @@ export function MonitorToolbar({
             </button>
           </div>
           <div className="toolbar-block-filters-scroll">
-            <div className="monitor-search-grid monitor-search-grid-compact">
-              <div className="search-dual-row">
-                <label>
-                  Hostname Search
-                  <div className="search-input-row search-input-row-compact">
-                    <input
-                      type="text"
-                      value={hostnameSearch}
-                      onChange={(event) => onHostnameSearchChange(event.target.value)}
-                      placeholder="Contains match"
-                      aria-label="Search hostname"
-                    />
-                    {hostnameSearch.trim() ? (
-                      <button className="btn btn-small btn-icon" type="button" onClick={onClearHostnameSearch}>
-                        ×
-                      </button>
-                    ) : null}
+            <details className="filter-card" open={hasAnyTextSearch}>
+              <summary className="filter-card-summary">
+                <span>Text Search</span>
+                <span className="count-badge">{activeTextSearchCount}</span>
+              </summary>
+              <div className="filter-card-body">
+                <div className="monitor-search-grid monitor-search-grid-compact">
+                  <div className="search-dual-row">
+                    <label>
+                      Hostname
+                      <div className="search-input-row search-input-row-compact">
+                        <input
+                          type="text"
+                          value={hostnameSearch}
+                          onChange={(event) => onHostnameSearchChange(event.target.value)}
+                          placeholder="Contains match"
+                          aria-label="Search hostname"
+                        />
+                        {hostnameSearch.trim() ? (
+                          <button className="btn btn-small btn-icon" type="button" onClick={onClearHostnameSearch}>
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                    </label>
+                    <label>
+                      MAC Address
+                      <div className="search-input-row search-input-row-compact">
+                        <input
+                          type="text"
+                          value={macSearch}
+                          onChange={(event) => onMACSearchChange(event.target.value)}
+                          placeholder="Contains match"
+                          aria-label="Search MAC address"
+                        />
+                        {macSearch.trim() ? (
+                          <button className="btn btn-small btn-icon" type="button" onClick={onClearMACSearch}>
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                    </label>
                   </div>
-                </label>
-                <label>
-                  MAC Address Search
-                  <div className="search-input-row search-input-row-compact">
-                    <input
-                      type="text"
-                      value={macSearch}
-                      onChange={(event) => onMACSearchChange(event.target.value)}
-                      placeholder="Contains match"
-                      aria-label="Search MAC address"
-                    />
-                    {macSearch.trim() ? (
-                      <button className="btn btn-small btn-icon" type="button" onClick={onClearMACSearch}>
-                        ×
-                      </button>
-                    ) : null}
-                  </div>
-                </label>
-              </div>
-              {customFields.length > 0 ? (
-                <div className="search-dual-row">
-                  {customFields.map((field) => {
-                    const slot = field.slot as 1 | 2 | 3;
-                    const value = customSearchValueBySlot(customSearch, slot);
-                    return (
-                      <label key={`monitor-custom-search-${field.slot}`}>
-                        {field.name} Search
-                        <div className="search-input-row search-input-row-compact">
-                          <input
-                            type="text"
-                            value={value}
-                            onChange={(event) => onCustomSearchChange(slot, event.target.value)}
-                            placeholder="Contains match"
-                            aria-label={`Search ${field.name}`}
-                          />
-                          {value.trim() ? (
-                            <button className="btn btn-small btn-icon" type="button" onClick={() => onClearCustomSearch(slot)}>
-                              ×
-                            </button>
-                          ) : null}
-                        </div>
-                      </label>
-                    );
-                  })}
+                  {customFields.length > 0 ? (
+                    <div className="search-dual-row">
+                      {customFields.map((field) => {
+                        const slot = field.slot as 1 | 2 | 3;
+                        const value = customSearchValueBySlot(customSearch, slot);
+                        return (
+                          <label key={`monitor-custom-search-${field.slot}`}>
+                            {field.name}
+                            <div className="search-input-row search-input-row-compact">
+                              <input
+                                type="text"
+                                value={value}
+                                onChange={(event) => onCustomSearchChange(slot, event.target.value)}
+                                placeholder="Contains match"
+                                aria-label={`Search ${field.name}`}
+                              />
+                              {value.trim() ? (
+                                <button className="btn btn-small btn-icon" type="button" onClick={() => onClearCustomSearch(slot)}>
+                                  ×
+                                </button>
+                              ) : null}
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
+              </div>
+            </details>
+            <div className="monitor-search-grid monitor-search-grid-compact">
               <details className="filter-card filter-ip-details" open={ipListCount > 0}>
                 <summary className="filter-card-summary">
                   <span>IP Search List</span>
