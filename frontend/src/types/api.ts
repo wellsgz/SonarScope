@@ -108,6 +108,47 @@ export type Settings = {
   custom_fields: CustomFieldConfig[];
 };
 
+export type SwitchDirectoryEntry = {
+  id: number;
+  name: string;
+  ip_address: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SwitchDirectoryImportCandidate = {
+  row_id: string;
+  source_row: number;
+  name: string;
+  ip_address: string;
+  message: string;
+  action: "add" | "update" | "unchanged" | "invalid";
+  existing_id?: number;
+};
+
+export type SwitchDirectoryImportPreview = {
+  preview_id: string;
+  created_at: string;
+  candidates: SwitchDirectoryImportCandidate[];
+};
+
+export type SwitchDirectoryImportApplyResponse = {
+  added: number;
+  updated: number;
+  errors: string[];
+};
+
+export type SwitchUnreachableCount = {
+  switch_name: string;
+  unreachable_count: number;
+};
+
+export type DashboardUnreachableSummary = {
+  total_unreachable: number;
+  by_switch: SwitchUnreachableCount[];
+  total_switch_count: number;
+};
+
 export type ProbeStatus = {
   running: boolean;
   scope: "all" | "groups" | "";

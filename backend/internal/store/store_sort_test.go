@@ -1,6 +1,10 @@
 package store
 
-import "testing"
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
 
 func TestBuildMonitorOrderClause(t *testing.T) {
 	tests := []struct {
@@ -55,4 +59,61 @@ func TestBuildMonitorOrderClause(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildMonitorWhereClauseWithIPListOverridesTextSearches(t *testing.T) {
+	whereClause, args := buildMonitorWhereClause(
+		MonitorFilters{
+			VLANs:      []string{"10"},
+			Switches:   []string{"core-1"},
+			Ports:      []string{"Gi1/0/1"},
+			GroupNames: []string{"DC"},
+		},
+		"host-a",
+		"aa-bb",
+		"custom-one",
+		"custom-two",
+		"custom-three",
+		[]string{"10.0.0.1", "10.0.0.2"},
+	)
+
+	if contains(whereClause, "ie.hostname ILIKE") || contains(whereClause, "ie.custom_field_1_value ILIKE") || contains(whereClause, "ie.ip = ANY") == false {
+		t.Fatalf("unexpected where clause: %s", whereClause)
+	}
+
+	wantArgs := []any{
+		[]string{"10"},
+		[]string{"core-1"},
+		[]string{"Gi1/0/1"},
+		[]string{"DC"},
+		[]string{"10.0.0.1", "10.0.0.2"},
+	}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Fatalf("unexpected args: %#v", args)
+	}
+}
+
+func TestBuildMonitorWhereClauseUsesTextSearchesWithoutIPList(t *testing.T) {
+	whereClause, args := buildMonitorWhereClause(
+		MonitorFilters{},
+		"host-a",
+		"aa-bb",
+		"custom-one",
+		"",
+		"",
+		nil,
+	)
+
+	if !contains(whereClause, "ie.hostname ILIKE") || !contains(whereClause, "replace(replace(replace(lower(ie.mac)") || !contains(whereClause, "ie.custom_field_1_value ILIKE") {
+		t.Fatalf("unexpected where clause: %s", whereClause)
+	}
+
+	wantArgs := []any{"%host-a%", "%aabb%", "%custom-one%"}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Fatalf("unexpected args: %#v", args)
+	}
+}
+
+func contains(value string, fragment string) bool {
+	return strings.Contains(value, fragment)
 }

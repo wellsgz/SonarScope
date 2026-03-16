@@ -20,9 +20,10 @@ type Store struct {
 const noGroupName = "no group"
 
 var (
-	ErrReservedGroupName  = errors.New(`group name "no group" is reserved`)
-	ErrSystemGroupMutable = errors.New("system group cannot be modified")
-	ErrEndpointIPExists   = errors.New("inventory endpoint with this IP already exists")
+	ErrReservedGroupName       = errors.New(`group name "no group" is reserved`)
+	ErrSystemGroupMutable      = errors.New("system group cannot be modified")
+	ErrEndpointIPExists        = errors.New("inventory endpoint with this IP already exists")
+	ErrSwitchDirectoryNotFound = errors.New("switch directory entry not found")
 )
 
 type MonitorFilters struct {
@@ -170,6 +171,145 @@ func (s *Store) UpdateSettings(ctx context.Context, settings model.Settings) err
 		return errors.New("settings row not found")
 	}
 	return nil
+}
+
+func (s *Store) ListSwitchDirectory(ctx context.Context) ([]model.SwitchDirectoryEntry, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, name, host(ip_address) AS ip_address, created_at, updated_at
+		FROM switch_directory
+		ORDER BY lower(name), name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entries := []model.SwitchDirectoryEntry{}
+	for rows.Next() {
+		var entry model.SwitchDirectoryEntry
+		if err := rows.Scan(&entry.ID, &entry.Name, &entry.IPAddress, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+func (s *Store) SwitchDirectoryByName(ctx context.Context) (map[string]model.SwitchDirectoryEntry, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, name, host(ip_address) AS ip_address, created_at, updated_at
+		FROM switch_directory
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entries := map[string]model.SwitchDirectoryEntry{}
+	for rows.Next() {
+		var entry model.SwitchDirectoryEntry
+		if err := rows.Scan(&entry.ID, &entry.Name, &entry.IPAddress, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
+			return nil, err
+		}
+		entries[entry.Name] = entry
+	}
+	return entries, rows.Err()
+}
+
+func upsertSwitchDirectoryEntryQuerier(
+	ctx context.Context,
+	querier interface {
+		QueryRow(context.Context, string, ...any) pgx.Row
+	},
+	name string,
+	ipAddress string,
+) (model.SwitchDirectoryEntry, error) {
+	var entry model.SwitchDirectoryEntry
+	err := querier.QueryRow(ctx, `
+		INSERT INTO switch_directory(name, ip_address)
+		VALUES ($1, $2::inet)
+		ON CONFLICT (name) DO UPDATE
+		SET ip_address = EXCLUDED.ip_address,
+		    updated_at = now()
+		RETURNING id, name, host(ip_address) AS ip_address, created_at, updated_at
+	`, name, ipAddress).Scan(&entry.ID, &entry.Name, &entry.IPAddress, &entry.CreatedAt, &entry.UpdatedAt)
+	if err != nil {
+		return model.SwitchDirectoryEntry{}, err
+	}
+	return entry, nil
+}
+
+func (s *Store) UpsertSwitchDirectoryEntry(ctx context.Context, name string, ipAddress string) (model.SwitchDirectoryEntry, error) {
+	return upsertSwitchDirectoryEntryQuerier(ctx, s.pool, name, ipAddress)
+}
+
+func (s *Store) ApplySwitchDirectoryImport(ctx context.Context, rows []model.SwitchDirectoryImportCandidate) (int, int, error) {
+	if len(rows) == 0 {
+		return 0, 0, nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	added := 0
+	updated := 0
+	for _, row := range rows {
+		if _, err := upsertSwitchDirectoryEntryQuerier(ctx, tx, row.Name, row.IPAddress); err != nil {
+			return 0, 0, err
+		}
+		switch row.Action {
+		case model.ImportAdd:
+			added++
+		case model.ImportUpdate:
+			updated++
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, 0, err
+	}
+	tx = nil
+	return added, updated, nil
+}
+
+func (s *Store) DeleteSwitchDirectoryEntry(ctx context.Context, id int64) error {
+	cmd, err := s.pool.Exec(ctx, `DELETE FROM switch_directory WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if cmd.RowsAffected() == 0 {
+		return ErrSwitchDirectoryNotFound
+	}
+	return nil
+}
+
+func (s *Store) GetSwitchIPMap(ctx context.Context) (map[string]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT name, host(ip_address) AS ip_address
+		FROM switch_directory
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[string]string{}
+	for rows.Next() {
+		var name string
+		var ipAddress string
+		if err := rows.Scan(&name, &ipAddress); err != nil {
+			return nil, err
+		}
+		out[name] = ipAddress
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) InventoryByIP(ctx context.Context) (map[string]model.InventoryEndpoint, error) {
@@ -943,6 +1083,130 @@ func (s *Store) ListMonitorEndpointsPage(ctx context.Context, query MonitorPageQ
 		return nil, 0, err
 	}
 	return items, totalItems, nil
+}
+
+func (s *Store) DashboardUnreachableSummary(
+	ctx context.Context,
+	query MonitorPageQuery,
+) (model.DashboardUnreachableSummary, error) {
+	whereClause, args := buildMonitorWhereClause(
+		query.Filters,
+		query.Hostname,
+		query.MAC,
+		query.Custom1,
+		query.Custom2,
+		query.Custom3,
+		query.IPList,
+	)
+
+	switchLabelExpr := "CASE WHEN NULLIF(btrim(ie.switch_name), '') IS NULL THEN 'Unassigned' ELSE ie.switch_name END"
+
+	baseArgs := append([]any{}, args...)
+	var totalQuery string
+	var bySwitchQuery string
+
+	if query.StatsScope == "range" {
+		viewName := "ping_1m"
+		if query.End.Sub(query.Start) > 48*time.Hour {
+			viewName = "ping_1h"
+		}
+
+		startPos := len(baseArgs) + 1
+		endPos := len(baseArgs) + 2
+		rangeArgs := append(baseArgs, query.Start, query.End)
+
+		rangeCTE := fmt.Sprintf(`
+			WITH range_stats AS (
+				SELECT
+					endpoint_id,
+					SUM(fail_count)::BIGINT AS failed_count
+				FROM %s
+				WHERE bucket >= $%d AND bucket <= $%d
+				GROUP BY endpoint_id
+			),
+			unreachable AS (
+				SELECT
+					ie.id,
+					%s AS switch_name
+				FROM inventory_endpoint ie
+				LEFT JOIN range_stats rs ON rs.endpoint_id = ie.id
+				%s
+				  AND COALESCE(rs.failed_count, 0) > 0
+			)
+		`, viewName, startPos, endPos, switchLabelExpr, whereClause)
+
+		totalQuery = rangeCTE + `
+			SELECT
+				COUNT(*)::BIGINT AS total_unreachable,
+				COUNT(DISTINCT switch_name)::BIGINT AS total_switch_count
+			FROM unreachable
+		`
+		bySwitchQuery = rangeCTE + `
+			SELECT switch_name, COUNT(*)::BIGINT AS unreachable_count
+			FROM unreachable
+			GROUP BY switch_name
+			ORDER BY unreachable_count DESC, switch_name ASC
+			LIMIT 10
+		`
+		baseArgs = rangeArgs
+	} else {
+		liveCTE := fmt.Sprintf(`
+			WITH unreachable AS (
+				SELECT
+					ie.id,
+					%s AS switch_name
+				FROM inventory_endpoint ie
+				LEFT JOIN endpoint_stats_current es ON es.endpoint_id = ie.id
+				%s
+				  AND COALESCE(es.total_sent_ping, 0) > 0
+				  AND (
+					COALESCE(es.consecutive_failed_count, 0) > 0 OR
+					(
+						NULLIF(lower(btrim(COALESCE(es.last_ping_status, ''))), '') IS NOT NULL AND
+						lower(btrim(COALESCE(es.last_ping_status, ''))) <> 'succeeded'
+					)
+				  )
+			)
+		`, switchLabelExpr, whereClause)
+
+		totalQuery = liveCTE + `
+			SELECT
+				COUNT(*)::BIGINT AS total_unreachable,
+				COUNT(DISTINCT switch_name)::BIGINT AS total_switch_count
+			FROM unreachable
+		`
+		bySwitchQuery = liveCTE + `
+			SELECT switch_name, COUNT(*)::BIGINT AS unreachable_count
+			FROM unreachable
+			GROUP BY switch_name
+			ORDER BY unreachable_count DESC, switch_name ASC
+			LIMIT 10
+		`
+	}
+
+	var summary model.DashboardUnreachableSummary
+	if err := s.pool.QueryRow(ctx, totalQuery, baseArgs...).Scan(&summary.TotalUnreachable, &summary.TotalSwitchCount); err != nil {
+		return model.DashboardUnreachableSummary{}, err
+	}
+
+	rows, err := s.pool.Query(ctx, bySwitchQuery, baseArgs...)
+	if err != nil {
+		return model.DashboardUnreachableSummary{}, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var item model.SwitchUnreachableCount
+		if err := rows.Scan(&item.SwitchName, &item.UnreachableCount); err != nil {
+			return model.DashboardUnreachableSummary{}, err
+		}
+		summary.BySwitch = append(summary.BySwitch, item)
+	}
+	if err := rows.Err(); err != nil {
+		return model.DashboardUnreachableSummary{}, err
+	}
+
+	return summary, nil
 }
 
 func (s *Store) listMonitorEndpointsPageLive(ctx context.Context, query MonitorPageQuery, whereClause string, args []any) ([]model.MonitorEndpoint, error) {

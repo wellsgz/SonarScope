@@ -1,9 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { MonitorDataScope, MonitorEndpoint, MonitorSortField } from "../types/api";
 
 type Props = {
   rows: MonitorEndpoint[];
   customFields: Array<{ slot: 1 | 2 | 3; name: string }>;
+  columnVisibility: Record<string, boolean>;
+  columnOrder: string[];
   selectedEndpointID: number | null;
   onSelectionChange: (id: number | null) => void;
   selectionMode?: "toggle" | "replace";
@@ -21,16 +23,21 @@ type Props = {
   probeScope: "all" | "groups" | "";
   activeProbeGroupNames: Set<string>;
   onSortChange: (sortBy: MonitorSortField | null, sortDir: "asc" | "desc" | null) => void;
+  onToggleColumnVisibility: (key: string) => void;
+  onColumnOrderChange: (order: string[]) => void;
+  onResetColumnPreferences: () => void;
   preserveRelativeScroll?: boolean;
   refreshSignal?: number;
   emptyMessage?: string;
+  switchIPMap?: Record<string, string>;
 };
 
 type MonitorColumn = {
   key: string;
+  menuLabel: string;
   header: string;
   sortable?: MonitorSortField;
-  render: (row: MonitorEndpoint) => string;
+  render: (row: MonitorEndpoint) => ReactNode;
 };
 
 type EndpointHealth = "healthy" | "unhealthy" | "no_data";
@@ -125,78 +132,105 @@ function rowHealthClassName(health: EndpointHealth): string {
   return "monitor-row-health-no-data";
 }
 
-const baseColumns: MonitorColumn[] = [
-  { key: "hostname", header: "Hostname", render: (row) => row.hostname || "-" },
-  { key: "ip_address", header: "IP Address", render: (row) => row.ip_address },
+type BaseColumnDefinition = {
+  key: string;
+  menuLabel: string;
+  header: string;
+  sortable?: MonitorSortField;
+  render: (row: MonitorEndpoint) => ReactNode;
+};
+
+const baseColumnDefinitions: BaseColumnDefinition[] = [
+  { key: "hostname", menuLabel: "Hostname", header: "Hostname", render: (row) => row.hostname || "-" },
+  { key: "ip_address", menuLabel: "IP Address", header: "IP Address", render: (row) => row.ip_address },
   {
     key: "last_success_on",
+    menuLabel: "Last Success On",
     header: "Last Success On",
     sortable: "last_success_on",
     render: (row) => formatDate(row.last_success_on)
   },
   {
     key: "last_failed_on",
+    menuLabel: "Last Failed On",
     header: "Last Failed On",
     sortable: "last_failed_on",
     render: (row) => formatDate(row.last_failed_on)
   },
-  { key: "mac_address", header: "MAC Address", render: (row) => row.mac_address || "-" },
-  { key: "reply_ip_address", header: "Reply IP", render: (row) => row.reply_ip_address || "-" },
-  { key: "success_count", header: "Success Count", sortable: "success_count", render: (row) => String(row.success_count) },
+  { key: "mac_address", menuLabel: "MAC Address", header: "MAC Address", render: (row) => row.mac_address || "-" },
+  { key: "reply_ip_address", menuLabel: "Reply IP", header: "Reply IP", render: (row) => row.reply_ip_address || "-" },
+  {
+    key: "success_count",
+    menuLabel: "Success Count",
+    header: "Success Count",
+    sortable: "success_count",
+    render: (row) => String(row.success_count)
+  },
   {
     key: "failed_count",
+    menuLabel: "Failed Count",
     header: "Failed Count",
     sortable: "failed_count",
     render: (row) => String(row.failed_count)
   },
   {
     key: "consecutive_failed_count",
-    header: "Consecutive Failed",
+    menuLabel: "Consecutive Failed",
+    header: "Consec. Failed",
     sortable: "consecutive_failed_count",
     render: (row) => String(row.consecutive_failed_count)
   },
   {
     key: "max_consecutive_failed_count",
-    header: "Max Consecutive Failed",
+    menuLabel: "Max Consecutive Failed",
+    header: "Max Consec. Failed",
     sortable: "max_consecutive_failed_count",
     render: (row) => String(row.max_consecutive_failed_count)
   },
   {
     key: "max_consecutive_failed_count_time",
-    header: "Max Consec Failed Time",
+    menuLabel: "Max Consecutive Failed Time",
+    header: "Max Consec. Failed Time",
     sortable: "max_consecutive_failed_count_time",
     render: (row) => formatDate(row.max_consecutive_failed_count_time)
   },
   {
     key: "failed_pct",
+    menuLabel: "Failed %",
     header: "Failed %",
     sortable: "failed_pct",
     render: (row) => formatPercent(row.failed_pct)
   },
-  { key: "total_sent_ping", header: "Total Sent Ping", render: (row) => String(row.total_sent_ping) },
-  { key: "last_ping_status", header: "Last Ping Status", render: (row) => row.last_ping_status || "-" },
+  { key: "total_sent_ping", menuLabel: "Total Sent Ping", header: "Total Sent", render: (row) => String(row.total_sent_ping) },
+  { key: "last_ping_status", menuLabel: "Last Ping Status", header: "Last Status", render: (row) => row.last_ping_status || "-" },
   {
     key: "last_ping_latency",
-    header: "Last Ping Latency",
+    menuLabel: "Last Ping Latency",
+    header: "Last Latency",
     sortable: "last_ping_latency",
     render: (row) => formatLatency(row.last_ping_latency)
   },
   {
     key: "average_latency",
-    header: "Average Latency",
+    menuLabel: "Average Latency",
+    header: "Avg. Latency",
     sortable: "average_latency",
     render: (row) => formatLatency(row.average_latency)
   },
-  { key: "vlan", header: "VLAN", render: (row) => row.vlan || "-" },
-  { key: "switch", header: "Switch", render: (row) => row.switch || "-" },
-  { key: "port", header: "Port", render: (row) => row.port || "-" },
-  { key: "port_type", header: "Port Type", render: (row) => row.port_type || "-" },
-  { key: "group", header: "Group", render: (row) => row.group.join(", ") || "-" }
+  { key: "vlan", menuLabel: "VLAN", header: "VLAN", render: (row) => row.vlan || "-" },
+  { key: "switch", menuLabel: "Switch", header: "Switch", render: (row) => row.switch || "-" },
+  { key: "port", menuLabel: "Port", header: "Port", render: (row) => row.port || "-" },
+  { key: "port_type", menuLabel: "Port Type", header: "Port Type", render: (row) => row.port_type || "-" },
+  { key: "group", menuLabel: "Group", header: "Group", render: (row) => row.group.join(", ") || "-" }
 ];
+
+export const monitorBuiltInColumnKeys = baseColumnDefinitions.map((column) => column.key);
 
 export function MonitorTable({
   rows,
   customFields,
+  columnVisibility,
+  columnOrder,
   selectedEndpointID,
   onSelectionChange,
   selectionMode = "toggle",
@@ -214,19 +248,27 @@ export function MonitorTable({
   probeScope,
   activeProbeGroupNames,
   onSortChange,
+  onToggleColumnVisibility,
+  onColumnOrderChange,
+  onResetColumnPreferences,
   preserveRelativeScroll = false,
   refreshSignal,
-  emptyMessage = "No endpoints match the active filters."
+  emptyMessage = "No endpoints match the active filters.",
+  switchIPMap
 }: Props) {
   const sortableSet = useMemo(() => new Set<MonitorSortField>(sortableFields), [sortableFields]);
   const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
   const verticalScrollRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
   const horizontalRailRef = useRef<HTMLDivElement | null>(null);
+  const columnMenuRef = useRef<HTMLDivElement | null>(null);
   const relativeScrollRef = useRef(0);
   const horizontalFrameRef = useRef(0);
   const thumbDragRef = useRef<{ pointerID: number; startX: number; startScrollLeft: number } | null>(null);
+  const draggingColumnKeyRef = useRef<string | null>(null);
   const [horizontalMetrics, setHorizontalMetrics] = useState<HorizontalScrollMetrics>(defaultHorizontalScrollMetrics);
+  const [columnMenuOpen, setColumnMenuOpen] = useState(false);
+  const [dragOverColumnKey, setDragOverColumnKey] = useState<string | null>(null);
   const liveProbeContext = useMemo(
     () => ({
       probeRunning,
@@ -235,15 +277,51 @@ export function MonitorTable({
     }),
     [probeRunning, probeScope, activeProbeGroupNames]
   );
-  const columns = useMemo(() => {
+  const allColumns = useMemo(() => {
     const dynamicCustomColumns: MonitorColumn[] = customFields.map((field) => ({
       key: `custom_field_${field.slot}_value`,
+      menuLabel: field.name,
       header: field.name,
       render: (row) => customFieldValueBySlot(row, field.slot)
     }));
 
+    const baseColumns = baseColumnDefinitions.map((column) => {
+      if (column.key !== "switch") {
+        return column;
+      }
+      return {
+        ...column,
+        render: (row: MonitorEndpoint) => {
+          const value = row.switch || "-";
+          const ipAddress = row.switch ? switchIPMap?.[row.switch] : undefined;
+          if (!ipAddress) {
+            return value;
+          }
+          return <span title={`Mgmt IP: ${ipAddress}`}>{value}</span>;
+        }
+      };
+    });
+
     return [...baseColumns, ...dynamicCustomColumns];
-  }, [customFields]);
+  }, [customFields, switchIPMap]);
+
+  const orderedColumns = useMemo(() => {
+    const columnMap = new Map(allColumns.map((column) => [column.key, column]));
+    const ordered = columnOrder.filter((key) => columnMap.has(key)).map((key) => columnMap.get(key)!);
+    allColumns.forEach((column) => {
+      if (!columnOrder.includes(column.key)) {
+        ordered.push(column);
+      }
+    });
+    return ordered;
+  }, [allColumns, columnOrder]);
+
+  const columns = useMemo(
+    () => orderedColumns.filter((column) => columnVisibility[column.key] !== false),
+    [orderedColumns, columnVisibility]
+  );
+  const minimumVisibleColumns = Math.min(3, orderedColumns.length);
+  const columnLayoutSignature = useMemo(() => columns.map((column) => column.key).join("|"), [columns]);
 
   const pageOptions = useMemo(() => {
     if (totalPages < 1) {
@@ -272,6 +350,78 @@ export function MonitorTable({
       return endpointID;
     }
     return selected ? null : endpointID;
+  };
+
+  useEffect(() => {
+    if (!columnMenuOpen) {
+      return;
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!columnMenuRef.current?.contains(event.target as Node)) {
+        setColumnMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [columnMenuOpen]);
+
+  const reorderVisibleColumns = (sourceKey: string, targetKey: string) => {
+    if (sourceKey === targetKey) {
+      return;
+    }
+    const visibleKeys = columns.map((column) => column.key);
+    const sourceIndex = visibleKeys.indexOf(sourceKey);
+    const targetIndex = visibleKeys.indexOf(targetKey);
+    if (sourceIndex < 0 || targetIndex < 0) {
+      return;
+    }
+
+    const nextVisibleKeys = [...visibleKeys];
+    const [movedKey] = nextVisibleKeys.splice(sourceIndex, 1);
+    nextVisibleKeys.splice(targetIndex, 0, movedKey);
+
+    const visibleKeySet = new Set(visibleKeys);
+    const nextOrder = orderedColumns.map((column) => column.key);
+    let visibleIndex = 0;
+    for (let index = 0; index < nextOrder.length; index += 1) {
+      if (!visibleKeySet.has(nextOrder[index])) {
+        continue;
+      }
+      nextOrder[index] = nextVisibleKeys[visibleIndex];
+      visibleIndex += 1;
+    }
+    onColumnOrderChange(nextOrder);
+  };
+
+  const handleColumnDragStart = (columnKey: string, event: React.DragEvent<HTMLElement>) => {
+    draggingColumnKeyRef.current = columnKey;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", columnKey);
+    setDragOverColumnKey(null);
+  };
+
+  const handleColumnDragOver = (columnKey: string, event: React.DragEvent<HTMLElement>) => {
+    if (!draggingColumnKeyRef.current || draggingColumnKeyRef.current === columnKey) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverColumnKey(columnKey);
+  };
+
+  const clearColumnDragState = () => {
+    draggingColumnKeyRef.current = null;
+    setDragOverColumnKey(null);
+  };
+
+  const handleColumnDrop = (columnKey: string, event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    const sourceKey = draggingColumnKeyRef.current || event.dataTransfer.getData("text/plain");
+    clearColumnDragState();
+    if (!sourceKey) {
+      return;
+    }
+    reorderVisibleColumns(sourceKey, columnKey);
   };
 
   const updateHorizontalMetrics = (next: HorizontalScrollMetrics) => {
@@ -391,7 +541,7 @@ export function MonitorTable({
         horizontalFrameRef.current = 0;
       }
     };
-  }, [columns.length, horizontalMetrics.hasOverflow, refreshSignal, rows.length]);
+  }, [columnLayoutSignature, horizontalMetrics.hasOverflow, refreshSignal, rows.length]);
 
   useEffect(() => {
     return () => {
@@ -503,6 +653,54 @@ export function MonitorTable({
 
   return (
     <div className="panel table-panel">
+      <div className="table-action-row">
+        <div className="table-action-group" ref={columnMenuRef}>
+          <button
+            type="button"
+            className={`btn btn-small table-action-trigger ${columnMenuOpen ? "table-action-trigger-active" : ""}`}
+            onClick={() => setColumnMenuOpen((current) => !current)}
+            aria-haspopup="menu"
+            aria-expanded={columnMenuOpen}
+          >
+            Columns
+            <span className="table-action-meta">
+              {columns.length}/{orderedColumns.length}
+            </span>
+          </button>
+          {columnMenuOpen ? (
+            <div className="column-visibility-menu" aria-label="Toggle monitor columns">
+              <div className="column-visibility-menu-head">
+                <div>
+                  <div className="column-visibility-menu-title">Visible Columns</div>
+                  <div className="column-visibility-menu-copy">
+                    Keep at least {minimumVisibleColumns} columns visible. Drag column grips in the table header to reorder.
+                  </div>
+                </div>
+                <button type="button" className="btn-link" onClick={onResetColumnPreferences}>
+                  Reset
+                </button>
+              </div>
+              <div className="column-visibility-menu-list">
+                {orderedColumns.map((column) => {
+                  const checked = columnVisibility[column.key] !== false;
+                  const disableToggle = checked && columns.length <= minimumVisibleColumns;
+                  return (
+                    <label key={`column-menu-${column.key}`} className={`column-visibility-item ${disableToggle ? "is-locked" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disableToggle}
+                        onChange={() => onToggleColumnVisibility(column.key)}
+                      />
+                      <span>{column.menuLabel}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
       <div className="table-viewport-shell">
         <div className="table-scroll-x" ref={horizontalScrollRef} onScroll={handleHorizontalScroll}>
           <div className="table-scroll-y" ref={verticalScrollRef} onScroll={captureRelativeScroll}>
@@ -516,22 +714,45 @@ export function MonitorTable({
                     const indicator = !sortable ? "" : !active ? "↕" : sortDir === "desc" ? "↓" : "↑";
 
                     return (
-                      <th key={column.key} aria-sort={ariaSort}>
-                        {sortable && column.sortable ? (
-                          <button
-                            type="button"
-                            className={`table-sort-button ${active ? "table-sort-button-active" : ""}`}
-                            onClick={() => toggleSort(column.sortable!)}
-                            aria-label={`Sort by ${column.header}`}
+                      <th
+                        key={column.key}
+                        aria-sort={ariaSort}
+                        className={dragOverColumnKey === column.key ? "column-drag-over" : undefined}
+                        onDragOver={(event) => handleColumnDragOver(column.key, event)}
+                        onDrop={(event) => handleColumnDrop(column.key, event)}
+                        onDragLeave={() => {
+                          if (dragOverColumnKey === column.key) {
+                            setDragOverColumnKey(null);
+                          }
+                        }}
+                      >
+                        <div className="table-column-head">
+                          <span
+                            className="table-column-grip"
+                            draggable
+                            onDragStart={(event) => handleColumnDragStart(column.key, event)}
+                            onDragEnd={clearColumnDragState}
+                            aria-hidden
+                            title={`Drag to reorder ${column.menuLabel}`}
                           >
-                            <span>{column.header}</span>
-                            <span className="table-sort-indicator" aria-hidden>
-                              {indicator}
-                            </span>
-                          </button>
-                        ) : (
-                          column.header
-                        )}
+                            ⋮⋮
+                          </span>
+                          {sortable && column.sortable ? (
+                            <button
+                              type="button"
+                              className={`table-sort-button ${active ? "table-sort-button-active" : ""}`}
+                              onClick={() => toggleSort(column.sortable!)}
+                              aria-label={`Sort by ${column.menuLabel}`}
+                            >
+                              <span>{column.header}</span>
+                              <span className="table-sort-indicator" aria-hidden>
+                                {indicator}
+                              </span>
+                            </button>
+                          ) : (
+                            <span className="table-column-label">{column.header}</span>
+                          )}
+                        </div>
                       </th>
                     );
                   })}

@@ -153,6 +153,57 @@ type Settings struct {
 	CustomFields    []CustomFieldConfig `json:"custom_fields"`
 }
 
+type SwitchDirectoryEntry struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	IPAddress string    `json:"ip_address"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type SwitchDirectoryImportCandidate struct {
+	RowID      string               `json:"row_id"`
+	SourceRow  int                  `json:"source_row"`
+	Name       string               `json:"name"`
+	IPAddress  string               `json:"ip_address"`
+	Message    string               `json:"message"`
+	Action     ImportClassification `json:"action"`
+	ExistingID *int64               `json:"existing_id,omitempty"`
+}
+
+type SwitchDirectoryImportPreview struct {
+	PreviewID  string                           `json:"preview_id"`
+	CreatedAt  time.Time                        `json:"created_at"`
+	Candidates []SwitchDirectoryImportCandidate `json:"candidates"`
+}
+
+type SwitchDirectoryImportApplySelection struct {
+	RowID  string               `json:"row_id"`
+	Action ImportClassification `json:"action"`
+}
+
+type SwitchDirectoryImportApplyRequest struct {
+	PreviewID  string                                `json:"preview_id"`
+	Selections []SwitchDirectoryImportApplySelection `json:"selections"`
+}
+
+type SwitchDirectoryImportApplyResponse struct {
+	Added   int      `json:"added"`
+	Updated int      `json:"updated"`
+	Errors  []string `json:"errors"`
+}
+
+type SwitchUnreachableCount struct {
+	SwitchName       string `json:"switch_name"`
+	UnreachableCount int64  `json:"unreachable_count"`
+}
+
+type DashboardUnreachableSummary struct {
+	TotalUnreachable int64                    `json:"total_unreachable"`
+	BySwitch         []SwitchUnreachableCount `json:"by_switch"`
+	TotalSwitchCount int64                    `json:"total_switch_count"`
+}
+
 type TimeSeriesPoint struct {
 	EndpointID   int64     `json:"endpoint_id"`
 	Bucket       time.Time `json:"bucket"`

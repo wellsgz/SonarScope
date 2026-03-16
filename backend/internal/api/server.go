@@ -38,8 +38,10 @@ type Server struct {
 	probe *probe.Engine
 	hub   *telemetry.Hub
 
-	previewMu sync.RWMutex
-	previews  map[string]model.ImportPreview
+	previewMu       sync.RWMutex
+	previews        map[string]model.ImportPreview
+	switchPreviewMu sync.RWMutex
+	switchPreviews  map[string]model.SwitchDirectoryImportPreview
 
 	deleteJobMu sync.RWMutex
 	deleteJob   *inventoryDeleteJobState
@@ -47,11 +49,12 @@ type Server struct {
 
 func NewServer(cfg config.Config, st *store.Store, p *probe.Engine, hub *telemetry.Hub) *Server {
 	return &Server{
-		cfg:      cfg,
-		store:    st,
-		probe:    p,
-		hub:      hub,
-		previews: map[string]model.ImportPreview{},
+		cfg:            cfg,
+		store:          st,
+		probe:          p,
+		hub:            hub,
+		previews:       map[string]model.ImportPreview{},
+		switchPreviews: map[string]model.SwitchDirectoryImportPreview{},
 	}
 }
 
@@ -430,11 +433,23 @@ func (s *Server) Routes() http.Handler {
 			r.Put("/", s.handleUpdateSettings)
 		})
 
+		r.Route("/switches", func(r chi.Router) {
+			r.Get("/", s.handleListSwitchDirectory)
+			r.Post("/", s.handleUpsertSwitchDirectoryEntry)
+			r.Delete("/{switchID}", s.handleDeleteSwitchDirectoryEntry)
+			r.Get("/import-template.csv", s.handleSwitchDirectoryImportTemplateCSV)
+			r.Post("/import-preview", s.handleSwitchDirectoryImportPreview)
+			r.Delete("/import-preview/{previewID}", s.handleSwitchDirectoryImportPreviewDelete)
+			r.Post("/import-apply", s.handleSwitchDirectoryImportApply)
+		})
+
 		r.Route("/monitor", func(r chi.Router) {
 			r.Get("/endpoints", s.handleMonitorEndpoints)
 			r.Get("/endpoints-page", s.handleMonitorEndpointsPage)
 			r.Get("/timeseries", s.handleMonitorTimeSeries)
 			r.Get("/filter-options", s.handleMonitorFilters)
+			r.Get("/switch-ips", s.handleMonitorSwitchIPs)
+			r.Get("/dashboard-summary", s.handleMonitorDashboardSummary)
 		})
 	})
 
@@ -1357,6 +1372,385 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	util.WriteJSON(w, http.StatusOK, settings)
 }
 
+func (s *Server) handleListSwitchDirectory(w http.ResponseWriter, r *http.Request) {
+	items, err := s.store.ListSwitchDirectory(r.Context())
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	util.WriteJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleUpsertSwitchDirectoryEntry(w http.ResponseWriter, r *http.Request) {
+	type request struct {
+		Name      string `json:"name"`
+		IPAddress string `json:"ip_address"`
+	}
+
+	var req request
+	if err := util.DecodeJSON(r, &req); err != nil {
+		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
+		return
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	req.IPAddress = strings.TrimSpace(req.IPAddress)
+	if req.Name == "" {
+		util.WriteError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if net.ParseIP(req.IPAddress) == nil {
+		util.WriteError(w, http.StatusBadRequest, "ip_address must be a valid IPv4 or IPv6 address")
+		return
+	}
+
+	entry, err := s.store.UpsertSwitchDirectoryEntry(r.Context(), req.Name, req.IPAddress)
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	util.WriteJSON(w, http.StatusOK, entry)
+}
+
+func (s *Server) handleDeleteSwitchDirectoryEntry(w http.ResponseWriter, r *http.Request) {
+	switchID, err := strconv.ParseInt(chi.URLParam(r, "switchID"), 10, 64)
+	if err != nil || switchID < 1 {
+		util.WriteError(w, http.StatusBadRequest, "invalid switch directory id")
+		return
+	}
+
+	if err := s.store.DeleteSwitchDirectoryEntry(r.Context(), switchID); err != nil {
+		if errors.Is(err, store.ErrSwitchDirectoryNotFound) {
+			util.WriteError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	util.WriteJSON(w, http.StatusOK, map[string]any{"deleted": true, "id": switchID})
+}
+
+func (s *Server) handleSwitchDirectoryImportTemplateCSV(w http.ResponseWriter, _ *http.Request) {
+	var csvBuffer bytes.Buffer
+	csvWriter := csv.NewWriter(&csvBuffer)
+
+	if err := csvWriter.Write([]string{"# Required: name, ip_address"}); err != nil {
+		util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("write template comment: %v", err))
+		return
+	}
+	if err := csvWriter.Write([]string{"name", "ip_address"}); err != nil {
+		util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("write template header: %v", err))
+		return
+	}
+
+	csvWriter.Flush()
+	if err := csvWriter.Error(); err != nil {
+		util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("flush template csv: %v", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="switch-directory-import-template.csv"`)
+	if _, err := w.Write(csvBuffer.Bytes()); err != nil {
+		log.Printf("write switch directory import template response: %v", err)
+	}
+}
+
+func (s *Server) handleSwitchDirectoryImportPreview(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		util.WriteError(w, http.StatusBadRequest, "failed to parse multipart form")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		util.WriteError(w, http.StatusBadRequest, "missing file field")
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	if !strings.HasSuffix(strings.ToLower(strings.TrimSpace(header.Filename)), ".csv") {
+		util.WriteError(w, http.StatusBadRequest, "switch directory import only supports CSV files")
+		return
+	}
+
+	raw, err := io.ReadAll(io.LimitReader(file, 10<<20))
+	if err != nil {
+		util.WriteError(w, http.StatusBadRequest, "failed to read file")
+		return
+	}
+
+	rows, err := importer.ParseSwitchDirectoryCSV(raw)
+	if err != nil {
+		util.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	existing, err := s.store.SwitchDirectoryByName(r.Context())
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("switch directory lookup failed: %v", err))
+		return
+	}
+
+	preview := model.SwitchDirectoryImportPreview{
+		PreviewID:  newPreviewID(),
+		CreatedAt:  time.Now().UTC(),
+		Candidates: importer.ClassifySwitchDirectoryImport(rows, existing),
+	}
+
+	s.switchPreviewMu.Lock()
+	s.switchPreviews[preview.PreviewID] = preview
+	s.switchPreviewMu.Unlock()
+
+	util.WriteJSON(w, http.StatusOK, preview)
+}
+
+func (s *Server) handleSwitchDirectoryImportPreviewDelete(w http.ResponseWriter, r *http.Request) {
+	previewID := strings.TrimSpace(chi.URLParam(r, "previewID"))
+	if previewID == "" {
+		util.WriteError(w, http.StatusBadRequest, "preview_id is required")
+		return
+	}
+
+	s.switchPreviewMu.Lock()
+	defer s.switchPreviewMu.Unlock()
+	if _, ok := s.switchPreviews[previewID]; !ok {
+		util.WriteError(w, http.StatusNotFound, "preview not found")
+		return
+	}
+	delete(s.switchPreviews, previewID)
+
+	util.WriteJSON(w, http.StatusOK, map[string]any{
+		"deleted":    true,
+		"preview_id": previewID,
+	})
+}
+
+func (s *Server) handleSwitchDirectoryImportApply(w http.ResponseWriter, r *http.Request) {
+	var req model.SwitchDirectoryImportApplyRequest
+	if err := util.DecodeJSON(r, &req); err != nil {
+		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
+		return
+	}
+	req.PreviewID = strings.TrimSpace(req.PreviewID)
+	if req.PreviewID == "" {
+		util.WriteError(w, http.StatusBadRequest, "preview_id is required")
+		return
+	}
+
+	s.switchPreviewMu.RLock()
+	preview, ok := s.switchPreviews[req.PreviewID]
+	s.switchPreviewMu.RUnlock()
+	if !ok {
+		util.WriteError(w, http.StatusNotFound, "preview not found")
+		return
+	}
+
+	selected := map[string]model.ImportClassification{}
+	for _, item := range req.Selections {
+		if item.Action != model.ImportAdd && item.Action != model.ImportUpdate {
+			util.WriteError(w, http.StatusBadRequest, "selections must use add or update actions")
+			return
+		}
+		selected[item.RowID] = item.Action
+	}
+
+	rowsToApply := []model.SwitchDirectoryImportCandidate{}
+	if len(selected) == 0 {
+		for _, candidate := range preview.Candidates {
+			if candidate.Action == model.ImportAdd || candidate.Action == model.ImportUpdate {
+				rowsToApply = append(rowsToApply, candidate)
+			}
+		}
+	} else {
+		for _, candidate := range preview.Candidates {
+			action, include := selected[candidate.RowID]
+			if !include {
+				continue
+			}
+			if candidate.Action != model.ImportAdd && candidate.Action != model.ImportUpdate {
+				util.WriteError(w, http.StatusBadRequest, "only add and update preview rows can be applied")
+				return
+			}
+			candidate.Action = action
+			rowsToApply = append(rowsToApply, candidate)
+		}
+	}
+
+	added, updated, err := s.store.ApplySwitchDirectoryImport(r.Context(), rowsToApply)
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.switchPreviewMu.Lock()
+	delete(s.switchPreviews, req.PreviewID)
+	s.switchPreviewMu.Unlock()
+
+	util.WriteJSON(w, http.StatusOK, model.SwitchDirectoryImportApplyResponse{
+		Added:   added,
+		Updated: updated,
+		Errors:  []string{},
+	})
+}
+
+type monitorRequestOptions struct {
+	includePagination bool
+	includeSort       bool
+}
+
+type monitorRequestParseError struct {
+	Status  int
+	Message string
+}
+
+func (s *Server) monitorPageQueryFromRequest(
+	r *http.Request,
+	options monitorRequestOptions,
+) (store.MonitorPageQuery, *monitorRequestParseError) {
+	query := store.MonitorPageQuery{
+		Page:     1,
+		PageSize: 100,
+	}
+	query.Filters = store.MonitorFilters{
+		VLANs:      parseCSVQuery(r, "vlan"),
+		Switches:   parseCSVQuery(r, "switch"),
+		Ports:      parseCSVQuery(r, "port"),
+		GroupNames: parseCSVQuery(r, "group"),
+	}
+
+	if options.includePagination {
+		page, err := parsePositiveIntQuery(r, "page", 1)
+		if err != nil {
+			return store.MonitorPageQuery{}, &monitorRequestParseError{Status: http.StatusBadRequest, Message: err.Error()}
+		}
+		pageSize, err := parsePositiveIntQuery(r, "page_size", 100)
+		if err != nil {
+			return store.MonitorPageQuery{}, &monitorRequestParseError{Status: http.StatusBadRequest, Message: err.Error()}
+		}
+		if pageSize != 50 && pageSize != 100 && pageSize != 200 {
+			return store.MonitorPageQuery{}, &monitorRequestParseError{
+				Status:  http.StatusBadRequest,
+				Message: "page_size must be one of 50, 100, 200",
+			}
+		}
+		query.Page = page
+		query.PageSize = pageSize
+	}
+
+	statsScope := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("stats_scope")))
+	if statsScope == "" {
+		statsScope = "live"
+	}
+	if statsScope != "live" && statsScope != "range" {
+		return store.MonitorPageQuery{}, &monitorRequestParseError{
+			Status:  http.StatusBadRequest,
+			Message: "stats_scope must be live or range",
+		}
+	}
+	query.StatsScope = statsScope
+
+	if options.includeSort {
+		sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
+		sortDir := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_dir")))
+		if sortBy != "" {
+			validateSort := storeMonitorSortExpression
+			if statsScope == "range" {
+				validateSort = storeMonitorRangeSortExpression
+			}
+			if _, err := validateSort(sortBy); err != nil {
+				return store.MonitorPageQuery{}, &monitorRequestParseError{
+					Status:  http.StatusBadRequest,
+					Message: "invalid sort_by",
+				}
+			}
+			if sortDir == "" {
+				sortDir = "desc"
+			}
+			if sortDir != "asc" && sortDir != "desc" {
+				return store.MonitorPageQuery{}, &monitorRequestParseError{
+					Status:  http.StatusBadRequest,
+					Message: "sort_dir must be asc or desc",
+				}
+			}
+		} else if sortDir != "" {
+			return store.MonitorPageQuery{}, &monitorRequestParseError{
+				Status:  http.StatusBadRequest,
+				Message: "sort_dir requires sort_by",
+			}
+		}
+		query.SortBy = sortBy
+		query.SortDir = sortDir
+	}
+
+	query.Hostname = strings.TrimSpace(r.URL.Query().Get("hostname"))
+	query.MAC = strings.TrimSpace(r.URL.Query().Get("mac"))
+	query.Custom1 = strings.TrimSpace(r.URL.Query().Get("custom_1"))
+	query.Custom2 = strings.TrimSpace(r.URL.Query().Get("custom_2"))
+	query.Custom3 = strings.TrimSpace(r.URL.Query().Get("custom_3"))
+
+	ipList, err := parseIPListQuery(r, "ip_list")
+	if err != nil {
+		return store.MonitorPageQuery{}, &monitorRequestParseError{
+			Status:  http.StatusBadRequest,
+			Message: err.Error(),
+		}
+	}
+	query.IPList = ipList
+
+	settings, err := s.store.GetSettings(r.Context())
+	if err != nil {
+		return store.MonitorPageQuery{}, &monitorRequestParseError{
+			Status:  http.StatusInternalServerError,
+			Message: err.Error(),
+		}
+	}
+	query.Custom1, query.Custom2, query.Custom3 = filterCustomSearchesBySettings(
+		settings.CustomFields,
+		query.Custom1,
+		query.Custom2,
+		query.Custom3,
+	)
+
+	if statsScope == "range" {
+		startRaw := strings.TrimSpace(r.URL.Query().Get("start"))
+		endRaw := strings.TrimSpace(r.URL.Query().Get("end"))
+		if startRaw == "" || endRaw == "" {
+			return store.MonitorPageQuery{}, &monitorRequestParseError{
+				Status:  http.StatusBadRequest,
+				Message: "start and end are required when stats_scope=range",
+			}
+		}
+
+		start, err := parseQueryTimestamp(startRaw)
+		if err != nil {
+			return store.MonitorPageQuery{}, &monitorRequestParseError{
+				Status:  http.StatusBadRequest,
+				Message: "invalid start format",
+			}
+		}
+		end, err := parseQueryTimestamp(endRaw)
+		if err != nil {
+			return store.MonitorPageQuery{}, &monitorRequestParseError{
+				Status:  http.StatusBadRequest,
+				Message: "invalid end format",
+			}
+		}
+		if !start.Before(end) {
+			return store.MonitorPageQuery{}, &monitorRequestParseError{
+				Status:  http.StatusBadRequest,
+				Message: "start must be before end",
+			}
+		}
+
+		query.Start = start
+		query.End = end
+	}
+
+	return query, nil
+}
+
 func (s *Server) handleMonitorEndpoints(w http.ResponseWriter, r *http.Request) {
 	filters := store.MonitorFilters{
 		VLANs:      parseCSVQuery(r, "vlan"),
@@ -1374,122 +1768,16 @@ func (s *Server) handleMonitorEndpoints(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleMonitorEndpointsPage(w http.ResponseWriter, r *http.Request) {
-	filters := store.MonitorFilters{
-		VLANs:      parseCSVQuery(r, "vlan"),
-		Switches:   parseCSVQuery(r, "switch"),
-		Ports:      parseCSVQuery(r, "port"),
-		GroupNames: parseCSVQuery(r, "group"),
-	}
-
-	page, err := parsePositiveIntQuery(r, "page", 1)
-	if err != nil {
-		util.WriteError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	pageSize, err := parsePositiveIntQuery(r, "page_size", 100)
-	if err != nil {
-		util.WriteError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if pageSize != 50 && pageSize != 100 && pageSize != 200 {
-		util.WriteError(w, http.StatusBadRequest, "page_size must be one of 50, 100, 200")
-		return
-	}
-
-	statsScope := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("stats_scope")))
-	if statsScope == "" {
-		statsScope = "live"
-	}
-	if statsScope != "live" && statsScope != "range" {
-		util.WriteError(w, http.StatusBadRequest, "stats_scope must be live or range")
-		return
-	}
-
-	sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
-	sortDir := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_dir")))
-	if sortBy != "" {
-		validateSort := storeMonitorSortExpression
-		if statsScope == "range" {
-			validateSort = storeMonitorRangeSortExpression
-		}
-		if _, err := validateSort(sortBy); err != nil {
-			util.WriteError(w, http.StatusBadRequest, "invalid sort_by")
-			return
-		}
-		if sortDir == "" {
-			sortDir = "desc"
-		}
-		if sortDir != "asc" && sortDir != "desc" {
-			util.WriteError(w, http.StatusBadRequest, "sort_dir must be asc or desc")
-			return
-		}
-	} else {
-		if sortDir != "" {
-			util.WriteError(w, http.StatusBadRequest, "sort_dir requires sort_by")
-			return
-		}
-	}
-
-	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
-	mac := strings.TrimSpace(r.URL.Query().Get("mac"))
-	custom1 := strings.TrimSpace(r.URL.Query().Get("custom_1"))
-	custom2 := strings.TrimSpace(r.URL.Query().Get("custom_2"))
-	custom3 := strings.TrimSpace(r.URL.Query().Get("custom_3"))
-	ipList, err := parseIPListQuery(r, "ip_list")
-	if err != nil {
-		util.WriteError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	settings, err := s.store.GetSettings(r.Context())
-	if err != nil {
-		util.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	custom1, custom2, custom3 = filterCustomSearchesBySettings(settings.CustomFields, custom1, custom2, custom3)
-
-	var start time.Time
-	var end time.Time
-	if statsScope == "range" {
-		startRaw := strings.TrimSpace(r.URL.Query().Get("start"))
-		endRaw := strings.TrimSpace(r.URL.Query().Get("end"))
-		if startRaw == "" || endRaw == "" {
-			util.WriteError(w, http.StatusBadRequest, "start and end are required when stats_scope=range")
-			return
-		}
-
-		start, err = parseQueryTimestamp(startRaw)
-		if err != nil {
-			util.WriteError(w, http.StatusBadRequest, "invalid start format")
-			return
-		}
-		end, err = parseQueryTimestamp(endRaw)
-		if err != nil {
-			util.WriteError(w, http.StatusBadRequest, "invalid end format")
-			return
-		}
-		if !start.Before(end) {
-			util.WriteError(w, http.StatusBadRequest, "start must be before end")
-			return
-		}
-	}
-
-	items, totalItems, err := s.store.ListMonitorEndpointsPage(r.Context(), store.MonitorPageQuery{
-		Filters:    filters,
-		Hostname:   hostname,
-		MAC:        mac,
-		Custom1:    custom1,
-		Custom2:    custom2,
-		Custom3:    custom3,
-		IPList:     ipList,
-		Page:       page,
-		PageSize:   pageSize,
-		SortBy:     sortBy,
-		SortDir:    sortDir,
-		StatsScope: statsScope,
-		Start:      start,
-		End:        end,
+	query, parseErr := s.monitorPageQueryFromRequest(r, monitorRequestOptions{
+		includePagination: true,
+		includeSort:       true,
 	})
+	if parseErr != nil {
+		util.WriteError(w, parseErr.Status, parseErr.Message)
+		return
+	}
+
+	items, totalItems, err := s.store.ListMonitorEndpointsPage(r.Context(), query)
 	if err != nil {
 		if err.Error() == "invalid sort_by" {
 			util.WriteError(w, http.StatusBadRequest, "invalid sort_by")
@@ -1499,14 +1787,14 @@ func (s *Server) handleMonitorEndpointsPage(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	totalPages := int((totalItems + int64(pageSize) - 1) / int64(pageSize))
+	totalPages := int((totalItems + int64(query.PageSize) - 1) / int64(query.PageSize))
 	if totalItems == 0 {
 		totalPages = 0
 	}
 
 	rangeRollup := ""
-	if statsScope == "range" {
-		if end.Sub(start) > 48*time.Hour {
+	if query.StatsScope == "range" {
+		if query.End.Sub(query.Start) > 48*time.Hour {
 			rangeRollup = "1h"
 		} else {
 			rangeRollup = "1m"
@@ -1515,15 +1803,39 @@ func (s *Server) handleMonitorEndpointsPage(w http.ResponseWriter, r *http.Reque
 
 	util.WriteJSON(w, http.StatusOK, model.MonitorEndpointsPageResponse{
 		Items:       items,
-		Page:        page,
-		PageSize:    pageSize,
+		Page:        query.Page,
+		PageSize:    query.PageSize,
 		TotalItems:  totalItems,
 		TotalPages:  totalPages,
-		SortBy:      sortBy,
-		SortDir:     sortDir,
-		StatsScope:  statsScope,
+		SortBy:      query.SortBy,
+		SortDir:     query.SortDir,
+		StatsScope:  query.StatsScope,
 		RangeRollup: rangeRollup,
 	})
+}
+
+func (s *Server) handleMonitorSwitchIPs(w http.ResponseWriter, r *http.Request) {
+	items, err := s.store.GetSwitchIPMap(r.Context())
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	util.WriteJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleMonitorDashboardSummary(w http.ResponseWriter, r *http.Request) {
+	query, parseErr := s.monitorPageQueryFromRequest(r, monitorRequestOptions{})
+	if parseErr != nil {
+		util.WriteError(w, parseErr.Status, parseErr.Message)
+		return
+	}
+
+	summary, err := s.store.DashboardUnreachableSummary(r.Context(), query)
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	util.WriteJSON(w, http.StatusOK, summary)
 }
 
 func (s *Server) handleMonitorTimeSeries(w http.ResponseWriter, r *http.Request) {

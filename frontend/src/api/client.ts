@@ -1,4 +1,5 @@
 import type {
+  DashboardUnreachableSummary,
   DeleteAllInventoryResponse,
   DeleteInventoryByGroupResponse,
   FilterOptions,
@@ -20,6 +21,9 @@ import type {
   MonitorSortField,
   ProbeStatus,
   Settings,
+  SwitchDirectoryEntry,
+  SwitchDirectoryImportApplyResponse,
+  SwitchDirectoryImportPreview,
   TimeSeriesResponse
 } from "../types/api";
 
@@ -180,6 +184,107 @@ export async function updateSettings(payload: Settings): Promise<Settings> {
   });
 }
 
+export async function listSwitchDirectory(): Promise<SwitchDirectoryEntry[]> {
+  return request<SwitchDirectoryEntry[]>("/api/switches/");
+}
+
+export async function upsertSwitchDirectoryEntry(payload: {
+  name: string;
+  ip_address: string;
+}): Promise<SwitchDirectoryEntry> {
+  return request<SwitchDirectoryEntry>("/api/switches/", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteSwitchDirectoryEntry(id: number): Promise<{ deleted: boolean; id: number }> {
+  return request<{ deleted: boolean; id: number }>(`/api/switches/${id}`, {
+    method: "DELETE"
+  });
+}
+
+export async function downloadSwitchDirectoryImportTemplateCSV(): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(buildURL("/api/switches/import-template.csv"), { method: "GET" });
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) {
+        message = body.error;
+      }
+    } catch {
+      // ignore parse errors and keep default status text
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const filename = parseDownloadFilename(response.headers.get("Content-Disposition")) || "switch-directory-import-template.csv";
+  return { blob, filename };
+}
+
+export async function importSwitchDirectoryPreview(file: File): Promise<SwitchDirectoryImportPreview> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await fetchWithTimeout(
+    "/api/switches/import-preview",
+    {
+      method: "POST",
+      body: form
+    },
+    IMPORT_PREVIEW_TIMEOUT_MS
+  );
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) {
+        message = body.error;
+      }
+    } catch {
+      // no-op
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as SwitchDirectoryImportPreview;
+}
+
+export async function cancelSwitchDirectoryPreview(
+  previewID: string
+): Promise<{ deleted: boolean; preview_id: string; not_found?: boolean }> {
+  const response = await fetchWithTimeout(`/api/switches/import-preview/${encodeURIComponent(previewID)}`, {
+    method: "DELETE"
+  });
+  if (response.status === 404) {
+    return { deleted: false, preview_id: previewID, not_found: true };
+  }
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) {
+        message = body.error;
+      }
+    } catch {
+      // ignore parse errors and keep default status text
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as { deleted: boolean; preview_id: string };
+}
+
+export async function applySwitchDirectoryPreview(payload: {
+  preview_id: string;
+  selections?: { row_id: string; action: "add" | "update" }[];
+}): Promise<SwitchDirectoryImportApplyResponse> {
+  return request<SwitchDirectoryImportApplyResponse>("/api/switches/import-apply", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function listGroups(): Promise<Group[]> {
   return request<Group[]>("/api/groups/");
 }
@@ -282,6 +387,43 @@ export async function listMonitorTimeSeries(payload: {
 
 export async function listFilterOptions(): Promise<FilterOptions> {
   return request<FilterOptions>("/api/monitor/filter-options");
+}
+
+export async function getMonitorSwitchIPs(): Promise<Record<string, string>> {
+  return request<Record<string, string>>("/api/monitor/switch-ips");
+}
+
+export async function getMonitorDashboardSummary(filters: {
+  vlan?: string[];
+  switches?: string[];
+  ports?: string[];
+  groups?: string[];
+  hostname?: string;
+  mac?: string;
+  custom1?: string;
+  custom2?: string;
+  custom3?: string;
+  ipList?: string[];
+  statsScope?: MonitorDataScope;
+  start?: string;
+  end?: string;
+}): Promise<DashboardUnreachableSummary> {
+  const path = buildQuery("/api/monitor/dashboard-summary", {
+    vlan: filters.vlan?.join(","),
+    switch: filters.switches?.join(","),
+    port: filters.ports?.join(","),
+    group: filters.groups?.join(","),
+    hostname: filters.hostname?.trim() || undefined,
+    mac: filters.mac?.trim() || undefined,
+    custom_1: filters.custom1?.trim() || undefined,
+    custom_2: filters.custom2?.trim() || undefined,
+    custom_3: filters.custom3?.trim() || undefined,
+    ip_list: filters.ipList?.join(","),
+    stats_scope: filters.statsScope,
+    start: filters.start,
+    end: filters.end
+  });
+  return request<DashboardUnreachableSummary>(path);
 }
 
 export async function listInventoryFilterOptions(): Promise<FilterOptions> {

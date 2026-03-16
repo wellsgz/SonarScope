@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  getMonitorDashboardSummary,
+  getMonitorSwitchIPs,
   getSettings,
   listFilterOptions,
   listMonitorEndpointsPage,
@@ -8,9 +10,10 @@ import {
   updateSettings
 } from "../api/client";
 import { MonitorChart } from "../components/MonitorChart";
-import { MonitorTable } from "../components/MonitorTable";
+import { monitorBuiltInColumnKeys, MonitorTable } from "../components/MonitorTable";
 import { MonitorToolbar, type FilterState } from "../components/MonitorToolbar";
 import { rangeToDatesAt, toApiTime, type QuickRange } from "../hooks/time";
+import { useColumnPreferences } from "../hooks/useColumnPreferences";
 import { useMonitorSocket } from "../hooks/useMonitorSocket";
 import type { CustomFieldConfig, Group, MonitorDataScope, MonitorSortField, ProbeStatus, Settings } from "../types/api";
 
@@ -200,6 +203,11 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     () => enabledCustomFields.map((field) => `${field.slot}:${field.name}`).join("|"),
     [enabledCustomFields]
   );
+  const allColumnKeys = useMemo(
+    () => [...monitorBuiltInColumnKeys, ...enabledCustomFields.map((field) => `custom_field_${field.slot}_value`)],
+    [enabledCustomFields]
+  );
+  const { visibility, order, toggleColumnVisibility, setColumnOrder, resetToDefaults } = useColumnPreferences(allColumnKeys);
 
   const autoRefreshMs = Math.max(1000, (settingsQuery.data?.auto_refresh_sec ?? 30) * 1000);
 
@@ -347,6 +355,24 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       : socketConnected
         ? false
         : autoRefreshMs;
+  const monitorQueryFilters = useMemo(
+    () => ({
+      vlan: filters.vlan,
+      switches: filters.switches,
+      ports: filters.ports,
+      groups: filters.groups,
+      hostname: hostnameSearch,
+      mac: macSearch,
+      custom1: customSearch.custom1,
+      custom2: customSearch.custom2,
+      custom3: customSearch.custom3,
+      ipList: ipListValues,
+      statsScope: dataScope,
+      start: dataScope === "range" ? toApiTime(effectiveStart) : undefined,
+      end: dataScope === "range" ? toApiTime(effectiveEnd) : undefined
+    }),
+    [customSearch.custom1, customSearch.custom2, customSearch.custom3, dataScope, effectiveEnd, effectiveStart, filters.groups, filters.ports, filters.switches, filters.vlan, hostnameSearch, ipListValues, macSearch]
+  );
 
   const monitorQuery = useQuery({
     queryKey: [
@@ -369,27 +395,40 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     ],
     queryFn: () =>
       listMonitorEndpointsPage({
-        vlan: filters.vlan,
-        switches: filters.switches,
-        ports: filters.ports,
-        groups: filters.groups,
-        hostname: hostnameSearch,
-        mac: macSearch,
-        custom1: customSearch.custom1,
-        custom2: customSearch.custom2,
-        custom3: customSearch.custom3,
-        ipList: ipListValues,
+        ...monitorQueryFilters,
         page,
         pageSize,
-        statsScope: dataScope,
-        start: dataScope === "range" ? toApiTime(effectiveStart) : undefined,
-        end: dataScope === "range" ? toApiTime(effectiveEnd) : undefined,
         sortBy: sortBy || undefined,
         sortDir: sortDir || undefined
       }),
     placeholderData: keepPreviousData,
     refetchInterval: queryRefetchInterval,
     ...fixedCustomRangeQueryOptions
+  });
+  const switchIPQuery = useQuery({
+    queryKey: ["monitor-switch-ips"],
+    queryFn: getMonitorSwitchIPs
+  });
+  const dashboardSummaryQuery = useQuery({
+    queryKey: [
+      "monitor-dashboard-summary",
+      monitorQueryFilters.vlan,
+      monitorQueryFilters.switches,
+      monitorQueryFilters.ports,
+      monitorQueryFilters.groups,
+      monitorQueryFilters.hostname,
+      monitorQueryFilters.mac,
+      monitorQueryFilters.custom1,
+      monitorQueryFilters.custom2,
+      monitorQueryFilters.custom3,
+      monitorQueryFilters.ipList,
+      monitorQueryFilters.statsScope,
+      monitorQueryFilters.start,
+      monitorQueryFilters.end
+    ],
+    queryFn: () => getMonitorDashboardSummary(monitorQueryFilters),
+    enabled: tableDashboardMode,
+    refetchInterval: tableDashboardMode ? autoRefreshMs : false
   });
 
   const monitorRows = monitorQuery.data?.items || [];
@@ -503,6 +542,11 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   const realtimeStatusLabel = socketConnected
     ? "Realtime connected"
     : `Realtime reconnecting - polling every ${Math.max(1, Math.round(autoRefreshMs / 1000))}s`;
+  const dashboardSummary = dashboardSummaryQuery.data;
+  const hiddenDashboardSwitchCount = Math.max(
+    0,
+    (dashboardSummary?.total_switch_count ?? 0) - (dashboardSummary?.by_switch.length ?? 0)
+  );
 
   const tableContent = showTableLoading ? (
     <div className="panel state-panel">
@@ -515,6 +559,8 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     <MonitorTable
       rows={monitorRows}
       customFields={enabledCustomFields}
+      columnVisibility={visibility}
+      columnOrder={order}
       selectedEndpointID={chartSnapshot?.id ?? null}
       onSelectionChange={handleSelectionChange}
       selectionMode="replace"
@@ -539,9 +585,13 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         setSortDir(nextSortDir);
         setPage(1);
       }}
+      onToggleColumnVisibility={toggleColumnVisibility}
+      onColumnOrderChange={setColumnOrder}
+      onResetColumnPreferences={resetToDefaults}
       emptyMessage="No endpoints match the active filters."
       preserveRelativeScroll={tableDashboardMode}
       refreshSignal={monitorQuery.dataUpdatedAt}
+      switchIPMap={switchIPQuery.data}
     />
   );
 
@@ -585,6 +635,33 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="monitor-dashboard-summary-row">
+          <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-total">
+            <span className="monitor-dashboard-summary-label">Unreachable Endpoints</span>
+            <strong className="monitor-dashboard-summary-value">
+              {dashboardSummaryQuery.isPending && !dashboardSummary ? "…" : dashboardSummary?.total_unreachable ?? 0}
+            </strong>
+          </div>
+          {(dashboardSummary?.by_switch || []).map((item) => (
+            <div key={`dashboard-switch-${item.switch_name}`} className="monitor-dashboard-summary-block">
+              <span className="monitor-dashboard-summary-label">{item.switch_name}</span>
+              <strong className="monitor-dashboard-summary-value">{item.unreachable_count}</strong>
+            </div>
+          ))}
+          {hiddenDashboardSwitchCount > 0 ? (
+            <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-more">
+              <span className="monitor-dashboard-summary-label">Additional switches</span>
+              <strong className="monitor-dashboard-summary-value">+{hiddenDashboardSwitchCount} more</strong>
+            </div>
+          ) : null}
+          {dashboardSummaryQuery.error ? (
+            <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-warning">
+              <span className="monitor-dashboard-summary-label">Summary</span>
+              <strong className="monitor-dashboard-summary-value">Unavailable</strong>
+            </div>
+          ) : null}
         </div>
 
         <div className="monitor-dashboard-table">{tableContent}</div>
