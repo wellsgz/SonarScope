@@ -514,7 +514,7 @@ export function MonitorChart({
         left: 64,
         right: 56,
         top: 36,
-        bottom: 48
+        bottom: 38
       },
       xAxis: {
         type: "time",
