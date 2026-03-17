@@ -452,14 +452,7 @@ label {
 }
 
 .chart-meta {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.chart-meta-row {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--space-2);
   min-width: 0;
 }
@@ -467,34 +460,20 @@ label {
 .chart-meta-item {
   min-width: 0;
   display: grid;
-  gap: 0.08rem;
+  gap: var(--space-1);
   padding: 0.34rem 0.54rem;
   border: 1px solid color-mix(in srgb, var(--color-accent) 18%, var(--color-border));
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-surface-elevated) 94%, transparent);
   flex: 1 1 10rem;
 }
 
 .chart-meta-item-endpoint {
-  flex: 2.2 1 16rem;
+  flex: 1.2 1 16rem;
 }
 
 .chart-meta-item-snapshot {
-  flex: 1.9 1 15rem;
-}
-
-.chart-meta-item-rollup {
-  flex: 0.6 1 6rem;
-}
-
-.chart-meta-item-loss,
-.chart-meta-item-latency {
-  flex: 0.9 1 8rem;
-}
-
-.chart-meta-item-coverage,
-.chart-meta-item-interval {
-  flex: 1.8 1 15rem;
+  flex: 1 1 15rem;
 }
 
 .chart-meta-label {
@@ -513,10 +492,6 @@ label {
   overflow-wrap: anywhere;
 }
 
-.chart-meta-row-primary .chart-meta-value {
-  font-size: var(--text-sm);
-}
-
 .chart-canvas-shell {
   flex: 1 1 auto;
   min-width: 0;
@@ -527,10 +502,6 @@ label {
 @media (max-width: 720px) {
   .chart-panel {
     padding: var(--space-3);
-  }
-
-  .chart-meta-row {
-    gap: var(--space-1);
   }
 
   .chart-meta-item {

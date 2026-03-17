@@ -191,65 +191,6 @@ function formatSnapshotLabel(capturedAt: Date): string {
   }).format(capturedAt)} (local)`;
 }
 
-function formatBucketLabel(bucket: string): string {
-  const date = new Date(bucket);
-  if (Number.isNaN(date.getTime())) {
-    return "Unavailable";
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    month: "2-digit",
-    day: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
-}
-
-function buildChartTextSummary(
-  points: TimeSeriesPoint[],
-  buckets: number[],
-  rollup: TimeSeriesResponse["rollup"]
-): {
-  latestLossLabel: string;
-  latestLatencyLabel: string;
-  latestIntervalLabel: string;
-  noProbeLabel: string;
-} {
-  const sortedMeasured = [...points]
-    .filter((point) => point.sent_count > 0)
-    .sort((left, right) => new Date(left.bucket).getTime() - new Date(right.bucket).getTime());
-  const latestMeasured = sortedMeasured.length > 0 ? sortedMeasured[sortedMeasured.length - 1] : null;
-  const pointByBucket = new Map<number, TimeSeriesPoint>();
-  points.forEach((point) => {
-    pointByBucket.set(alignToStep(new Date(point.bucket).getTime(), toStepMs(rollup)), point);
-  });
-  const noProbeCount = buckets.reduce((count, bucket) => {
-    const point = pointByBucket.get(bucket);
-    return count + (!point || point.sent_count === 0 ? 1 : 0);
-  }, 0);
-  const totalIntervals = buckets.length;
-
-  return {
-    latestLossLabel: latestMeasured ? formatPercent(latestMeasured.loss_rate) : "No probe data",
-    latestLatencyLabel: latestMeasured
-      ? latestMeasured.avg_latency_ms === null
-        ? "—"
-        : formatLatency(latestMeasured.avg_latency_ms)
-      : "No probe data",
-    latestIntervalLabel: latestMeasured
-      ? `Latest measured interval: ${formatBucketLabel(latestMeasured.bucket)}`
-      : "No measured intervals in the selected window.",
-    noProbeLabel:
-      totalIntervals === 0
-        ? "No visible intervals for this range."
-        : noProbeCount === 0
-          ? "Probe activity was recorded in every visible interval."
-          : noProbeCount === totalIntervals
-            ? "No probe activity was recorded in this captured period."
-            : `No probe activity in ${noProbeCount} of ${totalIntervals} visible intervals.`
-  };
-}
-
 function buildMetricSeries(
   points: TimeSeriesPoint[],
   metric: Metric,
@@ -417,14 +358,9 @@ export function MonitorChart({
   const rangeEndMs = rangeEnd.getTime();
   const hasProbeActivity = useMemo(() => points.some((point) => point.sent_count > 0), [points]);
   const buckets = useMemo(() => buildBuckets(rangeStart, rangeEnd, toStepMs(rollup)), [rangeEnd, rangeStart, rollup]);
-  const chartTextSummary = useMemo(() => buildChartTextSummary(points, buckets, rollup), [buckets, points, rollup]);
   const snapshotSummaryValue = useMemo(
     () => snapshotLabel.replace(/^Snapshot captured:\s*/u, ""),
     [snapshotLabel]
-  );
-  const latestIntervalSummaryValue = useMemo(
-    () => chartTextSummary.latestIntervalLabel.replace(/^Latest measured interval:\s*/u, ""),
-    [chartTextSummary.latestIntervalLabel]
   );
   const palette = {
     textMuted: readToken("--color-text-muted", "#b4c3db"),
@@ -578,7 +514,7 @@ export function MonitorChart({
         left: 64,
         right: 56,
         top: 36,
-        bottom: 38
+        bottom: 48
       },
       xAxis: {
         type: "time",
@@ -642,37 +578,13 @@ export function MonitorChart({
         </div>
       </div>
       <div className="chart-meta" id={chartSummaryId}>
-        <div className="chart-meta-row chart-meta-row-primary">
-          <div className="chart-meta-item chart-meta-item-endpoint">
-            <span className="chart-meta-label">Endpoint</span>
-            <strong className="chart-meta-value">{endpointLabel}</strong>
-          </div>
-          <div className="chart-meta-item chart-meta-item-snapshot">
-            <span className="chart-meta-label">Snapshot</span>
-            <strong className="chart-meta-value">{snapshotSummaryValue}</strong>
-          </div>
-          <div className="chart-meta-item chart-meta-item-rollup">
-            <span className="chart-meta-label">Rollup</span>
-            <strong className="chart-meta-value">{rollup}</strong>
-          </div>
+        <div className="chart-meta-item chart-meta-item-endpoint">
+          <span className="chart-meta-label">Endpoint</span>
+          <strong className="chart-meta-value">{endpointLabel}</strong>
         </div>
-        <div className="chart-meta-row chart-meta-row-secondary">
-          <div className="chart-meta-item chart-meta-item-loss">
-            <span className="chart-meta-label">Latest loss</span>
-            <strong className="chart-meta-value">{chartTextSummary.latestLossLabel}</strong>
-          </div>
-          <div className="chart-meta-item chart-meta-item-latency">
-            <span className="chart-meta-label">Latest latency</span>
-            <strong className="chart-meta-value">{chartTextSummary.latestLatencyLabel}</strong>
-          </div>
-          <div className="chart-meta-item chart-meta-item-coverage">
-            <span className="chart-meta-label">Probe coverage</span>
-            <strong className="chart-meta-value">{chartTextSummary.noProbeLabel}</strong>
-          </div>
-          <div className="chart-meta-item chart-meta-item-interval">
-            <span className="chart-meta-label">Latest interval</span>
-            <strong className="chart-meta-value">{latestIntervalSummaryValue}</strong>
-          </div>
+        <div className="chart-meta-item chart-meta-item-snapshot">
+          <span className="chart-meta-label">Snapshot</span>
+          <strong className="chart-meta-value">{snapshotSummaryValue}</strong>
         </div>
       </div>
       {controlsChanged ? (
