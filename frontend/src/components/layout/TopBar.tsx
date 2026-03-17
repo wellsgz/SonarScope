@@ -28,18 +28,14 @@ export function TopBar({ activeView, onOpenSidebar, showOpenDashboardButton, onO
     }
   });
 
-  const handleAutoRefreshChange = (value: string) => {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) {
-      return;
-    }
+  const handleAutoRefreshChange = (value: number) => {
     const current = settingsQuery.data;
-    if (!current || current.auto_refresh_sec === parsed) {
+    if (!current || current.auto_refresh_sec === value) {
       return;
     }
     settingsMutation.mutate({
       ...current,
-      auto_refresh_sec: parsed
+      auto_refresh_sec: value
     });
   };
   const autoRefreshInput = useDebouncedNumberInput({

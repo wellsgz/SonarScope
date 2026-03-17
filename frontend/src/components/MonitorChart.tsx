@@ -217,7 +217,7 @@ function buildChartTextSummary(
   const sortedMeasured = [...points]
     .filter((point) => point.sent_count > 0)
     .sort((left, right) => new Date(left.bucket).getTime() - new Date(right.bucket).getTime());
-  const latestMeasured = sortedMeasured.at(-1) ?? null;
+  const latestMeasured = sortedMeasured.length > 0 ? sortedMeasured[sortedMeasured.length - 1] : null;
   const pointByBucket = new Map<number, TimeSeriesPoint>();
   points.forEach((point) => {
     pointByBucket.set(alignToStep(new Date(point.bucket).getTime(), toStepMs(rollup)), point);
