@@ -410,6 +410,7 @@ export function MonitorChart({
   controlsChanged = false
 }: Props) {
   const chartSummaryId = useId();
+  const chartRangeId = useId();
   const chartRangeLabel = useMemo(() => formatChartRangeLabel(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
   const snapshotLabel = useMemo(() => formatSnapshotLabel(snapshotCapturedAt), [snapshotCapturedAt]);
   const rangeStartMs = rangeStart.getTime();
@@ -417,6 +418,14 @@ export function MonitorChart({
   const hasProbeActivity = useMemo(() => points.some((point) => point.sent_count > 0), [points]);
   const buckets = useMemo(() => buildBuckets(rangeStart, rangeEnd, toStepMs(rollup)), [rangeEnd, rangeStart, rollup]);
   const chartTextSummary = useMemo(() => buildChartTextSummary(points, buckets, rollup), [buckets, points, rollup]);
+  const snapshotSummaryValue = useMemo(
+    () => snapshotLabel.replace(/^Snapshot captured:\s*/u, ""),
+    [snapshotLabel]
+  );
+  const latestIntervalSummaryValue = useMemo(
+    () => chartTextSummary.latestIntervalLabel.replace(/^Latest measured interval:\s*/u, ""),
+    [chartTextSummary.latestIntervalLabel]
+  );
   const palette = {
     textMuted: readToken("--color-text-muted", "#b4c3db"),
     textSubtle: readToken("--color-text-subtle", "#94a7c4"),
@@ -625,45 +634,47 @@ export function MonitorChart({
   return (
     <div className="panel chart-panel">
       <div className="chart-header">
-        <div>
-          <div className="chart-title-row">
-            <div className="chart-title">Loss &amp; Latency Timeline</div>
-            <div className="chart-time-range" aria-label={chartRangeLabel}>
-              {chartRangeLabel}
-            </div>
+        <div className="chart-title-row">
+          <div className="chart-title">Loss &amp; Latency Timeline</div>
+          <div className="chart-time-range" id={chartRangeId} aria-label={chartRangeLabel}>
+            {chartRangeLabel}
           </div>
-          <div className="chart-subtitle">Selected endpoint: {endpointLabel}</div>
-          <div className="chart-subtitle">{snapshotLabel}</div>
-          <div className="chart-subtitle">Rollup: {rollup}</div>
         </div>
       </div>
-      <div className="chart-summary-grid" id={chartSummaryId}>
-        <div className="chart-summary-item">
-          <span className="chart-summary-label">Endpoint</span>
-          <strong className="chart-summary-value">{endpointLabel}</strong>
+      <div className="chart-meta" id={chartSummaryId}>
+        <div className="chart-meta-row chart-meta-row-primary">
+          <div className="chart-meta-item chart-meta-item-endpoint">
+            <span className="chart-meta-label">Endpoint</span>
+            <strong className="chart-meta-value">{endpointLabel}</strong>
+          </div>
+          <div className="chart-meta-item chart-meta-item-snapshot">
+            <span className="chart-meta-label">Snapshot</span>
+            <strong className="chart-meta-value">{snapshotSummaryValue}</strong>
+          </div>
+          <div className="chart-meta-item chart-meta-item-rollup">
+            <span className="chart-meta-label">Rollup</span>
+            <strong className="chart-meta-value">{rollup}</strong>
+          </div>
         </div>
-        <div className="chart-summary-item">
-          <span className="chart-summary-label">Range</span>
-          <strong className="chart-summary-value">{chartRangeLabel}</strong>
-        </div>
-        <div className="chart-summary-item">
-          <span className="chart-summary-label">Rollup</span>
-          <strong className="chart-summary-value">{rollup}</strong>
-        </div>
-        <div className="chart-summary-item">
-          <span className="chart-summary-label">Latest loss</span>
-          <strong className="chart-summary-value">{chartTextSummary.latestLossLabel}</strong>
-        </div>
-        <div className="chart-summary-item">
-          <span className="chart-summary-label">Latest latency</span>
-          <strong className="chart-summary-value">{chartTextSummary.latestLatencyLabel}</strong>
-        </div>
-        <div className="chart-summary-item">
-          <span className="chart-summary-label">Probe coverage</span>
-          <strong className="chart-summary-value">{chartTextSummary.noProbeLabel}</strong>
+        <div className="chart-meta-row chart-meta-row-secondary">
+          <div className="chart-meta-item chart-meta-item-loss">
+            <span className="chart-meta-label">Latest loss</span>
+            <strong className="chart-meta-value">{chartTextSummary.latestLossLabel}</strong>
+          </div>
+          <div className="chart-meta-item chart-meta-item-latency">
+            <span className="chart-meta-label">Latest latency</span>
+            <strong className="chart-meta-value">{chartTextSummary.latestLatencyLabel}</strong>
+          </div>
+          <div className="chart-meta-item chart-meta-item-coverage">
+            <span className="chart-meta-label">Probe coverage</span>
+            <strong className="chart-meta-value">{chartTextSummary.noProbeLabel}</strong>
+          </div>
+          <div className="chart-meta-item chart-meta-item-interval">
+            <span className="chart-meta-label">Latest interval</span>
+            <strong className="chart-meta-value">{latestIntervalSummaryValue}</strong>
+          </div>
         </div>
       </div>
-      <div className="chart-summary-note">{chartTextSummary.latestIntervalLabel}</div>
       {controlsChanged ? (
         <div className="info-banner chart-snapshot-note" role="status" aria-live="polite">
           Controls changed after this snapshot. Reselect an endpoint to capture a new chart.
@@ -675,7 +686,12 @@ export function MonitorChart({
           <span>No probe activity was recorded in this captured period.</span>
         </div>
       ) : null}
-      <div className="chart-body" role="group" aria-label="Loss and latency chart" aria-describedby={chartSummaryId}>
+      <div
+        className="chart-body"
+        role="group"
+        aria-label="Loss and latency chart"
+        aria-describedby={`${chartSummaryId} ${chartRangeId}`}
+      >
         <ChartErrorBoundary resetKey={String(snapshotVersion)}>
           {!hasRenderableSeries ? (
             <div className="state-panel chart-empty-series-panel">

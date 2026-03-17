@@ -505,12 +505,23 @@
 .monitor-pane-middle .table-scroll-y {
   flex: 1 1 auto;
   min-height: 0;
-  padding-inline-end: var(--space-2);
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  padding-inline-end: 0;
+  padding-block-end: 0;
+}
+
+.monitor-dashboard-table .table-scroll-y {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  padding-inline-end: 0;
 }
 
 .monitor-pane-middle .monitor-table th:last-child,
-.monitor-pane-middle .monitor-table td:last-child {
-  padding-inline-end: calc(var(--space-3) + var(--space-1));
+.monitor-pane-middle .monitor-table td:last-child,
+.monitor-dashboard-table .monitor-table th:last-child,
+.monitor-dashboard-table .monitor-table td:last-child {
+  padding-inline-end: calc(var(--space-3) + 0.48rem);
 }
 
 .filter-card {
@@ -642,15 +653,16 @@
 
 .chart-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4) 0;
+  padding: 0;
 }
 
 .chart-title {
   font-size: var(--text-lg);
   font-weight: 700;
+  line-height: 1.16;
 }
 
 .chart-title-row {
@@ -681,15 +693,21 @@
 }
 
 .chart-no-probe-banner {
-  margin: var(--space-2) var(--space-4) 0;
+  margin: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-2);
+  padding: 0.32rem 0.5rem;
+  font-size: var(--text-xs);
+  line-height: 1.35;
   font-weight: 600;
 }
 
 .chart-snapshot-note {
-  margin: var(--space-2) var(--space-4) 0;
+  margin: 0;
+  padding: 0.32rem 0.5rem;
+  font-size: var(--text-xs);
+  line-height: 1.35;
   font-weight: 600;
 }
 
@@ -699,18 +717,19 @@
   border-radius: 50%;
   background: var(--color-accent);
   flex: 0 0 auto;
-  margin-top: 0.24rem;
+  margin-top: 0;
 }
 
 .chart-body {
   flex: 1 1 auto;
-  min-height: 248px;
+  min-height: 280px;
   min-width: 0;
+  display: flex;
 }
 
 .chart-empty-series-panel {
   height: 100%;
-  min-height: 248px;
+  min-height: 280px;
   font-size: var(--text-base);
 }
 
@@ -1635,6 +1654,11 @@
   .monitor-dashboard-meta {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .chart-body,
+  .chart-empty-series-panel {
+    min-height: 240px;
   }
 
   .groups-layout,
