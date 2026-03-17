@@ -17,6 +17,23 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+func TestNewHubUsesHardenedDefaults(t *testing.T) {
+	hub := NewHub()
+
+	if got := hub.config.clientSendQueueSize; got != 512 {
+		t.Fatalf("client send queue size = %d, want 512", got)
+	}
+	if got := hub.config.clientWriteTimeout; got != 10*time.Second {
+		t.Fatalf("client write timeout = %s, want 10s", got)
+	}
+	if got := hub.upgrader.ReadBufferSize; got != 8192 {
+		t.Fatalf("read buffer size = %d, want 8192", got)
+	}
+	if got := hub.upgrader.WriteBufferSize; got != 8192 {
+		t.Fatalf("write buffer size = %d, want 8192", got)
+	}
+}
+
 func TestHubBroadcastReturnsPromptlyWithFullQueue(t *testing.T) {
 	hub := NewHub()
 	slow := &client{send: make(chan []byte, 1), done: make(chan struct{})}

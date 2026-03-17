@@ -85,6 +85,46 @@ func (s *fakeProbeStore) BatchCalls() []int {
 	return calls
 }
 
+type fakeBroadcaster struct {
+	mu          sync.Mutex
+	clientCount int
+	events      []map[string]any
+}
+
+func (b *fakeBroadcaster) Broadcast(event any) {
+	payload, ok := event.(map[string]any)
+	if !ok {
+		return
+	}
+	cloned := make(map[string]any, len(payload))
+	for key, value := range payload {
+		cloned[key] = value
+	}
+	b.mu.Lock()
+	b.events = append(b.events, cloned)
+	b.mu.Unlock()
+}
+
+func (b *fakeBroadcaster) ClientCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.clientCount
+}
+
+func (b *fakeBroadcaster) Events() []map[string]any {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	events := make([]map[string]any, len(b.events))
+	for i, event := range b.events {
+		cloned := make(map[string]any, len(event))
+		for key, value := range event {
+			cloned[key] = value
+		}
+		events[i] = cloned
+	}
+	return events
+}
+
 type fakePacketConn struct {
 	mu             sync.Mutex
 	writes         [][]byte
@@ -684,6 +724,82 @@ func TestFailedBatchPersistenceFallsBackToIndividualWrites(t *testing.T) {
 	got := store.BatchCalls()
 	if len(got) != 1 || got[0] != 2 {
 		t.Fatalf("expected a failed batch attempt before fallback, got %v", got)
+	}
+}
+
+func TestProcessResultEnvelopesBroadcastsSingleProbeUpdatePerBatch(t *testing.T) {
+	store := &fakeProbeStore{}
+	broadcaster := &fakeBroadcaster{clientCount: 1}
+	engine := newEngineWithDeps(store, broadcaster, defaultTestOptions(), model.Settings{}, func() (packetConn, error) {
+		return newFakePacketConn(), nil
+	})
+	firstTimestamp := time.Now().UTC()
+	secondTimestamp := firstTimestamp.Add(5 * time.Millisecond)
+
+	engine.processResultEnvelopes([]resultEnvelope{
+		{result: model.PingResult{EndpointID: 1, Timestamp: firstTimestamp}},
+		{result: model.PingResult{EndpointID: 2, Timestamp: secondTimestamp}},
+	})
+
+	events := broadcaster.Events()
+	if len(events) != 1 {
+		t.Fatalf("broadcast count = %d, want 1", len(events))
+	}
+	if got := events[0]["type"]; got != "probe_update" {
+		t.Fatalf("event type = %v, want probe_update", got)
+	}
+	if got := events[0]["count"]; got != 2 {
+		t.Fatalf("event count = %v, want 2", got)
+	}
+	timestamp, ok := events[0]["timestamp"].(time.Time)
+	if !ok {
+		t.Fatalf("event timestamp has unexpected type %T", events[0]["timestamp"])
+	}
+	if !timestamp.Equal(secondTimestamp) {
+		t.Fatalf("event timestamp = %s, want %s", timestamp, secondTimestamp)
+	}
+}
+
+func TestProcessResultEnvelopesBroadcastsOneProbeUpdatePerFallbackWrite(t *testing.T) {
+	store := &fakeProbeStore{failBatchCount: 1}
+	broadcaster := &fakeBroadcaster{clientCount: 1}
+	engine := newEngineWithDeps(store, broadcaster, defaultTestOptions(), model.Settings{}, func() (packetConn, error) {
+		return newFakePacketConn(), nil
+	})
+	firstTimestamp := time.Now().UTC()
+	secondTimestamp := firstTimestamp.Add(5 * time.Millisecond)
+
+	engine.processResultEnvelopes([]resultEnvelope{
+		{result: model.PingResult{EndpointID: 1, Timestamp: firstTimestamp}},
+		{result: model.PingResult{EndpointID: 2, Timestamp: secondTimestamp}},
+	})
+
+	events := broadcaster.Events()
+	if len(events) != 2 {
+		t.Fatalf("broadcast count = %d, want 2", len(events))
+	}
+	for index, event := range events {
+		if got := event["type"]; got != "probe_update" {
+			t.Fatalf("event %d type = %v, want probe_update", index, got)
+		}
+		if got := event["count"]; got != 1 {
+			t.Fatalf("event %d count = %v, want 1", index, got)
+		}
+	}
+
+	firstEventTimestamp, ok := events[0]["timestamp"].(time.Time)
+	if !ok {
+		t.Fatalf("first event timestamp has unexpected type %T", events[0]["timestamp"])
+	}
+	secondEventTimestamp, ok := events[1]["timestamp"].(time.Time)
+	if !ok {
+		t.Fatalf("second event timestamp has unexpected type %T", events[1]["timestamp"])
+	}
+	if !firstEventTimestamp.Equal(firstTimestamp) {
+		t.Fatalf("first event timestamp = %s, want %s", firstEventTimestamp, firstTimestamp)
+	}
+	if !secondEventTimestamp.Equal(secondTimestamp) {
+		t.Fatalf("second event timestamp = %s, want %s", secondEventTimestamp, secondTimestamp)
 	}
 }
 

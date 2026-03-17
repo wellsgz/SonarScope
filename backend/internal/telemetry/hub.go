@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	defaultClientSendQueueSize = 64
-	defaultClientWriteTimeout  = 2 * time.Second
+	defaultClientSendQueueSize = 512
+	defaultClientWriteTimeout  = 10 * time.Second
 	defaultPingInterval        = 30 * time.Second
 	defaultPongWait            = 45 * time.Second
 )
@@ -62,8 +62,8 @@ func newHubWithConfig(cfg hubConfig) *Hub {
 	return &Hub{
 		clients: map[*client]struct{}{},
 		upgrader: websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
+			ReadBufferSize:  8192,
+			WriteBufferSize: 8192,
 			CheckOrigin: func(r *http.Request) bool {
 				return true
 			},

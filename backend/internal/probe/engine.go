@@ -96,7 +96,7 @@ type roundTracker struct {
 
 type Engine struct {
 	store probeStore
-	hub   *telemetry.Hub
+	hub   probeBroadcaster
 
 	probeWorkers        int
 	resultWorkers       int
@@ -111,16 +111,16 @@ type Engine struct {
 	packetConnFactory packetConnFactory
 
 	lifecycleMu sync.Mutex
-	mu         sync.Mutex
-	running    bool
-	cancel     context.CancelFunc
-	scope      string
-	groupIDs   []int64
-	conn       packetConn
-	recvDone   chan struct{}
-	loopDone   chan struct{}
-	resultCh   chan resultEnvelope
-	resultDone chan struct{}
+	mu          sync.Mutex
+	running     bool
+	cancel      context.CancelFunc
+	scope       string
+	groupIDs    []int64
+	conn        packetConn
+	recvDone    chan struct{}
+	loopDone    chan struct{}
+	resultCh    chan resultEnvelope
+	resultDone  chan struct{}
 
 	pendingMu sync.Mutex
 	pending   map[int]*pendingProbe
@@ -132,6 +132,11 @@ type Engine struct {
 	payloadCache map[int][]byte
 }
 
+type probeBroadcaster interface {
+	Broadcast(event any)
+	ClientCount() int
+}
+
 type Status struct {
 	Running  bool
 	Scope    string
@@ -139,10 +144,13 @@ type Status struct {
 }
 
 func NewEngine(st *store.Store, hub *telemetry.Hub, options Options, initialSettings model.Settings) *Engine {
+	if hub == nil {
+		return newEngineWithDeps(st, nil, options, initialSettings, defaultPacketConnFactory)
+	}
 	return newEngineWithDeps(st, hub, options, initialSettings, defaultPacketConnFactory)
 }
 
-func newEngineWithDeps(st probeStore, hub *telemetry.Hub, options Options, initialSettings model.Settings, factory packetConnFactory) *Engine {
+func newEngineWithDeps(st probeStore, hub probeBroadcaster, options Options, initialSettings model.Settings, factory packetConnFactory) *Engine {
 	options = normalizeOptions(options)
 	engine := &Engine{
 		store:               st,
@@ -682,7 +690,7 @@ func (e *Engine) processResultEnvelopes(batch []resultEnvelope) {
 		if env.tracker != nil {
 			env.tracker.markResultsHandled(1)
 		}
-		e.broadcastResult(env)
+		e.broadcastProbeUpdate(1, env.result.Timestamp)
 	}
 }
 
@@ -700,12 +708,7 @@ func (e *Engine) noteBatchSuccess(batch []resultEnvelope, duration time.Duration
 		tracker.markResultsHandled(count)
 	}
 
-	if e.hub.ClientCount() == 0 {
-		return
-	}
-	for _, env := range batch {
-		e.broadcastResult(env)
-	}
+	e.broadcastProbeUpdate(len(batch), batch[len(batch)-1].result.Timestamp)
 }
 
 func apportionedDuration(total time.Duration, part, whole int) time.Duration {
@@ -726,26 +729,19 @@ func (e *Engine) processFailedPersistence(env resultEnvelope, err error) {
 	e.broadcastProbeError(env.result.EndpointID, fmt.Sprintf("persist ping failed: %v", err))
 }
 
-func (e *Engine) broadcastResult(env resultEnvelope) {
-	if e.hub.ClientCount() == 0 {
+func (e *Engine) broadcastProbeUpdate(count int, timestamp time.Time) {
+	if count <= 0 || e.hub == nil || e.hub.ClientCount() == 0 {
 		return
 	}
-	status := "failed"
-	if env.result.Success {
-		status = "succeeded"
-	}
 	e.hub.Broadcast(map[string]any{
-		"type":        "probe_update",
-		"endpoint_id": env.result.EndpointID,
-		"ip":          env.targetIP,
-		"status":      status,
-		"latency_ms":  env.result.LatencyMs,
-		"timestamp":   env.result.Timestamp,
+		"type":      "probe_update",
+		"count":     count,
+		"timestamp": timestamp,
 	})
 }
 
 func (e *Engine) broadcastProbeError(endpointID int64, message string) {
-	if e.hub.ClientCount() == 0 {
+	if e.hub == nil || e.hub.ClientCount() == 0 {
 		return
 	}
 	payload := map[string]any{
