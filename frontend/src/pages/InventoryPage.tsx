@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
@@ -173,10 +173,6 @@ function toPatch(row: InventoryEndpoint): InventoryPatch {
     port_type: row.port_type,
     description: row.description
   };
-}
-
-function multiSelectValue(event: ChangeEvent<HTMLSelectElement>): string[] {
-  return Array.from(event.target.selectedOptions).map((option) => option.value);
 }
 
 function splitBatchIPList(value: string): string[] {
@@ -357,7 +353,14 @@ export function InventoryPage() {
   const [importApplyConfirmOpen, setImportApplyConfirmOpen] = useState(false);
   const [importGuardError, setImportGuardError] = useState<string | null>(null);
 
+  const initialFilterSearch: Record<keyof FilterState, string> = {
+    vlan: "",
+    switches: "",
+    ports: "",
+    groups: ""
+  };
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
+  const [filterSearch, setFilterSearch] = useState<Record<keyof FilterState, string>>(initialFilterSearch);
   const [customSearch, setCustomSearch] = useState<CustomSearchState>(defaultCustomSearch);
   const [editingEndpointID, setEditingEndpointID] = useState<number | null>(null);
   const [editingPatch, setEditingPatch] = useState<InventoryPatch | null>(null);
@@ -1455,6 +1458,7 @@ export function InventoryPage() {
               type="button"
               onClick={() => {
                 setFilters(defaultFilters);
+                setFilterSearch(initialFilterSearch);
                 setCustomSearch(defaultCustomSearch);
               }}
             >
@@ -1472,6 +1476,10 @@ export function InventoryPage() {
             <div className="inventory-filter-grid">
               {filterCards.map((filterCard) => {
                 const selectedValues = filters[filterCard.key];
+                const searchValue = filterSearch[filterCard.key];
+                const filteredOptions = filterCard.options.filter((option) =>
+                  searchValue.trim() === "" ? true : option.toLowerCase().includes(searchValue.trim().toLowerCase())
+                );
                 return (
                   <details key={filterCard.key} className="filter-card" open={selectedValues.length > 0}>
                     <summary className="filter-card-summary">
@@ -1481,27 +1489,78 @@ export function InventoryPage() {
                     <div className="filter-card-body">
                       <div className="filter-card-actions">
                         <span>{selectedValues.length} selected</span>
-                        <button className="btn-link" type="button" onClick={() => setFilters((prev) => ({ ...prev, [filterCard.key]: [] }))}>
+                        <button
+                          className="btn-link"
+                          type="button"
+                          onClick={() => {
+                            setFilters((prev) => ({ ...prev, [filterCard.key]: [] }));
+                            setFilterSearch((prev) => ({ ...prev, [filterCard.key]: "" }));
+                          }}
+                        >
                           Clear
                         </button>
                       </div>
-                      <select
-                        multiple
-                        value={selectedValues}
-                        onChange={(event) =>
-                          setFilters((prev) => ({
-                            ...prev,
-                            [filterCard.key]: multiSelectValue(event)
-                          }))
-                        }
-                        aria-label={`${filterCard.label} filter`}
-                      >
-                        {filterCard.options.map((item) => (
-                          <option key={item} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
+                      {filterCard.options.length > 0 ? (
+                        <div className="filter-search-select">
+                          {selectedValues.length > 0 ? (
+                            <div className="filter-chips">
+                              {selectedValues.map((value) => (
+                                <span key={value} className="filter-chip">
+                                  {value}
+                                  <button
+                                    type="button"
+                                    className="filter-chip-remove"
+                                    aria-label={`Remove ${value} from ${filterCard.label} filter`}
+                                    onClick={() =>
+                                      setFilters((prev) => ({
+                                        ...prev,
+                                        [filterCard.key]: selectedValues.filter((item) => item !== value)
+                                      }))
+                                    }
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                          <input
+                            type="text"
+                            value={searchValue}
+                            onChange={(event) =>
+                              setFilterSearch((prev) => ({ ...prev, [filterCard.key]: event.target.value }))
+                            }
+                            placeholder={`Search ${filterCard.label}...`}
+                            aria-label={`Search ${filterCard.label} options`}
+                          />
+                          <div className="filter-options-list" aria-label={`${filterCard.label} filter options`}>
+                            {filteredOptions.map((option) => {
+                              const isSelected = selectedValues.includes(option);
+                              return (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  className={`filter-option ${isSelected ? "is-selected" : ""}`}
+                                  aria-pressed={isSelected}
+                                  onClick={() =>
+                                    setFilters((prev) => ({
+                                      ...prev,
+                                      [filterCard.key]: isSelected
+                                        ? selectedValues.filter((item) => item !== option)
+                                        : [...selectedValues, option]
+                                    }))
+                                  }
+                                >
+                                  <span>{option}</span>
+                                  {isSelected ? <span aria-hidden="true">✓</span> : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="field-help">No options available yet.</span>
+                      )}
                     </div>
                   </details>
                 );
