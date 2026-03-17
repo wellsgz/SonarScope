@@ -725,7 +725,6 @@
   min-height: 280px;
   min-width: 0;
   display: flex;
-  padding-bottom: var(--space-2);
 }
 
 .chart-empty-series-panel {
