@@ -710,8 +710,8 @@ export function MonitorTable({
         </div>
       </div>
       <div className="table-viewport-shell">
-        <div className="table-scroll-x" ref={horizontalScrollRef} onScroll={handleHorizontalScroll}>
-          <div className="table-scroll-y" ref={verticalScrollRef} onScroll={captureRelativeScroll}>
+        <div className="table-scroll-y" ref={verticalScrollRef} onScroll={captureRelativeScroll}>
+          <div className="table-scroll-x" ref={horizontalScrollRef} onScroll={handleHorizontalScroll}>
             <table className="monitor-table" ref={tableRef}>
               <thead>
                 <tr>

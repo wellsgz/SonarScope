@@ -311,8 +311,7 @@
 }
 
 .monitor-dashboard-table .table-scroll-x {
-  flex: 1 1 auto;
-  min-height: 0;
+  width: 100%;
   min-width: 0;
 }
 
@@ -321,9 +320,11 @@
   min-height: 0;
   min-width: 0;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable both-edges;
-  padding-inline-end: var(--space-2);
-  padding-block-end: var(--space-1);
+  overflow-y: scroll;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding-inline-end: 0;
+  padding-block-end: 0;
 }
 
 .toolbar-panel {
@@ -508,16 +509,13 @@
 .monitor-pane-middle .table-scroll-y {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  overscroll-behavior: contain;
   overflow-y: scroll;
+  overflow-x: hidden;
   scrollbar-gutter: stable;
   padding-inline-end: 0;
   padding-block-end: 0;
-}
-
-.monitor-dashboard-table .table-scroll-y {
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
-  padding-inline-end: 0;
 }
 
 .monitor-pane-middle .monitor-table th:last-child,

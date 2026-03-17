@@ -462,32 +462,60 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   });
   const dashboardSummaryFilters = useMemo(
     () => ({
-      ...monitorQueryFilters,
-      lookback: monitorQueryFilters.statsScope === "live" && dashboardLookback ? dashboardLookback : undefined
+      vlan: filters.vlan,
+      switches: filters.switches,
+      ports: filters.ports,
+      groups: filters.groups,
+      hostname: hostnameSearch,
+      mac: macSearch,
+      custom1: customSearch.custom1,
+      custom2: customSearch.custom2,
+      custom3: customSearch.custom3,
+      ipList: ipListValues,
+      statsScope: dataScope,
+      start: dataScope === "range" ? toApiTime(effectiveStart) : undefined,
+      end: dataScope === "range" ? toApiTime(effectiveEnd) : undefined,
+      lookback: dataScope === "live" && dashboardLookback ? dashboardLookback : undefined
     }),
-    [dashboardLookback, monitorQueryFilters]
+    [
+      customSearch.custom1,
+      customSearch.custom2,
+      customSearch.custom3,
+      dashboardLookback,
+      dataScope,
+      effectiveEnd,
+      effectiveStart,
+      filters.groups,
+      filters.ports,
+      filters.switches,
+      filters.vlan,
+      hostnameSearch,
+      ipListValues,
+      macSearch
+    ]
   );
   const dashboardSummaryQuery = useQuery({
     queryKey: [
       "monitor-dashboard-summary",
-      monitorQueryFilters.vlan,
-      monitorQueryFilters.switches,
-      monitorQueryFilters.ports,
-      monitorQueryFilters.groups,
-      monitorQueryFilters.hostname,
-      monitorQueryFilters.mac,
-      monitorQueryFilters.custom1,
-      monitorQueryFilters.custom2,
-      monitorQueryFilters.custom3,
-      monitorQueryFilters.ipList,
-      monitorQueryFilters.statsScope,
-      monitorQueryFilters.start,
-      monitorQueryFilters.end,
-      monitorQueryFilters.statsScope === "live" ? dashboardLookback : ""
+      dashboardSummaryFilters.vlan,
+      dashboardSummaryFilters.switches,
+      dashboardSummaryFilters.ports,
+      dashboardSummaryFilters.groups,
+      dashboardSummaryFilters.hostname,
+      dashboardSummaryFilters.mac,
+      dashboardSummaryFilters.custom1,
+      dashboardSummaryFilters.custom2,
+      dashboardSummaryFilters.custom3,
+      dashboardSummaryFilters.ipList,
+      dashboardSummaryFilters.statsScope,
+      dashboardSummaryFilters.statsScope === "range" ? dashboardSummaryFilters.start ?? "" : "",
+      dashboardSummaryFilters.statsScope === "range" ? dashboardSummaryFilters.end ?? "" : "",
+      dashboardSummaryFilters.statsScope === "live" ? dashboardSummaryFilters.lookback ?? "" : ""
     ],
     queryFn: () => getMonitorDashboardSummary(dashboardSummaryFilters),
     enabled: tableDashboardMode && (dataScope === "range" || effectiveProbeStatus.running),
-    refetchInterval: tableDashboardMode && (dataScope === "range" || effectiveProbeStatus.running) ? autoRefreshMs : false
+    refetchInterval: tableDashboardMode && (dataScope === "range" || effectiveProbeStatus.running) ? autoRefreshMs : false,
+    placeholderData: keepPreviousData
   });
 
   const monitorRows = monitorQuery.data?.items || [];
