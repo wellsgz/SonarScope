@@ -343,6 +343,12 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   }, [tableDashboardMode]);
 
   useEffect(() => {
+    if (!tableDashboardMode && sortCriteria.length > 1) {
+      setSortCriteria((current) => current.slice(0, 1));
+    }
+  }, [sortCriteria.length, tableDashboardMode]);
+
+  useEffect(() => {
     if (!tableDashboardMode) {
       return;
     }
@@ -458,7 +464,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
 
   const displayStartValue = quickRange === "custom" ? customStart : toDateTimeLocal(effectiveStart);
   const displayEndValue = quickRange === "custom" ? customEnd : toDateTimeLocal(effectiveEnd);
-  const isDashboardIntervalMode = tableDashboardMode;
+  const isDashboardIntervalMode = tableDashboardMode && !dashboardRefreshPaused;
   const fixedCustomRangeQueryOptions = isNonDashboardCustomRange
     ? {
         refetchOnWindowFocus: false,
@@ -473,6 +479,11 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       : socketConnected
         ? false
         : autoRefreshMs;
+  const sortCriteriaKey = useMemo(() => serializeSortCriteria(sortCriteria), [sortCriteria]);
+  const excludedEndpointIDsKey = useMemo(
+    () => effectiveExcludedEndpointIDs.join(","),
+    [effectiveExcludedEndpointIDs]
+  );
   const monitorQueryFilters = useMemo(
     () => ({
       vlan: filters.vlan,
@@ -485,11 +496,27 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       custom2: customSearch.custom2,
       custom3: customSearch.custom3,
       ipList: ipListValues,
+      excludeEndpointIds: effectiveExcludedEndpointIDs,
       statsScope: dataScope,
       start: dataScope === "range" ? toApiTime(effectiveStart) : undefined,
       end: dataScope === "range" ? toApiTime(effectiveEnd) : undefined
     }),
-    [customSearch.custom1, customSearch.custom2, customSearch.custom3, dataScope, effectiveEnd, effectiveStart, filters.groups, filters.ports, filters.switches, filters.vlan, hostnameSearch, ipListValues, macSearch]
+    [
+      customSearch.custom1,
+      customSearch.custom2,
+      customSearch.custom3,
+      dataScope,
+      effectiveEnd,
+      effectiveExcludedEndpointIDs,
+      effectiveStart,
+      filters.groups,
+      filters.ports,
+      filters.switches,
+      filters.vlan,
+      hostnameSearch,
+      ipListValues,
+      macSearch
+    ]
   );
 
   const monitorQuery = useQuery({
@@ -508,16 +535,15 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       dataScope === "range" ? effectiveEnd.toISOString() : "",
       page,
       pageSize,
-      sortBy,
-      sortDir
+      sortCriteriaKey,
+      excludedEndpointIDsKey
     ],
     queryFn: () =>
       listMonitorEndpointsPage({
         ...monitorQueryFilters,
         page,
         pageSize,
-        sortBy: sortBy || undefined,
-        sortDir: sortDir || undefined
+        sort: sortCriteria.length > 0 ? sortCriteria : undefined
       }),
     placeholderData: keepPreviousData,
     refetchInterval: queryRefetchInterval,
@@ -539,6 +565,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       custom2: customSearch.custom2,
       custom3: customSearch.custom3,
       ipList: ipListValues,
+      excludeEndpointIds: effectiveExcludedEndpointIDs,
       statsScope: dataScope,
       start: dataScope === "range" ? toApiTime(effectiveStart) : undefined,
       end: dataScope === "range" ? toApiTime(effectiveEnd) : undefined,
@@ -551,6 +578,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       dashboardLookback,
       dataScope,
       effectiveEnd,
+      effectiveExcludedEndpointIDs,
       effectiveStart,
       filters.groups,
       filters.ports,
@@ -574,6 +602,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       dashboardSummaryFilters.custom2,
       dashboardSummaryFilters.custom3,
       dashboardSummaryFilters.ipList,
+      excludedEndpointIDsKey,
       dashboardSummaryFilters.statsScope,
       dashboardSummaryFilters.statsScope === "range" ? dashboardSummaryFilters.start ?? "" : "",
       dashboardSummaryFilters.statsScope === "range" ? dashboardSummaryFilters.end ?? "" : "",
@@ -581,7 +610,10 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     ],
     queryFn: () => getMonitorDashboardSummary(dashboardSummaryFilters),
     enabled: tableDashboardMode && (dataScope === "range" || effectiveProbeStatus.running),
-    refetchInterval: tableDashboardMode && (dataScope === "range" || effectiveProbeStatus.running) ? autoRefreshMs : false,
+    refetchInterval:
+      tableDashboardMode && !dashboardRefreshPaused && (dataScope === "range" || effectiveProbeStatus.running)
+        ? autoRefreshMs
+        : false,
     placeholderData: keepPreviousData
   });
 
@@ -598,13 +630,17 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     if (dataScope !== "range") {
       return;
     }
-    if (sortBy && !rangeSortableFields.includes(sortBy)) {
-      setSortScopeNotice(`Sort reset for Selected Range. "${sortBy}" is only available in Live Snapshot.`);
-      setSortBy(null);
-      setSortDir(null);
+    const unsupported = sortCriteria.filter((criterion) => !rangeSortableFields.includes(criterion.field));
+    if (unsupported.length > 0) {
+      setSortScopeNotice(
+        `Sort reset for Selected Range. Removed: ${unsupported
+          .map((criterion) => `"${formatMonitorSortFieldLabel(criterion.field)}"`)
+          .join(", ")}.`
+      );
+      setSortCriteria((current) => current.filter((criterion) => rangeSortableFields.includes(criterion.field)));
       setPage(1);
     }
-  }, [dataScope, sortBy]);
+  }, [dataScope, sortCriteria]);
 
   useEffect(() => {
     if (!sortScopeNotice) {
@@ -650,7 +686,14 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     refetchOnMount: false
   });
 
-  const handleSelectionChange = (endpointID: number | null) => {
+  const handleTableSelectionChange = (ids: number[]) => {
+    if (tableDashboardMode) {
+      if (excludeModeActive) {
+        setPendingExcludedEndpointIDs(uniqueEndpointIDs(ids));
+      }
+      return;
+    }
+    const endpointID = ids[0] ?? null;
     if (endpointID === null) {
       return;
     }
@@ -670,6 +713,32 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       snapshotVersion: snapshotVersionRef.current,
       capturedAtISO: new Date().toISOString()
     });
+  };
+
+  const handleDashboardExcludeStart = () => {
+    setPendingExcludedEndpointIDs([]);
+    setExcludeModeActive(true);
+  };
+
+  const handleDashboardExcludeCancel = () => {
+    setPendingExcludedEndpointIDs([]);
+    setExcludeModeActive(false);
+  };
+
+  const handleDashboardExcludeApply = () => {
+    if (pendingExcludedEndpointIDs.length === 0) {
+      setExcludeModeActive(false);
+      return;
+    }
+    setAppliedExcludedEndpointIDs((current) => uniqueEndpointIDs([...current, ...pendingExcludedEndpointIDs]));
+    setPendingExcludedEndpointIDs([]);
+    setExcludeModeActive(false);
+    setPage(1);
+  };
+
+  const handleDashboardClearExclusions = () => {
+    resetDashboardExclusionState();
+    setPage(1);
   };
 
   const settingsMutation = useMutation({
@@ -720,6 +789,75 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     dashboardSummaryQuery.error instanceof Error && dashboardSummaryQuery.error.message.trim().length > 0
       ? dashboardSummaryQuery.error.message.trim()
       : "Summary request failed";
+  const dashboardSortSummary = sortCriteria.map((criterion, index) => ({
+    key: `${criterion.field}-${criterion.dir}-${index}`,
+    label: formatMonitorSortFieldLabel(criterion.field),
+    dir: criterion.dir,
+    priority: index + 1
+  }));
+  const dashboardTableActionSlot = tableDashboardMode ? (
+    <div className="monitor-dashboard-table-actions">
+      <div className="monitor-dashboard-table-actions-group">
+        <button
+          type="button"
+          className={`btn btn-small ${excludeModeActive ? "btn-primary" : ""}`}
+          onClick={handleDashboardExcludeStart}
+          disabled={monitorRows.length === 0}
+        >
+          Exclude Endpoints
+        </button>
+        {excludeModeActive ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-small btn-primary"
+              onClick={handleDashboardExcludeApply}
+              disabled={pendingExcludedEndpointIDs.length === 0}
+            >
+              Apply
+            </button>
+            <button type="button" className="btn btn-small" onClick={handleDashboardExcludeCancel}>
+              Cancel
+            </button>
+          </>
+        ) : null}
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={handleDashboardClearExclusions}
+          disabled={appliedExcludedEndpointIDs.length === 0 && pendingExcludedEndpointIDs.length === 0}
+        >
+          Clear Exclusions
+        </button>
+        {excludeModeActive ? (
+          <span className="monitor-dashboard-table-actions-note">Refresh paused while selecting endpoints to exclude.</span>
+        ) : null}
+      </div>
+      <div className="monitor-dashboard-table-actions-group monitor-dashboard-sort-summary">
+        {dashboardSortSummary.length > 0 ? (
+          <>
+            {dashboardSortSummary.map((criterion) => (
+              <span key={criterion.key} className="status-chip">
+                {criterion.priority}. {criterion.label} {criterion.dir === "desc" ? "↓" : "↑"}
+              </span>
+            ))}
+            <button
+              type="button"
+              className="btn-link"
+              onClick={() => {
+                setSortCriteria([]);
+                setPage(1);
+              }}
+            >
+              Clear Sort
+            </button>
+          </>
+        ) : (
+          <span className="monitor-dashboard-table-actions-note">Click sortable headers to add 1st, 2nd, and 3rd sort criteria.</span>
+        )}
+      </div>
+    </div>
+  ) : null;
 
   const tableContent = showTableLoading ? (
     <div className="panel state-panel">
@@ -734,9 +872,11 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       customFields={enabledCustomFields}
       columnVisibility={visibility}
       columnOrder={order}
-      selectedEndpointID={chartSnapshot?.id ?? null}
-      onSelectionChange={handleSelectionChange}
-      selectionMode="replace"
+      selectedEndpointIDs={
+        tableDashboardMode ? (excludeModeActive ? pendingExcludedEndpointIDs : []) : chartSnapshot ? [chartSnapshot.id] : []
+      }
+      onSelectionChange={handleTableSelectionChange}
+      selectionMode={tableDashboardMode ? (excludeModeActive ? "multi" : "none") : "replace"}
       page={monitorQuery.data?.page ?? page}
       pageSize={(monitorQuery.data?.page_size as 50 | 100 | 200) ?? pageSize}
       totalItems={monitorQuery.data?.total_items ?? 0}
@@ -748,19 +888,19 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         setPage(1);
       }}
       sortableFields={dataScope === "range" ? rangeSortableFields : liveSortableFields}
-      sortBy={sortBy}
-      sortDir={sortDir}
+      sortCriteria={sortCriteria}
+      multiSortEnabled={tableDashboardMode}
       probeRunning={effectiveProbeStatus.running}
       probeScope={effectiveProbeStatus.scope}
       activeProbeGroupNames={activeLiveProbeGroupNames}
-      onSortChange={(nextSortBy, nextSortDir) => {
-        setSortBy(nextSortBy);
-        setSortDir(nextSortDir);
+      onSortChange={(nextCriteria) => {
+        setSortCriteria(nextCriteria);
         setPage(1);
       }}
       onToggleColumnVisibility={toggleColumnVisibility}
       onColumnOrderChange={setColumnOrder}
       onResetColumnPreferences={resetToDefaults}
+      actionSlot={dashboardTableActionSlot}
       emptyMessage="No endpoints match the active filters."
       preserveRelativeScroll={tableDashboardMode}
       refreshSignal={monitorQuery.dataUpdatedAt}
@@ -834,6 +974,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
                         type="button"
                         className={`status-chip ${isActive ? "status-chip-live" : ""}`}
                         onClick={() => setDashboardLookback(value)}
+                        disabled={excludeModeActive}
                       >
                         {label}
                       </button>
@@ -989,9 +1130,8 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
               setRangeAnchorMs(Date.now());
             }}
             onDataScopeChange={(next) => {
-              if (next === "range" && sortBy && !rangeSortableFields.includes(sortBy)) {
-                setSortBy(null);
-                setSortDir(null);
+              if (next === "range") {
+                setSortCriteria((current) => current.filter((criterion) => rangeSortableFields.includes(criterion.field)));
               }
               setDataScope(next);
               setPage(1);

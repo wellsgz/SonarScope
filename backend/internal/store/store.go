@@ -2630,7 +2630,7 @@ func normalizeMonitorSortCriteria(criteria []MonitorSortCriterion) []MonitorSort
 func buildMonitorOrderClause(criteria []MonitorSortCriterion, expressionForField func(string) (monitorSortDefinition, error)) (string, error) {
 	normalized := normalizeMonitorSortCriteria(criteria)
 	if len(normalized) == 0 {
-		return "ie.ip ASC"
+		return "ie.ip ASC", nil
 	}
 
 	parts := make([]string, 0, len(normalized)+1)

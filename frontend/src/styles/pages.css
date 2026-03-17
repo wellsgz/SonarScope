@@ -327,6 +327,33 @@
   padding-block-end: 0;
 }
 
+.monitor-dashboard-table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.monitor-dashboard-table-actions-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.monitor-dashboard-sort-summary {
+  min-width: 0;
+}
+
+.monitor-dashboard-table-actions-note {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  white-space: normal;
+}
+
 .toolbar-panel {
   padding: var(--space-4);
 }
