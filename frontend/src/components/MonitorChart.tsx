@@ -10,6 +10,7 @@ type Props = {
   rangeEnd: Date;
   snapshotCapturedAt: Date;
   snapshotVersion: number;
+  controlsChanged?: boolean;
 };
 
 type Metric = "loss_rate" | "avg_latency_ms";
@@ -405,7 +406,8 @@ export function MonitorChart({
   rangeStart,
   rangeEnd,
   snapshotCapturedAt,
-  snapshotVersion
+  snapshotVersion,
+  controlsChanged = false
 }: Props) {
   const chartSummaryId = useId();
   const chartRangeLabel = useMemo(() => formatChartRangeLabel(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
@@ -662,6 +664,11 @@ export function MonitorChart({
         </div>
       </div>
       <div className="chart-summary-note">{chartTextSummary.latestIntervalLabel}</div>
+      {controlsChanged ? (
+        <div className="info-banner chart-snapshot-note" role="status" aria-live="polite">
+          Controls changed after this snapshot. Reselect an endpoint to capture a new chart.
+        </div>
+      ) : null}
       {!hasProbeActivity ? (
         <div className="info-banner chart-no-probe-banner" role="status" aria-live="polite">
           <span className="chart-no-probe-dot" aria-hidden />
