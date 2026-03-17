@@ -210,6 +210,41 @@
   gap: var(--space-1);
 }
 
+.monitor-dashboard-unreachable-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.monitor-dashboard-unreachable-head-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.monitor-dashboard-unreachable-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.monitor-dashboard-unreachable-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.monitor-dashboard-unreachable-toggle {
+  white-space: nowrap;
+}
+
+.monitor-dashboard-unreachable-body {
+  display: grid;
+  gap: var(--space-1);
+}
+
 .monitor-dashboard-no-probe {
   padding: var(--space-3);
   text-align: center;

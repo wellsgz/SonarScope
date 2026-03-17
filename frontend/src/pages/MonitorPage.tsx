@@ -243,6 +243,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   const [excludeModeActive, setExcludeModeActive] = useState(false);
   const [pendingExcludedEndpointIDs, setPendingExcludedEndpointIDs] = useState<number[]>([]);
   const [appliedExcludedEndpointIDs, setAppliedExcludedEndpointIDs] = useState<number[]>([]);
+  const [dashboardUnreachableExpanded, setDashboardUnreachableExpanded] = useState(false);
   const [sortScopeNotice, setSortScopeNotice] = useState<string | null>(null);
   const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") {
@@ -339,6 +340,12 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   useEffect(() => {
     if (!tableDashboardMode) {
       resetDashboardExclusionState();
+    }
+  }, [tableDashboardMode]);
+
+  useEffect(() => {
+    if (tableDashboardMode) {
+      setDashboardUnreachableExpanded(false);
     }
   }, [tableDashboardMode]);
 
@@ -789,6 +796,16 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     dashboardSummaryQuery.error instanceof Error && dashboardSummaryQuery.error.message.trim().length > 0
       ? dashboardSummaryQuery.error.message.trim()
       : "Summary request failed";
+  const dashboardSummaryCompactLabel =
+    dataScope === "live" && !effectiveProbeStatus.running
+      ? "No probe running"
+      : dashboardSummaryQuery.error
+        ? "Summary unavailable"
+        : dashboardSummaryQuery.isPending && !dashboardSummary
+          ? "Loading summary..."
+          : `${dashboardSummary?.total_unreachable ?? 0} unreachable${
+              dataScope === "live" && dashboardLookback ? ` (${dashboardLookback})` : ""
+            }`;
   const dashboardSortSummary = sortCriteria.map((criterion, index) => ({
     key: `${criterion.field}-${criterion.dir}-${index}`,
     label: formatMonitorSortFieldLabel(criterion.field),
@@ -901,6 +918,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       onColumnOrderChange={setColumnOrder}
       onResetColumnPreferences={resetToDefaults}
       actionSlot={dashboardTableActionSlot}
+      showSelectionCheckboxes={tableDashboardMode && excludeModeActive}
       emptyMessage="No endpoints match the active filters."
       preserveRelativeScroll={tableDashboardMode}
       refreshSignal={monitorQuery.dataUpdatedAt}
@@ -959,73 +977,95 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         </div>
 
         <div className="panel monitor-dashboard-unreachable-panel">
-          {dataScope === "live" && !effectiveProbeStatus.running ? (
-            <div className="monitor-dashboard-no-probe">No probe running</div>
-          ) : (
-            <>
-              {dataScope === "live" ? (
-                <div className="monitor-dashboard-lookback-row">
-                  {(["", "30s", "1m", "5m"] as const).map((value) => {
-                    const label = value === "" ? "Live" : value;
-                    const isActive = dashboardLookback === value;
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        className={`status-chip ${isActive ? "status-chip-live" : ""}`}
-                        onClick={() => setDashboardLookback(value)}
-                        disabled={excludeModeActive}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-
-              <div className="monitor-dashboard-summary-row">
-                <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-total">
-                  <span className="monitor-dashboard-summary-label">
-                    Unreachable Endpoints
-                    {dataScope === "live" && dashboardLookback ? ` (${dashboardLookback})` : ""}
-                  </span>
-                  <strong className="monitor-dashboard-summary-value">
-                    {dashboardSummaryQuery.isPending && !dashboardSummary ? "…" : dashboardSummary?.total_unreachable ?? 0}
-                  </strong>
-                </div>
-                {dashboardSummarySwitches.map((item) => (
-                  <div key={`dashboard-switch-${item.switch_name}`} className="monitor-dashboard-summary-block">
-                    <span className="monitor-dashboard-summary-label">{item.switch_name}</span>
-                    <strong className="monitor-dashboard-summary-value">{item.unreachable_count}</strong>
-                  </div>
-                ))}
-                {hiddenDashboardSwitchCount > 0 ? (
-                  <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-more">
-                    <span className="monitor-dashboard-summary-label">Additional switches</span>
-                    <strong className="monitor-dashboard-summary-value">+{hiddenDashboardSwitchCount} more</strong>
-                  </div>
-                ) : null}
-                {dashboardSummaryQuery.error ? (
-                  <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-warning">
-                    <span className="monitor-dashboard-summary-label">Summary</span>
-                    <strong className="monitor-dashboard-summary-value monitor-dashboard-summary-message">
-                      {dashboardSummaryErrorMessage}
-                    </strong>
-                  </div>
-                ) : null}
+          <div className="monitor-dashboard-unreachable-head">
+            <div className="monitor-dashboard-unreachable-head-copy">
+              <div className="monitor-dashboard-unreachable-title">Unreachable Summary</div>
+              <div className="monitor-dashboard-unreachable-meta">
+                <span className="status-chip">{dashboardSummaryCompactLabel}</span>
               </div>
-              {dashboardSummarySwitches.length > 0 ? (
-                <div className="monitor-dashboard-summary-legend">
-                  Showing top {dashboardSummarySwitches.length} switch{dashboardSummarySwitches.length !== 1 ? "es" : ""} by
-                  {" "}unreachable endpoint count
-                  {hiddenDashboardSwitchCount > 0
-                    ? `, ${dashboardSummarySwitches.length + hiddenDashboardSwitchCount} total`
-                    : ""}
-                  {" "}(top 10 limit)
-                </div>
-              ) : null}
-            </>
-          )}
+            </div>
+            <button
+              type="button"
+              className="btn btn-small monitor-dashboard-unreachable-toggle"
+              onClick={() => setDashboardUnreachableExpanded((current) => !current)}
+              aria-expanded={dashboardUnreachableExpanded}
+              aria-controls="dashboard-unreachable-body"
+            >
+              {dashboardUnreachableExpanded ? "Collapse" : "Expand"}
+            </button>
+          </div>
+
+          {dashboardUnreachableExpanded ? (
+            <div className="monitor-dashboard-unreachable-body" id="dashboard-unreachable-body">
+              {dataScope === "live" && !effectiveProbeStatus.running ? (
+                <div className="monitor-dashboard-no-probe">No probe running</div>
+              ) : (
+                <>
+                  {dataScope === "live" ? (
+                    <div className="monitor-dashboard-lookback-row">
+                      {(["", "30s", "1m", "5m"] as const).map((value) => {
+                        const label = value === "" ? "Live" : value;
+                        const isActive = dashboardLookback === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            className={`status-chip ${isActive ? "status-chip-live" : ""}`}
+                            onClick={() => setDashboardLookback(value)}
+                            disabled={excludeModeActive}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  <div className="monitor-dashboard-summary-row">
+                    <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-total">
+                      <span className="monitor-dashboard-summary-label">
+                        Unreachable Endpoints
+                        {dataScope === "live" && dashboardLookback ? ` (${dashboardLookback})` : ""}
+                      </span>
+                      <strong className="monitor-dashboard-summary-value">
+                        {dashboardSummaryQuery.isPending && !dashboardSummary ? "…" : dashboardSummary?.total_unreachable ?? 0}
+                      </strong>
+                    </div>
+                    {dashboardSummarySwitches.map((item) => (
+                      <div key={`dashboard-switch-${item.switch_name}`} className="monitor-dashboard-summary-block">
+                        <span className="monitor-dashboard-summary-label">{item.switch_name}</span>
+                        <strong className="monitor-dashboard-summary-value">{item.unreachable_count}</strong>
+                      </div>
+                    ))}
+                    {hiddenDashboardSwitchCount > 0 ? (
+                      <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-more">
+                        <span className="monitor-dashboard-summary-label">Additional switches</span>
+                        <strong className="monitor-dashboard-summary-value">+{hiddenDashboardSwitchCount} more</strong>
+                      </div>
+                    ) : null}
+                    {dashboardSummaryQuery.error ? (
+                      <div className="monitor-dashboard-summary-block monitor-dashboard-summary-block-warning">
+                        <span className="monitor-dashboard-summary-label">Summary</span>
+                        <strong className="monitor-dashboard-summary-value monitor-dashboard-summary-message">
+                          {dashboardSummaryErrorMessage}
+                        </strong>
+                      </div>
+                    ) : null}
+                  </div>
+                  {dashboardSummarySwitches.length > 0 ? (
+                    <div className="monitor-dashboard-summary-legend">
+                      Showing top {dashboardSummarySwitches.length} switch
+                      {dashboardSummarySwitches.length !== 1 ? "es" : ""} by unreachable endpoint count
+                      {hiddenDashboardSwitchCount > 0
+                        ? `, ${dashboardSummarySwitches.length + hiddenDashboardSwitchCount} total`
+                        : ""}
+                      {" "}(top 10 limit)
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          ) : null}
         </div>
 
         <div className="monitor-dashboard-table">{tableContent}</div>

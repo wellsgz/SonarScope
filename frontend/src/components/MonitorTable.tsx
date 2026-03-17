@@ -27,6 +27,7 @@ type Props = {
   onColumnOrderChange: (order: string[]) => void;
   onResetColumnPreferences: () => void;
   actionSlot?: ReactNode;
+  showSelectionCheckboxes?: boolean;
   preserveRelativeScroll?: boolean;
   refreshSignal?: number;
   emptyMessage?: string;
@@ -259,6 +260,7 @@ export function MonitorTable({
   onColumnOrderChange,
   onResetColumnPreferences,
   actionSlot,
+  showSelectionCheckboxes = false,
   preserveRelativeScroll = false,
   refreshSignal,
   emptyMessage = "No endpoints match the active filters.",
@@ -739,6 +741,9 @@ export function MonitorTable({
             <table className="monitor-table" ref={tableRef}>
               <thead>
                 <tr>
+                  {showSelectionCheckboxes ? (
+                    <th className="table-selection-column-head" aria-label="Exclude endpoint selection" />
+                  ) : null}
                   {columns.map((column) => {
                     const sortable = Boolean(column.sortable && sortableSet.has(column.sortable));
                     const sortState = sortable && column.sortable ? sortIndexByField.get(column.sortable) : undefined;
@@ -805,7 +810,7 @@ export function MonitorTable({
               <tbody>
                 {rows.length === 0 ? (
                   <tr className="monitor-table-empty-row">
-                    <td colSpan={columns.length}>{emptyMessage}</td>
+                    <td colSpan={columns.length + (showSelectionCheckboxes ? 1 : 0)}>{emptyMessage}</td>
                   </tr>
                 ) : (
                   rows.map((row) => {
@@ -832,6 +837,18 @@ export function MonitorTable({
                         tabIndex={isSelectable ? 0 : -1}
                         aria-selected={isSelectable ? selected : undefined}
                       >
+                        {showSelectionCheckboxes ? (
+                          <td className="table-selection-cell">
+                            <input
+                              type="checkbox"
+                              className="table-selection-checkbox"
+                              checked={selected}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={() => onSelectionChange(nextSelectionIDs(endpointID, selected))}
+                              aria-label={`Exclude endpoint ${row.hostname || row.ip_address}`}
+                            />
+                          </td>
+                        ) : null}
                         {columns.map((column) => {
                           return <td key={`${endpointID}-${column.key}`}>{column.render(row)}</td>;
                         })}

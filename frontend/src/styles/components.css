@@ -664,6 +664,22 @@ label {
   min-height: var(--table-row-height);
 }
 
+.table-selection-column-head,
+.table-selection-cell {
+  width: 2rem;
+  min-width: 2rem;
+  max-width: 2rem;
+  text-align: center;
+  padding-inline: 0.25rem;
+}
+
+.table-selection-checkbox {
+  inline-size: 0.9rem;
+  block-size: 0.9rem;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
 .table-column-head {
   display: inline-flex;
   align-items: center;
