@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { FilterOptions, MonitorDataScope } from "../types/api";
 import type { QuickRange } from "../hooks/time";
 
@@ -83,8 +83,6 @@ export function MonitorToolbar({
 }: Props) {
   const customStartInputID = useId();
   const customEndInputID = useId();
-  const customStartInputRef = useRef<HTMLInputElement | null>(null);
-  const customEndInputRef = useRef<HTMLInputElement | null>(null);
   const initialFilterSearch: Record<keyof FilterState, string> = {
     vlan: "",
     switches: "",
@@ -115,17 +113,6 @@ export function MonitorToolbar({
     [customFields, customSearch, hostnameSearch, macSearch]
   );
   const hasAnyTextSearch = activeTextSearchCount > 0;
-
-  const openPicker = (input: HTMLInputElement | null) => {
-    if (!input) {
-      return;
-    }
-    if ("showPicker" in input && typeof input.showPicker === "function") {
-      input.showPicker();
-      return;
-    }
-    input.focus();
-  };
 
   return (
     <div className="panel toolbar-panel">
@@ -176,23 +163,15 @@ export function MonitorToolbar({
               </div>
               <div className="custom-time-meta">
                 <span className="field-help custom-time-help">Times are shown in local time.</span>
-                <span className="field-help custom-time-help">Use Pick to open your device date and time chooser.</span>
+                <span className="field-help custom-time-help">Use your device date and time chooser from the field control.</span>
               </div>
               <div className="custom-time-row">
                 <div className="custom-time-field">
                   <div className="custom-time-field-head">
                     <label htmlFor={customStartInputID}>Start</label>
-                    <button
-                      className="btn btn-small custom-time-picker-trigger"
-                      type="button"
-                      onClick={() => openPicker(customStartInputRef.current)}
-                    >
-                      Pick
-                    </button>
                   </div>
                   <input
                     id={customStartInputID}
-                    ref={customStartInputRef}
                     type="datetime-local"
                     value={customStart}
                     onChange={(event) => onCustomStartChange(event.target.value)}
@@ -202,17 +181,9 @@ export function MonitorToolbar({
                 <div className="custom-time-field">
                   <div className="custom-time-field-head">
                     <label htmlFor={customEndInputID}>End</label>
-                    <button
-                      className="btn btn-small custom-time-picker-trigger"
-                      type="button"
-                      onClick={() => openPicker(customEndInputRef.current)}
-                    >
-                      Pick
-                    </button>
                   </div>
                   <input
                     id={customEndInputID}
-                    ref={customEndInputRef}
                     type="datetime-local"
                     value={customEnd}
                     onChange={(event) => onCustomEndChange(event.target.value)}

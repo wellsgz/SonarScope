@@ -459,10 +459,9 @@
 .custom-time-field-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: var(--space-2);
   min-width: 0;
-  flex-wrap: wrap;
 }
 
 .custom-time-field-head label {
@@ -478,11 +477,6 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
-}
-
-.custom-time-picker-trigger {
-  min-height: 2rem;
-  white-space: nowrap;
 }
 
 .custom-time-error {
