@@ -18,6 +18,7 @@ import type {
   InventoryDeleteJobStatus,
   MonitorEndpoint,
   MonitorEndpointPageResponse,
+  MonitorSortCriterion,
   MonitorSortField,
   ProbeStatus,
   Settings,
@@ -367,6 +368,8 @@ export async function listMonitorEndpointsPage(filters: {
   statsScope?: MonitorDataScope;
   start?: string;
   end?: string;
+  excludeEndpointIds?: number[];
+  sort?: MonitorSortCriterion[];
   sortBy?: MonitorSortField;
   sortDir?: "asc" | "desc";
 }): Promise<MonitorEndpointPageResponse> {
@@ -386,6 +389,8 @@ export async function listMonitorEndpointsPage(filters: {
     stats_scope: filters.statsScope,
     start: filters.start,
     end: filters.end,
+    exclude_endpoint_ids: filters.excludeEndpointIds?.join(","),
+    sort: filters.sort?.map((criterion) => `${criterion.field}:${criterion.dir}`).join(","),
     sort_by: filters.sortBy,
     sort_dir: filters.sortDir
   });
@@ -428,6 +433,7 @@ export async function getMonitorDashboardSummary(filters: {
   start?: string;
   end?: string;
   lookback?: string;
+  excludeEndpointIds?: number[];
 }): Promise<DashboardUnreachableSummary> {
   const path = buildQuery("/api/monitor/dashboard-summary", {
     vlan: filters.vlan?.join(","),
@@ -443,7 +449,8 @@ export async function getMonitorDashboardSummary(filters: {
     stats_scope: filters.statsScope,
     start: filters.start,
     end: filters.end,
-    lookback: filters.lookback || undefined
+    lookback: filters.lookback || undefined,
+    exclude_endpoint_ids: filters.excludeEndpointIds?.join(",")
   });
   return request<DashboardUnreachableSummary>(path);
 }

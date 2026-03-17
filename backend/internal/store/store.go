@@ -34,21 +34,28 @@ type MonitorFilters struct {
 }
 
 type MonitorPageQuery struct {
-	Filters    MonitorFilters
-	Hostname   string
-	MAC        string
-	Custom1    string
-	Custom2    string
-	Custom3    string
-	IPList     []string
-	Page       int
-	PageSize   int
-	SortBy     string
-	SortDir    string
-	StatsScope string
-	Start      time.Time
-	End        time.Time
-	Lookback   time.Duration
+	Filters            MonitorFilters
+	Hostname           string
+	MAC                string
+	Custom1            string
+	Custom2            string
+	Custom3            string
+	IPList             []string
+	ExcludeEndpointIDs []int64
+	Page               int
+	PageSize           int
+	SortBy             string
+	SortDir            string
+	SortCriteria       []MonitorSortCriterion
+	StatsScope         string
+	Start              time.Time
+	End                time.Time
+	Lookback           time.Duration
+}
+
+type MonitorSortCriterion struct {
+	Field string
+	Dir   string
 }
 
 type rangeFailureStreakStats struct {
@@ -1063,6 +1070,7 @@ func (s *Store) ListMonitorEndpointsPage(ctx context.Context, query MonitorPageQ
 		query.Custom2,
 		query.Custom3,
 		query.IPList,
+		query.ExcludeEndpointIDs,
 	)
 
 	countSQL := `SELECT COUNT(*) FROM inventory_endpoint ie` + whereClause
@@ -1098,6 +1106,7 @@ func (s *Store) DashboardUnreachableSummary(
 		query.Custom2,
 		query.Custom3,
 		query.IPList,
+		query.ExcludeEndpointIDs,
 	)
 
 	summaryQuery, summaryArgs := buildDashboardSummaryQuery(query, whereClause, args)
@@ -1275,12 +1284,10 @@ func dashboardSummaryFromQueryRows(rows []dashboardSummaryQueryRow) (model.Dashb
 }
 
 func (s *Store) listMonitorEndpointsPageLive(ctx context.Context, query MonitorPageQuery, whereClause string, args []any) ([]model.MonitorEndpoint, error) {
-	sortExpression, err := monitorSortExpression(query.SortBy)
+	orderClause, err := buildMonitorOrderClause(query.SortCriteria, monitorSortExpression)
 	if err != nil {
 		return nil, err
 	}
-
-	orderClause := buildMonitorOrderClause(query.SortBy, query.SortDir, sortExpression)
 
 	itemsSQL := `
 		SELECT
@@ -1374,12 +1381,10 @@ func (s *Store) listMonitorEndpointsPageLive(ctx context.Context, query MonitorP
 }
 
 func (s *Store) listMonitorEndpointsPageRange(ctx context.Context, query MonitorPageQuery, whereClause string, args []any) ([]model.MonitorEndpoint, error) {
-	sortExpression, err := monitorRangeSortExpression(query.SortBy)
+	orderClause, err := buildMonitorOrderClause(query.SortCriteria, monitorRangeSortExpression)
 	if err != nil {
 		return nil, err
 	}
-
-	orderClause := buildMonitorOrderClause(query.SortBy, query.SortDir, sortExpression)
 
 	viewName := "ping_1m"
 	if query.End.Sub(query.Start) > 48*time.Hour {
@@ -2470,6 +2475,7 @@ func buildMonitorWhereClause(
 	custom2 string,
 	custom3 string,
 	ipList []string,
+	excludeEndpointIDs []int64,
 ) (string, []any) {
 	var query strings.Builder
 	query.WriteString(" WHERE 1=1")
@@ -2526,65 +2532,129 @@ func buildMonitorWhereClause(
 		}
 	}
 
+	if len(excludeEndpointIDs) > 0 {
+		query.WriteString(fmt.Sprintf(" AND NOT (ie.id = ANY($%d::bigint[]))", len(args)+1))
+		args = append(args, excludeEndpointIDs)
+	}
+
 	return query.String(), args
 }
 
-func monitorSortExpression(sortBy string) (string, error) {
+type monitorSortDefinition struct {
+	Expression         string
+	NullsFirstWhenAsc  bool
+}
+
+func monitorSortExpression(sortBy string) (monitorSortDefinition, error) {
 	switch sortBy {
 	case "":
-		return "", nil
+		return monitorSortDefinition{}, nil
 	case "last_failed_on":
-		return "es.last_failed_on", nil
+		return monitorSortDefinition{Expression: "es.last_failed_on"}, nil
 	case "last_success_on":
-		return "es.last_success_on", nil
+		return monitorSortDefinition{Expression: "es.last_success_on", NullsFirstWhenAsc: true}, nil
 	case "success_count":
-		return "COALESCE(es.success_count, 0)", nil
+		return monitorSortDefinition{Expression: "COALESCE(es.success_count, 0)"}, nil
 	case "failed_count":
-		return "COALESCE(es.failed_count, 0)", nil
+		return monitorSortDefinition{Expression: "COALESCE(es.failed_count, 0)"}, nil
 	case "consecutive_failed_count":
-		return "COALESCE(es.consecutive_failed_count, 0)", nil
+		return monitorSortDefinition{Expression: "COALESCE(es.consecutive_failed_count, 0)"}, nil
 	case "max_consecutive_failed_count":
-		return "COALESCE(es.max_consecutive_failed_count, 0)", nil
+		return monitorSortDefinition{Expression: "COALESCE(es.max_consecutive_failed_count, 0)"}, nil
 	case "max_consecutive_failed_count_time":
-		return "es.max_consecutive_failed_count_time", nil
+		return monitorSortDefinition{Expression: "es.max_consecutive_failed_count_time"}, nil
 	case "failed_pct":
-		return "COALESCE(es.failed_pct, 0)", nil
+		return monitorSortDefinition{Expression: "COALESCE(es.failed_pct, 0)"}, nil
+	case "last_ping_status":
+		return monitorSortDefinition{Expression: "lower(COALESCE(es.last_ping_status, 'unknown'))"}, nil
 	case "last_ping_latency":
-		return "es.last_ping_latency", nil
+		return monitorSortDefinition{Expression: "es.last_ping_latency"}, nil
 	case "average_latency":
-		return "es.average_latency", nil
+		return monitorSortDefinition{Expression: "es.average_latency"}, nil
 	default:
-		return "", fmt.Errorf("invalid sort_by")
+		return monitorSortDefinition{}, fmt.Errorf("invalid sort_by")
 	}
 }
 
-func monitorRangeSortExpression(sortBy string) (string, error) {
+func monitorRangeSortExpression(sortBy string) (monitorSortDefinition, error) {
 	switch sortBy {
 	case "":
-		return "", nil
+		return monitorSortDefinition{}, nil
 	case "last_failed_on",
 		"last_success_on",
 		"success_count",
 		"failed_count",
+		"last_ping_status",
 		"failed_pct",
 		"average_latency":
-		return sortBy, nil
+		definition := monitorSortDefinition{Expression: sortBy}
+		if sortBy == "last_success_on" {
+			definition.NullsFirstWhenAsc = true
+		}
+		if sortBy == "last_ping_status" {
+			definition.Expression = "lower(last_ping_status)"
+		}
+		return definition, nil
 	default:
-		return "", fmt.Errorf("invalid sort_by")
+		return monitorSortDefinition{}, fmt.Errorf("invalid sort_by")
 	}
 }
 
-func buildMonitorOrderClause(sortBy string, sortDir string, sortExpression string) string {
-	if sortExpression == "" {
+func normalizeMonitorSortCriteria(criteria []MonitorSortCriterion) []MonitorSortCriterion {
+	if len(criteria) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(criteria))
+	out := make([]MonitorSortCriterion, 0, len(criteria))
+	for _, criterion := range criteria {
+		field := strings.TrimSpace(criterion.Field)
+		if field == "" {
+			continue
+		}
+		dir := strings.ToLower(strings.TrimSpace(criterion.Dir))
+		if dir != "asc" && dir != "desc" {
+			continue
+		}
+		if _, ok := seen[field]; ok {
+			continue
+		}
+		seen[field] = struct{}{}
+		out = append(out, MonitorSortCriterion{Field: field, Dir: dir})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func buildMonitorOrderClause(criteria []MonitorSortCriterion, expressionForField func(string) (monitorSortDefinition, error)) (string, error) {
+	normalized := normalizeMonitorSortCriteria(criteria)
+	if len(normalized) == 0 {
 		return "ie.ip ASC"
 	}
 
-	nullsOrder := "NULLS LAST"
-	if sortBy == "last_success_on" && strings.EqualFold(sortDir, "asc") {
-		nullsOrder = "NULLS FIRST"
+	parts := make([]string, 0, len(normalized)+1)
+	for _, criterion := range normalized {
+		definition, err := expressionForField(criterion.Field)
+		if err != nil {
+			return "", err
+		}
+		if definition.Expression == "" {
+			continue
+		}
+
+		nullsOrder := "NULLS LAST"
+		if definition.NullsFirstWhenAsc && criterion.Dir == "asc" {
+			nullsOrder = "NULLS FIRST"
+		}
+		parts = append(parts, fmt.Sprintf("%s %s %s", definition.Expression, strings.ToUpper(criterion.Dir), nullsOrder))
+	}
+	if len(parts) == 0 {
+		return "ie.ip ASC", nil
 	}
 
-	return fmt.Sprintf("%s %s %s, ie.ip ASC", sortExpression, strings.ToUpper(sortDir), nullsOrder)
+	parts = append(parts, "ie.ip ASC")
+	return strings.Join(parts, ", "), nil
 }
 
 func normalizeMACSearchTerm(value string) string {

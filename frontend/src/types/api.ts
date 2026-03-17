@@ -35,8 +35,14 @@ export type MonitorSortField =
   | "max_consecutive_failed_count"
   | "max_consecutive_failed_count_time"
   | "failed_pct"
+  | "last_ping_status"
   | "last_ping_latency"
   | "average_latency";
+
+export type MonitorSortCriterion = {
+  field: MonitorSortField;
+  dir: "asc" | "desc";
+};
 
 export type MonitorDataScope = "live" | "range";
 

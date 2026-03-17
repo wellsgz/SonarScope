@@ -1724,13 +1724,28 @@ func (s *Server) monitorPageQueryFromRequest(
 	query.Lookback = lookback
 
 	if options.includeSort {
+		sortParam := strings.TrimSpace(r.URL.Query().Get("sort"))
 		sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
 		sortDir := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_dir")))
-		if sortBy != "" {
-			validateSort := storeMonitorSortExpression
-			if statsScope == "range" {
-				validateSort = storeMonitorRangeSortExpression
+		validateSort := storeMonitorSortExpression
+		if statsScope == "range" {
+			validateSort = storeMonitorRangeSortExpression
+		}
+
+		if sortParam != "" {
+			criteria, err := parseMonitorSortCriteria(sortParam, validateSort)
+			if err != nil {
+				return store.MonitorPageQuery{}, &monitorRequestParseError{
+					Status:  http.StatusBadRequest,
+					Message: err.Error(),
+				}
 			}
+			query.SortCriteria = criteria
+			if len(criteria) > 0 {
+				query.SortBy = criteria[0].Field
+				query.SortDir = criteria[0].Dir
+			}
+		} else if sortBy != "" {
 			if _, err := validateSort(sortBy); err != nil {
 				return store.MonitorPageQuery{}, &monitorRequestParseError{
 					Status:  http.StatusBadRequest,
@@ -1746,14 +1761,15 @@ func (s *Server) monitorPageQueryFromRequest(
 					Message: "sort_dir must be asc or desc",
 				}
 			}
+			query.SortBy = sortBy
+			query.SortDir = sortDir
+			query.SortCriteria = []store.MonitorSortCriterion{{Field: sortBy, Dir: sortDir}}
 		} else if sortDir != "" {
 			return store.MonitorPageQuery{}, &monitorRequestParseError{
 				Status:  http.StatusBadRequest,
 				Message: "sort_dir requires sort_by",
 			}
 		}
-		query.SortBy = sortBy
-		query.SortDir = sortDir
 	}
 
 	query.Hostname = strings.TrimSpace(r.URL.Query().Get("hostname"))
@@ -1770,6 +1786,7 @@ func (s *Server) monitorPageQueryFromRequest(
 		}
 	}
 	query.IPList = ipList
+	query.ExcludeEndpointIDs = uniqueInt64(parseInt64CSVQuery(r, "exclude_endpoint_ids"))
 
 	settings, err := s.store.GetSettings(r.Context())
 	if err != nil {
@@ -2068,6 +2085,7 @@ func storeMonitorSortExpression(sortBy string) (string, error) {
 		"max_consecutive_failed_count",
 		"max_consecutive_failed_count_time",
 		"failed_pct",
+		"last_ping_status",
 		"last_ping_latency",
 		"average_latency":
 		return sortBy, nil
@@ -2083,6 +2101,7 @@ func storeMonitorRangeSortExpression(sortBy string) (string, error) {
 		"last_success_on",
 		"success_count",
 		"failed_count",
+		"last_ping_status",
 		"failed_pct",
 		"average_latency":
 		return sortBy, nil
@@ -2123,6 +2142,62 @@ func parseInt64CSVQuery(r *http.Request, key string) []int64 {
 		return nil
 	}
 	return out
+}
+
+func uniqueInt64(values []int64) []int64 {
+	seen := make(map[int64]struct{}, len(values))
+	out := make([]int64, 0, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func parseMonitorSortCriteria(
+	raw string,
+	validateField func(string) (string, error),
+) ([]store.MonitorSortCriterion, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(raw, ",")
+	out := make([]store.MonitorSortCriterion, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		field, dir, ok := strings.Cut(value, ":")
+		if !ok {
+			return nil, fmt.Errorf("sort must use field:dir pairs")
+		}
+		field = strings.TrimSpace(field)
+		dir = strings.ToLower(strings.TrimSpace(dir))
+		if _, err := validateField(field); err != nil {
+			return nil, fmt.Errorf("invalid sort field")
+		}
+		if dir != "asc" && dir != "desc" {
+			return nil, fmt.Errorf("sort direction must be asc or desc")
+		}
+		if _, exists := seen[field]; exists {
+			continue
+		}
+		seen[field] = struct{}{}
+		out = append(out, store.MonitorSortCriterion{Field: field, Dir: dir})
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
 }
 
 func parseTimeQuery(r *http.Request, key string, fallback time.Time) time.Time {

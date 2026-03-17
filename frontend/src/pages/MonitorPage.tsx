@@ -16,7 +16,15 @@ import { rangeToDatesAt, toApiTime, type QuickRange } from "../hooks/time";
 import { useColumnPreferences } from "../hooks/useColumnPreferences";
 import { useDebouncedNumberInput } from "../hooks/useDebouncedNumberInput";
 import { useMonitorSocket } from "../hooks/useMonitorSocket";
-import type { CustomFieldConfig, Group, MonitorDataScope, MonitorSortField, ProbeStatus, Settings } from "../types/api";
+import type {
+  CustomFieldConfig,
+  Group,
+  MonitorDataScope,
+  MonitorSortCriterion,
+  MonitorSortField,
+  ProbeStatus,
+  Settings
+} from "../types/api";
 
 function toDateTimeLocal(value: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -41,6 +49,7 @@ const liveSortableFields: MonitorSortField[] = [
   "max_consecutive_failed_count",
   "max_consecutive_failed_count_time",
   "failed_pct",
+  "last_ping_status",
   "last_ping_latency",
   "average_latency"
 ];
@@ -50,6 +59,7 @@ const rangeSortableFields: MonitorSortField[] = [
   "last_success_on",
   "success_count",
   "failed_count",
+  "last_ping_status",
   "failed_pct",
   "average_latency"
 ];
@@ -86,6 +96,43 @@ const defaultCustomSearch: CustomSearchState = {
   custom3: ""
 };
 const liveSnapshotChartRange: QuickRange = "30m";
+
+function formatMonitorSortFieldLabel(field: MonitorSortField): string {
+  switch (field) {
+    case "last_failed_on":
+      return "Last Failed On";
+    case "last_success_on":
+      return "Last Success On";
+    case "success_count":
+      return "Success Count";
+    case "failed_count":
+      return "Failed Count";
+    case "consecutive_failed_count":
+      return "Consecutive Failed";
+    case "max_consecutive_failed_count":
+      return "Max Consec. Failed";
+    case "max_consecutive_failed_count_time":
+      return "Max Consec. Failed Time";
+    case "failed_pct":
+      return "Failed %";
+    case "last_ping_status":
+      return "Last Status";
+    case "last_ping_latency":
+      return "Last Latency";
+    case "average_latency":
+      return "Avg. Latency";
+    default:
+      return field;
+  }
+}
+
+function serializeSortCriteria(criteria: MonitorSortCriterion[]): string {
+  return criteria.map((criterion) => `${criterion.field}:${criterion.dir}`).join(",");
+}
+
+function uniqueEndpointIDs(values: number[]): number[] {
+  return Array.from(new Set(values.filter((value) => Number.isInteger(value) && value > 0)));
+}
 
 function buildChartControlSignature(
   dataScope: MonitorDataScope,
@@ -188,12 +235,14 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   const [ipListSearch, setIPListSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<50 | 100 | 200>(50);
-  const [sortBy, setSortBy] = useState<MonitorSortField | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
+  const [sortCriteria, setSortCriteria] = useState<MonitorSortCriterion[]>([]);
   const [dataScope, setDataScope] = useState<MonitorDataScope>("live");
   const [rangeAnchorMs, setRangeAnchorMs] = useState<number>(Date.now());
   const [dashboardLookback, setDashboardLookback] = useState<string>("");
   const [internalDashboardMode, setInternalDashboardMode] = useState(false);
+  const [excludeModeActive, setExcludeModeActive] = useState(false);
+  const [pendingExcludedEndpointIDs, setPendingExcludedEndpointIDs] = useState<number[]>([]);
+  const [appliedExcludedEndpointIDs, setAppliedExcludedEndpointIDs] = useState<number[]>([]);
   const [sortScopeNotice, setSortScopeNotice] = useState<string | null>(null);
   const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") {
@@ -224,6 +273,28 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   const { visibility, order, toggleColumnVisibility, setColumnOrder, resetToDefaults } = useColumnPreferences(allColumnKeys);
 
   const autoRefreshMs = Math.max(1000, (settingsQuery.data?.auto_refresh_sec ?? 30) * 1000);
+  const tableDashboardMode = dashboardMode ?? internalDashboardMode;
+  const dashboardRefreshPaused = tableDashboardMode && excludeModeActive;
+  const isNonDashboardCustomRange = !tableDashboardMode && dataScope === "range" && quickRange === "custom";
+  const allowRealtimeInvalidation = !tableDashboardMode && !isNonDashboardCustomRange;
+  const effectiveExcludedEndpointIDs = tableDashboardMode ? appliedExcludedEndpointIDs : [];
+
+  const resetDashboardExclusionState = () => {
+    setExcludeModeActive(false);
+    setPendingExcludedEndpointIDs([]);
+    setAppliedExcludedEndpointIDs([]);
+  };
+
+  const setTableDashboardMode = (enabled: boolean) => {
+    if (!enabled) {
+      resetDashboardExclusionState();
+      setSortCriteria((current) => current.slice(0, 1));
+    }
+    if (dashboardMode === undefined) {
+      setInternalDashboardMode(enabled);
+    }
+    onDashboardModeChange?.(enabled);
+  };
 
   useEffect(() => {
     lastRealtimeRefreshRef.current = 0;
@@ -243,14 +314,14 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
 
   useEffect(() => {
     const usesRollingWindow = dataScope === "live" || quickRange !== "custom";
-    if (!usesRollingWindow) {
+    if (!usesRollingWindow || dashboardRefreshPaused) {
       return;
     }
     const refreshRangeAnchor = () => setRangeAnchorMs(Date.now());
     refreshRangeAnchor();
     const intervalID = window.setInterval(refreshRangeAnchor, autoRefreshMs);
     return () => window.clearInterval(intervalID);
-  }, [autoRefreshMs, dataScope, quickRange]);
+  }, [autoRefreshMs, dashboardRefreshPaused, dataScope, quickRange]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -259,21 +330,17 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     window.localStorage.setItem(monitorControlsCollapsedKey, controlsCollapsed ? "1" : "0");
   }, [controlsCollapsed]);
 
-  const tableDashboardMode = dashboardMode ?? internalDashboardMode;
-  const isNonDashboardCustomRange = !tableDashboardMode && dataScope === "range" && quickRange === "custom";
-  const allowRealtimeInvalidation = !tableDashboardMode && !isNonDashboardCustomRange;
-  const setTableDashboardMode = (enabled: boolean) => {
-    if (dashboardMode === undefined) {
-      setInternalDashboardMode(enabled);
-    }
-    onDashboardModeChange?.(enabled);
-  };
-
   useEffect(() => {
     return () => {
       onDashboardModeChange?.(false);
     };
   }, [onDashboardModeChange]);
+
+  useEffect(() => {
+    if (!tableDashboardMode) {
+      resetDashboardExclusionState();
+    }
+  }, [tableDashboardMode]);
 
   useEffect(() => {
     if (!tableDashboardMode) {

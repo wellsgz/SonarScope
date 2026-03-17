@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { MonitorDataScope, MonitorEndpoint, MonitorSortField } from "../types/api";
+import type { MonitorDataScope, MonitorEndpoint, MonitorSortCriterion, MonitorSortField } from "../types/api";
 
 type Props = {
   rows: MonitorEndpoint[];
   customFields: Array<{ slot: 1 | 2 | 3; name: string }>;
   columnVisibility: Record<string, boolean>;
   columnOrder: string[];
-  selectedEndpointID: number | null;
-  onSelectionChange: (id: number | null) => void;
-  selectionMode?: "toggle" | "replace";
+  selectedEndpointIDs: number[];
+  onSelectionChange: (ids: number[]) => void;
+  selectionMode?: "none" | "replace" | "multi";
   page: number;
   pageSize: 50 | 100 | 200;
   totalItems: number;
@@ -17,15 +17,16 @@ type Props = {
   onPageSizeChange: (size: 50 | 100 | 200) => void;
   dataScope: MonitorDataScope;
   sortableFields: MonitorSortField[];
-  sortBy: MonitorSortField | null;
-  sortDir: "asc" | "desc" | null;
+  sortCriteria: MonitorSortCriterion[];
+  multiSortEnabled?: boolean;
   probeRunning: boolean;
   probeScope: "all" | "groups" | "";
   activeProbeGroupNames: Set<string>;
-  onSortChange: (sortBy: MonitorSortField | null, sortDir: "asc" | "desc" | null) => void;
+  onSortChange: (criteria: MonitorSortCriterion[]) => void;
   onToggleColumnVisibility: (key: string) => void;
   onColumnOrderChange: (order: string[]) => void;
   onResetColumnPreferences: () => void;
+  actionSlot?: ReactNode;
   preserveRelativeScroll?: boolean;
   refreshSignal?: number;
   emptyMessage?: string;
@@ -202,7 +203,13 @@ const baseColumnDefinitions: BaseColumnDefinition[] = [
     render: (row) => formatPercent(row.failed_pct)
   },
   { key: "total_sent_ping", menuLabel: "Total Sent Ping", header: "Total Sent", render: (row) => String(row.total_sent_ping) },
-  { key: "last_ping_status", menuLabel: "Last Ping Status", header: "Last Status", render: (row) => row.last_ping_status || "-" },
+  {
+    key: "last_ping_status",
+    menuLabel: "Last Ping Status",
+    header: "Last Status",
+    sortable: "last_ping_status",
+    render: (row) => row.last_ping_status || "-"
+  },
   {
     key: "last_ping_latency",
     menuLabel: "Last Ping Latency",
@@ -231,9 +238,9 @@ export function MonitorTable({
   customFields,
   columnVisibility,
   columnOrder,
-  selectedEndpointID,
+  selectedEndpointIDs,
   onSelectionChange,
-  selectionMode = "toggle",
+  selectionMode = "replace",
   page,
   pageSize,
   totalItems,
@@ -242,8 +249,8 @@ export function MonitorTable({
   onPageSizeChange,
   dataScope,
   sortableFields,
-  sortBy,
-  sortDir,
+  sortCriteria,
+  multiSortEnabled = false,
   probeRunning,
   probeScope,
   activeProbeGroupNames,
@@ -251,12 +258,18 @@ export function MonitorTable({
   onToggleColumnVisibility,
   onColumnOrderChange,
   onResetColumnPreferences,
+  actionSlot,
   preserveRelativeScroll = false,
   refreshSignal,
   emptyMessage = "No endpoints match the active filters.",
   switchIPMap
 }: Props) {
   const sortableSet = useMemo(() => new Set<MonitorSortField>(sortableFields), [sortableFields]);
+  const selectedEndpointIDSet = useMemo(() => new Set<number>(selectedEndpointIDs), [selectedEndpointIDs]);
+  const sortIndexByField = useMemo(() => {
+    const entries = sortCriteria.map((criterion, index) => [criterion.field, { index, criterion }] as const);
+    return new Map(entries);
+  }, [sortCriteria]);
   const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
   const verticalScrollRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
@@ -342,22 +355,32 @@ export function MonitorTable({
   const endItem = totalItems === 0 ? 0 : Math.min(page * pageSize, totalItems);
 
   const toggleSort = (field: MonitorSortField) => {
-    if (sortBy !== field) {
-      onSortChange(field, "desc");
+    const existing = sortIndexByField.get(field);
+    if (!existing) {
+      const nextCriterion: MonitorSortCriterion = { field, dir: "desc" };
+      onSortChange(multiSortEnabled ? [...sortCriteria, nextCriterion] : [nextCriterion]);
       return;
     }
-    if (sortDir === "desc") {
-      onSortChange(field, "asc");
+    if (existing.criterion.dir === "desc") {
+      const next = sortCriteria.map((criterion, index) =>
+        index === existing.index ? { ...criterion, dir: "asc" as const } : criterion
+      );
+      onSortChange(next);
       return;
     }
-    onSortChange(null, null);
+    onSortChange(sortCriteria.filter((_, index) => index !== existing.index));
   };
 
-  const nextSelectionID = (endpointID: number, selected: boolean) => {
-    if (selectionMode === "replace") {
-      return endpointID;
+  const nextSelectionIDs = (endpointID: number, selected: boolean) => {
+    if (selectionMode === "none") {
+      return selectedEndpointIDs;
     }
-    return selected ? null : endpointID;
+    if (selectionMode === "replace") {
+      return [endpointID];
+    }
+    return selected
+      ? selectedEndpointIDs.filter((value) => value !== endpointID)
+      : [...selectedEndpointIDs, endpointID];
   };
 
   useEffect(() => {
@@ -662,6 +685,7 @@ export function MonitorTable({
   return (
     <div className="panel table-panel">
       <div className="table-action-row">
+        <div className="table-action-custom">{actionSlot}</div>
         <div className="table-action-group" ref={columnMenuRef}>
           <button
             type="button"
@@ -717,9 +741,21 @@ export function MonitorTable({
                 <tr>
                   {columns.map((column) => {
                     const sortable = Boolean(column.sortable && sortableSet.has(column.sortable));
-                    const active = sortable && sortBy === column.sortable;
-                    const ariaSort = active ? (sortDir === "asc" ? "ascending" : "descending") : "none";
-                    const indicator = !sortable ? "" : !active ? "↕" : sortDir === "desc" ? "↓" : "↑";
+                    const sortState = sortable && column.sortable ? sortIndexByField.get(column.sortable) : undefined;
+                    const active = Boolean(sortState);
+                    const isPrimary = active && sortState?.index === 0;
+                    const ariaSort = !active
+                      ? "none"
+                      : isPrimary
+                        ? sortState?.criterion.dir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "other";
+                    const indicator = !sortable
+                      ? ""
+                      : !active
+                        ? "↕"
+                        : `${sortState?.criterion.dir === "desc" ? "↓" : "↑"}${sortState!.index + 1}`;
 
                     return (
                       <th
@@ -750,7 +786,7 @@ export function MonitorTable({
                               type="button"
                               className={`table-sort-button ${active ? "table-sort-button-active" : ""}`}
                               onClick={() => toggleSort(column.sortable!)}
-                              aria-label={`Sort by ${column.menuLabel}`}
+                              aria-label={`Sort by ${column.menuLabel}${active ? ` (${sortState!.criterion.dir}, priority ${sortState!.index + 1})` : ""}`}
                             >
                               <span>{column.header}</span>
                               <span className="table-sort-indicator" aria-hidden>
@@ -774,22 +810,27 @@ export function MonitorTable({
                 ) : (
                   rows.map((row) => {
                     const endpointID = row.endpoint_id;
-                    const selected = selectedEndpointID === endpointID;
+                    const selected = selectedEndpointIDSet.has(endpointID);
                     const health = endpointHealth(row, dataScope, liveProbeContext);
                     const rowClassName = `${rowHealthClassName(health)}${selected ? " row-selected" : ""}`;
+                    const isSelectable = selectionMode !== "none";
                     return (
                       <tr
                         key={endpointID}
                         className={rowClassName}
-                        onClick={() => onSelectionChange(nextSelectionID(endpointID, selected))}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            onSelectionChange(nextSelectionID(endpointID, selected));
-                          }
-                        }}
-                        tabIndex={0}
-                        aria-selected={selected}
+                        onClick={isSelectable ? () => onSelectionChange(nextSelectionIDs(endpointID, selected)) : undefined}
+                        onKeyDown={
+                          isSelectable
+                            ? (event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  onSelectionChange(nextSelectionIDs(endpointID, selected));
+                                }
+                              }
+                            : undefined
+                        }
+                        tabIndex={isSelectable ? 0 : -1}
+                        aria-selected={isSelectable ? selected : undefined}
                       >
                         {columns.map((column) => {
                           return <td key={`${endpointID}-${column.key}`}>{column.render(row)}</td>;
