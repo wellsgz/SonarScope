@@ -352,13 +352,14 @@
 }
 
 .toolbar-block-filters-scroll {
+  display: grid;
+  gap: var(--space-2);
   max-height: min(24rem, 40vh);
-  overflow-y: scroll;
+  min-width: 0;
+  overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border)) transparent;
-  padding-inline-end: var(--space-1);
   padding-block-end: var(--space-1);
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
