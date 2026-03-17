@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import type { FilterOptions, MonitorDataScope } from "../types/api";
 import type { QuickRange } from "../hooks/time";
 
@@ -24,6 +24,7 @@ type Props = {
   quickRange: QuickRange;
   customStart: string;
   customEnd: string;
+  customRangeError?: string | null;
   dataScope: MonitorDataScope;
   onFilterChange: (next: FilterState) => void;
   onClearFilter: (key: keyof FilterState) => void;
@@ -62,6 +63,7 @@ export function MonitorToolbar({
   quickRange,
   customStart,
   customEnd,
+  customRangeError,
   dataScope,
   onFilterChange,
   onClearFilter,
@@ -79,6 +81,10 @@ export function MonitorToolbar({
   onCustomEndChange,
   onDataScopeChange
 }: Props) {
+  const customStartInputID = useId();
+  const customEndInputID = useId();
+  const customStartInputRef = useRef<HTMLInputElement | null>(null);
+  const customEndInputRef = useRef<HTMLInputElement | null>(null);
   const initialFilterSearch: Record<keyof FilterState, string> = {
     vlan: "",
     switches: "",
@@ -109,6 +115,17 @@ export function MonitorToolbar({
     [customFields, customSearch, hostnameSearch, macSearch]
   );
   const hasAnyTextSearch = activeTextSearchCount > 0;
+
+  const openPicker = (input: HTMLInputElement | null) => {
+    if (!input) {
+      return;
+    }
+    if ("showPicker" in input && typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+    input.focus();
+  };
 
   return (
     <div className="panel toolbar-panel">
@@ -157,20 +174,57 @@ export function MonitorToolbar({
                   </button>
                 ))}
               </div>
-              <div className="custom-time-row">
-                <input
-                  type="datetime-local"
-                  value={customStart}
-                  onChange={(event) => onCustomStartChange(event.target.value)}
-                  aria-label="Custom start time"
-                />
-                <input
-                  type="datetime-local"
-                  value={customEnd}
-                  onChange={(event) => onCustomEndChange(event.target.value)}
-                  aria-label="Custom end time"
-                />
+              <div className="custom-time-meta">
+                <span className="field-help custom-time-help">Times are shown in local time.</span>
+                <span className="field-help custom-time-help">Use Pick to open your device date and time chooser.</span>
               </div>
+              <div className="custom-time-row">
+                <div className="custom-time-field">
+                  <div className="custom-time-field-head">
+                    <label htmlFor={customStartInputID}>Start</label>
+                    <button
+                      className="btn btn-small custom-time-picker-trigger"
+                      type="button"
+                      onClick={() => openPicker(customStartInputRef.current)}
+                    >
+                      Pick
+                    </button>
+                  </div>
+                  <input
+                    id={customStartInputID}
+                    ref={customStartInputRef}
+                    type="datetime-local"
+                    value={customStart}
+                    onChange={(event) => onCustomStartChange(event.target.value)}
+                    aria-label="Custom start time"
+                  />
+                </div>
+                <div className="custom-time-field">
+                  <div className="custom-time-field-head">
+                    <label htmlFor={customEndInputID}>End</label>
+                    <button
+                      className="btn btn-small custom-time-picker-trigger"
+                      type="button"
+                      onClick={() => openPicker(customEndInputRef.current)}
+                    >
+                      Pick
+                    </button>
+                  </div>
+                  <input
+                    id={customEndInputID}
+                    ref={customEndInputRef}
+                    type="datetime-local"
+                    value={customEnd}
+                    onChange={(event) => onCustomEndChange(event.target.value)}
+                    aria-label="Custom end time"
+                  />
+                </div>
+              </div>
+              {customRangeError ? (
+                <div className="error-banner custom-time-error" role="alert" aria-live="polite">
+                  {customRangeError} SonarScope will keep using the last valid range until this is fixed.
+                </div>
+              ) : null}
             </>
           ) : null}
         </section>

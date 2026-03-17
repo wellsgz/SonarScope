@@ -449,6 +449,58 @@ label {
   min-height: 0;
 }
 
+.chart-summary-grid {
+  margin: 0 var(--space-4);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.chart-summary-item {
+  min-width: 0;
+  display: grid;
+  gap: 0.22rem;
+  padding: 0.56rem 0.66rem;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, var(--color-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
+}
+
+.chart-summary-label {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+}
+
+.chart-summary-value {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.chart-summary-note {
+  margin: var(--space-2) var(--space-4) 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+
+.chart-canvas-shell {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+@media (max-width: 720px) {
+  .chart-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .table-scroll {
   position: relative;
   overflow-x: auto;

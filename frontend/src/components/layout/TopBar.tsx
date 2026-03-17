@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSettings, updateSettings } from "../../api/client";
+import { useDebouncedNumberInput } from "../../hooks/useDebouncedNumberInput";
 import type { Settings } from "../../types/api";
 import type { AppViewMeta } from "../../types/ui";
 
@@ -41,6 +42,13 @@ export function TopBar({ activeView, onOpenSidebar, showOpenDashboardButton, onO
       auto_refresh_sec: parsed
     });
   };
+  const autoRefreshInput = useDebouncedNumberInput({
+    value: settingsQuery.data?.auto_refresh_sec ?? 30,
+    min: 1,
+    max: 60,
+    isPending: settingsMutation.isPending,
+    onCommit: handleAutoRefreshChange
+  });
 
   return (
     <header className="topbar" role="banner">
@@ -64,9 +72,11 @@ export function TopBar({ activeView, onOpenSidebar, showOpenDashboardButton, onO
                 type="number"
                 min={1}
                 max={60}
-                value={settingsQuery.data?.auto_refresh_sec ?? 30}
+                value={autoRefreshInput.draft}
                 disabled={settingsMutation.isPending}
-                onChange={(event) => handleAutoRefreshChange(event.target.value)}
+                onChange={(event) => autoRefreshInput.setDraft(event.target.value)}
+                onBlur={autoRefreshInput.commitNow}
+                onKeyDown={autoRefreshInput.handleKeyDown}
                 aria-label="Auto refresh interval in seconds"
               />
             </label>

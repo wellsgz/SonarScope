@@ -76,6 +76,9 @@ export function AppShell({
 
   return (
     <div className={`app-shell-v13 ${immersiveMonitorMode ? "app-shell-immersive" : ""}`}>
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
       {!immersiveMonitorMode ? (
         <SidebarNav
           activeView={activeView}

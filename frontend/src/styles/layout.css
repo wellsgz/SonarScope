@@ -8,6 +8,27 @@
   overflow-x: clip;
 }
 
+.skip-link {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-4);
+  z-index: 50;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 42%, var(--color-border));
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-accent-soft) 92%, var(--color-surface));
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.55rem 0.8rem;
+  transform: translateY(-180%);
+  transition: transform 160ms ease-out;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
 .sidebar {
   position: sticky;
   top: 0;

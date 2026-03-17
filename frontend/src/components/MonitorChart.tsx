@@ -1,5 +1,5 @@
 import ReactECharts from "echarts-for-react";
-import { Component, useMemo, type ReactNode } from "react";
+import { Component, useId, useMemo, type ReactNode } from "react";
 import type { TimeSeriesPoint, TimeSeriesResponse } from "../types/api";
 
 type Props = {
@@ -10,7 +10,6 @@ type Props = {
   rangeEnd: Date;
   snapshotCapturedAt: Date;
   snapshotVersion: number;
-  controlsChanged?: boolean;
 };
 
 type Metric = "loss_rate" | "avg_latency_ms";
@@ -191,6 +190,65 @@ function formatSnapshotLabel(capturedAt: Date): string {
   }).format(capturedAt)} (local)`;
 }
 
+function formatBucketLabel(bucket: string): string {
+  const date = new Date(bucket);
+  if (Number.isNaN(date.getTime())) {
+    return "Unavailable";
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function buildChartTextSummary(
+  points: TimeSeriesPoint[],
+  buckets: number[],
+  rollup: TimeSeriesResponse["rollup"]
+): {
+  latestLossLabel: string;
+  latestLatencyLabel: string;
+  latestIntervalLabel: string;
+  noProbeLabel: string;
+} {
+  const sortedMeasured = [...points]
+    .filter((point) => point.sent_count > 0)
+    .sort((left, right) => new Date(left.bucket).getTime() - new Date(right.bucket).getTime());
+  const latestMeasured = sortedMeasured.at(-1) ?? null;
+  const pointByBucket = new Map<number, TimeSeriesPoint>();
+  points.forEach((point) => {
+    pointByBucket.set(alignToStep(new Date(point.bucket).getTime(), toStepMs(rollup)), point);
+  });
+  const noProbeCount = buckets.reduce((count, bucket) => {
+    const point = pointByBucket.get(bucket);
+    return count + (!point || point.sent_count === 0 ? 1 : 0);
+  }, 0);
+  const totalIntervals = buckets.length;
+
+  return {
+    latestLossLabel: latestMeasured ? formatPercent(latestMeasured.loss_rate) : "No probe data",
+    latestLatencyLabel: latestMeasured
+      ? latestMeasured.avg_latency_ms === null
+        ? "—"
+        : formatLatency(latestMeasured.avg_latency_ms)
+      : "No probe data",
+    latestIntervalLabel: latestMeasured
+      ? `Latest measured interval: ${formatBucketLabel(latestMeasured.bucket)}`
+      : "No measured intervals in the selected window.",
+    noProbeLabel:
+      totalIntervals === 0
+        ? "No visible intervals for this range."
+        : noProbeCount === 0
+          ? "Probe activity was recorded in every visible interval."
+          : noProbeCount === totalIntervals
+            ? "No probe activity was recorded in this captured period."
+            : `No probe activity in ${noProbeCount} of ${totalIntervals} visible intervals.`
+  };
+}
+
 function buildMetricSeries(
   points: TimeSeriesPoint[],
   metric: Metric,
@@ -347,15 +405,16 @@ export function MonitorChart({
   rangeStart,
   rangeEnd,
   snapshotCapturedAt,
-  snapshotVersion,
-  controlsChanged = false
+  snapshotVersion
 }: Props) {
+  const chartSummaryId = useId();
   const chartRangeLabel = useMemo(() => formatChartRangeLabel(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
   const snapshotLabel = useMemo(() => formatSnapshotLabel(snapshotCapturedAt), [snapshotCapturedAt]);
   const rangeStartMs = rangeStart.getTime();
   const rangeEndMs = rangeEnd.getTime();
   const hasProbeActivity = useMemo(() => points.some((point) => point.sent_count > 0), [points]);
   const buckets = useMemo(() => buildBuckets(rangeStart, rangeEnd, toStepMs(rollup)), [rangeEnd, rangeStart, rollup]);
+  const chartTextSummary = useMemo(() => buildChartTextSummary(points, buckets, rollup), [buckets, points, rollup]);
   const palette = {
     textMuted: readToken("--color-text-muted", "#b4c3db"),
     textSubtle: readToken("--color-text-subtle", "#94a7c4"),
@@ -576,25 +635,49 @@ export function MonitorChart({
           <div className="chart-subtitle">Rollup: {rollup}</div>
         </div>
       </div>
-      {controlsChanged ? (
-        <div className="info-banner chart-snapshot-note" role="status" aria-live="polite">
-          Controls changed. Reselect an endpoint to refresh this chart snapshot.
+      <div className="chart-summary-grid" id={chartSummaryId}>
+        <div className="chart-summary-item">
+          <span className="chart-summary-label">Endpoint</span>
+          <strong className="chart-summary-value">{endpointLabel}</strong>
         </div>
-      ) : null}
+        <div className="chart-summary-item">
+          <span className="chart-summary-label">Range</span>
+          <strong className="chart-summary-value">{chartRangeLabel}</strong>
+        </div>
+        <div className="chart-summary-item">
+          <span className="chart-summary-label">Rollup</span>
+          <strong className="chart-summary-value">{rollup}</strong>
+        </div>
+        <div className="chart-summary-item">
+          <span className="chart-summary-label">Latest loss</span>
+          <strong className="chart-summary-value">{chartTextSummary.latestLossLabel}</strong>
+        </div>
+        <div className="chart-summary-item">
+          <span className="chart-summary-label">Latest latency</span>
+          <strong className="chart-summary-value">{chartTextSummary.latestLatencyLabel}</strong>
+        </div>
+        <div className="chart-summary-item">
+          <span className="chart-summary-label">Probe coverage</span>
+          <strong className="chart-summary-value">{chartTextSummary.noProbeLabel}</strong>
+        </div>
+      </div>
+      <div className="chart-summary-note">{chartTextSummary.latestIntervalLabel}</div>
       {!hasProbeActivity ? (
         <div className="info-banner chart-no-probe-banner" role="status" aria-live="polite">
           <span className="chart-no-probe-dot" aria-hidden />
           <span>No probe activity was recorded in this captured period.</span>
         </div>
       ) : null}
-      <div className="chart-body">
+      <div className="chart-body" role="group" aria-label="Loss and latency chart" aria-describedby={chartSummaryId}>
         <ChartErrorBoundary resetKey={String(snapshotVersion)}>
           {!hasRenderableSeries ? (
             <div className="state-panel chart-empty-series-panel">
               No chart data is available for this captured snapshot.
             </div>
           ) : (
-            <ReactECharts option={option} notMerge lazyUpdate className="chart-canvas" style={{ height: "100%", width: "100%" }} />
+            <div className="chart-canvas-shell" aria-hidden="true">
+              <ReactECharts option={option} notMerge lazyUpdate className="chart-canvas" style={{ height: "100%", width: "100%" }} />
+            </div>
           )}
         </ChartErrorBoundary>
       </div>
