@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { MonitorDataScope, MonitorEndpoint, MonitorSortCriterion, MonitorSortField } from "../types/api";
 
 type Props = {
@@ -57,12 +57,24 @@ type HorizontalScrollMetrics = {
   scrollLeft: number;
 };
 
+type HeaderLayout = {
+  widths: number[];
+  height: number;
+  tableWidth: number;
+};
+
 const defaultHorizontalScrollMetrics: HorizontalScrollMetrics = {
   hasOverflow: false,
   viewportWidth: 0,
   contentWidth: 0,
   railWidth: 0,
   scrollLeft: 0
+};
+
+const defaultHeaderLayout: HeaderLayout = {
+  widths: [],
+  height: 0,
+  tableWidth: 0
 };
 
 function formatDate(value: string | null): string {
@@ -282,6 +294,7 @@ export function MonitorTable({
   const thumbDragRef = useRef<{ pointerID: number; startX: number; startScrollLeft: number } | null>(null);
   const draggingColumnKeyRef = useRef<string | null>(null);
   const [horizontalMetrics, setHorizontalMetrics] = useState<HorizontalScrollMetrics>(defaultHorizontalScrollMetrics);
+  const [headerLayout, setHeaderLayout] = useState<HeaderLayout>(defaultHeaderLayout);
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const [dragOverColumnKey, setDragOverColumnKey] = useState<string | null>(null);
   const liveProbeContext = useMemo(
@@ -345,6 +358,37 @@ export function MonitorTable({
   );
   const minimumVisibleColumns = Math.min(3, orderedColumns.length);
   const columnLayoutSignature = useMemo(() => columns.map((column) => column.key).join("|"), [columns]);
+  const headerColumns = useMemo(
+    () =>
+      columns.map((column) => {
+        const sortable = Boolean(column.sortable && sortableSet.has(column.sortable));
+        const sortState = sortable && column.sortable ? sortIndexByField.get(column.sortable) : undefined;
+        const active = Boolean(sortState);
+        const isPrimary = active && sortState?.index === 0;
+        const ariaSort = !active
+          ? "none"
+          : isPrimary
+            ? sortState?.criterion.dir === "asc"
+              ? "ascending"
+              : "descending"
+            : "other";
+        const indicator = !sortable
+          ? ""
+          : !active
+            ? "↕"
+            : `${sortState?.criterion.dir === "desc" ? "↓" : "↑"}${sortState!.index + 1}`;
+
+        return {
+          ...column,
+          sortable,
+          sortState,
+          active,
+          ariaSort,
+          indicator
+        };
+      }),
+    [columns, sortIndexByField, sortableSet]
+  );
 
   const pageOptions = useMemo(() => {
     if (totalPages < 1) {
@@ -371,6 +415,93 @@ export function MonitorTable({
       return;
     }
     onSortChange(sortCriteria.filter((_, index) => index !== existing.index));
+  };
+
+  const headerCellStyle = (width: number | undefined): CSSProperties | undefined => {
+    if (!width || width <= 0) {
+      return undefined;
+    }
+    return {
+      width,
+      minWidth: width,
+      maxWidth: width
+    };
+  };
+
+  const renderHeaderCellInner = (column: (typeof headerColumns)[number], interactive: boolean) => {
+    const sortButtonLabel =
+      interactive && column.sortable
+        ? `Sort by ${column.menuLabel}${column.active ? ` (${column.sortState!.criterion.dir}, priority ${column.sortState!.index + 1})` : ""}`
+        : undefined;
+
+    return (
+      <div className="table-column-head">
+        <span
+          className="table-column-grip"
+          draggable={interactive}
+          onDragStart={interactive ? (event) => handleColumnDragStart(column.key, event) : undefined}
+          onDragEnd={interactive ? clearColumnDragState : undefined}
+          aria-hidden
+          title={interactive ? `Drag to reorder ${column.menuLabel}` : undefined}
+        >
+          ⋮⋮
+        </span>
+        {column.sortable && column.sortable ? (
+          interactive ? (
+            <button
+              type="button"
+              className={`table-sort-button ${column.active ? "table-sort-button-active" : ""}`}
+              onClick={() => toggleSort(column.sortable!)}
+              aria-label={sortButtonLabel}
+            >
+              <span>{column.header}</span>
+              <span className="table-sort-indicator" aria-hidden>
+                {column.indicator}
+              </span>
+            </button>
+          ) : (
+            <span className={`table-sort-button ${column.active ? "table-sort-button-active" : ""} table-sort-button-placeholder`}>
+              <span>{column.header}</span>
+              <span className="table-sort-indicator" aria-hidden>
+                {column.indicator}
+              </span>
+            </span>
+          )
+        ) : (
+          <span className="table-column-label">{column.header}</span>
+        )}
+      </div>
+    );
+  };
+
+  const renderHeaderCell = (column: (typeof headerColumns)[number], index: number, interactive: boolean) => {
+    const width = headerLayout.widths[showSelectionCheckboxes ? index + 1 : index];
+    if (interactive) {
+      return (
+        <div
+          key={column.key}
+          role="columnheader"
+          aria-sort={column.ariaSort}
+          className={`monitor-table-header-cell${dragOverColumnKey === column.key ? " column-drag-over" : ""}`}
+          style={headerCellStyle(width)}
+          onDragOver={(event) => handleColumnDragOver(column.key, event)}
+          onDrop={(event) => handleColumnDrop(column.key, event)}
+          onDragLeave={() => {
+            if (dragOverColumnKey === column.key) {
+              setDragOverColumnKey(null);
+            }
+          }}
+        >
+          {renderHeaderCellInner(column, true)}
+        </div>
+      );
+    }
+
+    return (
+      <th key={column.key} scope="col" style={headerCellStyle(width)}>
+        {renderHeaderCellInner(column, false)}
+      </th>
+    );
   };
 
   const nextSelectionIDs = (endpointID: number, selected: boolean) => {
@@ -472,6 +603,42 @@ export function MonitorTable({
     });
   };
 
+  const updateHeaderLayout = (next: HeaderLayout) => {
+    setHeaderLayout((prev) => {
+      if (
+        prev.widths.length === next.widths.length &&
+        Math.abs(prev.height - next.height) < 1 &&
+        Math.abs(prev.tableWidth - next.tableWidth) < 1 &&
+        prev.widths.every((width, index) => Math.abs(width - next.widths[index]) < 1)
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  };
+
+  const measureHeaderLayout = () => {
+    const table = tableRef.current;
+    if (!table) {
+      return;
+    }
+    const headerCells = Array.from(table.querySelectorAll<HTMLTableCellElement>("thead tr:first-child > th"));
+    if (headerCells.length === 0) {
+      updateHeaderLayout(defaultHeaderLayout);
+      return;
+    }
+
+    const rowHeight = headerCells[0]?.parentElement?.getBoundingClientRect().height ?? 0;
+    const widths = headerCells.map((cell) => cell.getBoundingClientRect().width);
+    const tableWidth = Math.max(table.scrollWidth, table.getBoundingClientRect().width);
+
+    updateHeaderLayout({
+      widths,
+      height: rowHeight,
+      tableWidth
+    });
+  };
+
   const measureHorizontalOverflow = () => {
     const horizontalScroll = horizontalScrollRef.current;
     const table = tableRef.current;
@@ -539,6 +706,7 @@ export function MonitorTable({
       horizontalFrameRef.current = window.requestAnimationFrame(() => {
         horizontalFrameRef.current = 0;
         measureHorizontalOverflow();
+        measureHeaderLayout();
       });
     };
 
@@ -574,7 +742,7 @@ export function MonitorTable({
         horizontalFrameRef.current = 0;
       }
     };
-  }, [columnLayoutSignature, horizontalMetrics.hasOverflow, refreshSignal, rows.length]);
+  }, [columnLayoutSignature, horizontalMetrics.hasOverflow, refreshSignal, rows.length, showSelectionCheckboxes]);
 
   useEffect(() => {
     return () => {
@@ -684,6 +852,15 @@ export function MonitorTable({
     }
   };
 
+  const overlayTrackStyle: CSSProperties | undefined =
+    headerLayout.tableWidth > 0
+      ? {
+          width: headerLayout.tableWidth,
+          minWidth: "100%",
+          transform: `translateX(-${horizontalMetrics.scrollLeft}px)`
+        }
+      : undefined;
+
   return (
     <div className="panel table-panel">
       <div className="table-action-row">
@@ -736,75 +913,31 @@ export function MonitorTable({
         </div>
       </div>
       <div className="table-viewport-shell">
+        {headerLayout.height > 0 ? (
+          <div className="monitor-table-header-overlay-shell" style={{ height: headerLayout.height }}>
+            <div className="monitor-table-header-overlay-track" style={overlayTrackStyle}>
+              <div className="monitor-table-header-row" role="row">
+                {showSelectionCheckboxes ? (
+                  <div
+                    role="presentation"
+                    className="monitor-table-header-cell table-selection-column-head"
+                    style={headerCellStyle(headerLayout.widths[0])}
+                  />
+                ) : null}
+                {headerColumns.map((column, index) => renderHeaderCell(column, index, true))}
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className="table-scroll-y" ref={verticalScrollRef} onScroll={captureRelativeScroll}>
           <div className="table-scroll-x" ref={horizontalScrollRef} onScroll={handleHorizontalScroll}>
             <table className="monitor-table" ref={tableRef}>
-              <thead>
+              <thead className="monitor-table-head-placeholder">
                 <tr>
                   {showSelectionCheckboxes ? (
                     <th className="table-selection-column-head" aria-label="Exclude endpoint selection" />
                   ) : null}
-                  {columns.map((column) => {
-                    const sortable = Boolean(column.sortable && sortableSet.has(column.sortable));
-                    const sortState = sortable && column.sortable ? sortIndexByField.get(column.sortable) : undefined;
-                    const active = Boolean(sortState);
-                    const isPrimary = active && sortState?.index === 0;
-                    const ariaSort = !active
-                      ? "none"
-                      : isPrimary
-                        ? sortState?.criterion.dir === "asc"
-                          ? "ascending"
-                          : "descending"
-                        : "other";
-                    const indicator = !sortable
-                      ? ""
-                      : !active
-                        ? "↕"
-                        : `${sortState?.criterion.dir === "desc" ? "↓" : "↑"}${sortState!.index + 1}`;
-
-                    return (
-                      <th
-                        key={column.key}
-                        aria-sort={ariaSort}
-                        className={dragOverColumnKey === column.key ? "column-drag-over" : undefined}
-                        onDragOver={(event) => handleColumnDragOver(column.key, event)}
-                        onDrop={(event) => handleColumnDrop(column.key, event)}
-                        onDragLeave={() => {
-                          if (dragOverColumnKey === column.key) {
-                            setDragOverColumnKey(null);
-                          }
-                        }}
-                      >
-                        <div className="table-column-head">
-                          <span
-                            className="table-column-grip"
-                            draggable
-                            onDragStart={(event) => handleColumnDragStart(column.key, event)}
-                            onDragEnd={clearColumnDragState}
-                            aria-hidden
-                            title={`Drag to reorder ${column.menuLabel}`}
-                          >
-                            ⋮⋮
-                          </span>
-                          {sortable && column.sortable ? (
-                            <button
-                              type="button"
-                              className={`table-sort-button ${active ? "table-sort-button-active" : ""}`}
-                              onClick={() => toggleSort(column.sortable!)}
-                              aria-label={`Sort by ${column.menuLabel}${active ? ` (${sortState!.criterion.dir}, priority ${sortState!.index + 1})` : ""}`}
-                            >
-                              <span>{column.header}</span>
-                              <span className="table-sort-indicator" aria-hidden>
-                                {indicator}
-                              </span>
-                            </button>
-                          ) : (
-                            <span className="table-column-label">{column.header}</span>
-                          )}
-                        </div>
-                      </th>
-                    );
-                  })}
+                  {headerColumns.map((column, index) => renderHeaderCell(column, index, false))}
                 </tr>
               </thead>
               <tbody>

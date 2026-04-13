@@ -532,6 +532,7 @@ label {
 }
 
 .table-viewport-shell {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
@@ -634,10 +635,14 @@ label {
   font-size: var(--table-font-size);
 }
 
-.monitor-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 6;
+.monitor-table-head-placeholder {
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.monitor-table thead th,
+.monitor-table-header-cell {
   background: var(--color-surface);
   box-shadow:
     inset 0 -1px 0 var(--color-border),
@@ -648,7 +653,40 @@ label {
   text-transform: uppercase;
 }
 
-.monitor-table thead th.column-drag-over {
+.monitor-table-header-overlay-shell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.monitor-table-header-overlay-track {
+  min-width: 100%;
+  will-change: transform;
+  pointer-events: auto;
+}
+
+.monitor-table-header-row {
+  display: flex;
+  align-items: stretch;
+  min-width: 100%;
+}
+
+.monitor-table-header-cell {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.3rem 0.48rem;
+  min-height: var(--table-row-height);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.monitor-table thead th.column-drag-over,
+.monitor-table-header-cell.column-drag-over {
   box-shadow:
     inset 3px 0 0 color-mix(in srgb, var(--color-accent) 68%, transparent),
     inset 0 -1px 0 var(--color-border),
@@ -725,6 +763,10 @@ label {
   font-weight: inherit;
   letter-spacing: inherit;
   text-transform: inherit;
+}
+
+.table-sort-button-placeholder {
+  pointer-events: none;
 }
 
 .table-sort-button-active {
