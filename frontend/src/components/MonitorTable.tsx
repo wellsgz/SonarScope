@@ -63,6 +63,17 @@ type HeaderLayout = {
   tableWidth: number;
 };
 
+type HeaderAriaSort = "none" | "ascending" | "descending" | "other";
+
+type HeaderColumnState = MonitorColumn & {
+  sortField?: MonitorSortField;
+  isSortable: boolean;
+  sortState?: { index: number; criterion: MonitorSortCriterion };
+  active: boolean;
+  ariaSort: HeaderAriaSort;
+  indicator: string;
+};
+
 const defaultHorizontalScrollMetrics: HorizontalScrollMetrics = {
   hasOverflow: false,
   viewportWidth: 0,
@@ -358,21 +369,22 @@ export function MonitorTable({
   );
   const minimumVisibleColumns = Math.min(3, orderedColumns.length);
   const columnLayoutSignature = useMemo(() => columns.map((column) => column.key).join("|"), [columns]);
-  const headerColumns = useMemo(
+  const headerColumns = useMemo<HeaderColumnState[]>(
     () =>
       columns.map((column) => {
-        const sortable = Boolean(column.sortable && sortableSet.has(column.sortable));
-        const sortState = sortable && column.sortable ? sortIndexByField.get(column.sortable) : undefined;
+        const sortField = column.sortable;
+        const isSortable = Boolean(sortField && sortableSet.has(sortField));
+        const sortState = isSortable && sortField ? sortIndexByField.get(sortField) : undefined;
         const active = Boolean(sortState);
         const isPrimary = active && sortState?.index === 0;
-        const ariaSort = !active
+        const ariaSort: HeaderAriaSort = !active
           ? "none"
           : isPrimary
             ? sortState?.criterion.dir === "asc"
               ? "ascending"
               : "descending"
             : "other";
-        const indicator = !sortable
+        const indicator = !isSortable
           ? ""
           : !active
             ? "↕"
@@ -380,7 +392,8 @@ export function MonitorTable({
 
         return {
           ...column,
-          sortable,
+          sortField,
+          isSortable,
           sortState,
           active,
           ariaSort,
@@ -428,9 +441,10 @@ export function MonitorTable({
     };
   };
 
-  const renderHeaderCellInner = (column: (typeof headerColumns)[number], interactive: boolean) => {
+  const renderHeaderCellInner = (column: HeaderColumnState, interactive: boolean) => {
+    const sortField = column.sortField;
     const sortButtonLabel =
-      interactive && column.sortable
+      interactive && column.isSortable
         ? `Sort by ${column.menuLabel}${column.active ? ` (${column.sortState!.criterion.dir}, priority ${column.sortState!.index + 1})` : ""}`
         : undefined;
 
@@ -446,12 +460,12 @@ export function MonitorTable({
         >
           ⋮⋮
         </span>
-        {column.sortable && column.sortable ? (
+        {column.isSortable && sortField ? (
           interactive ? (
             <button
               type="button"
               className={`table-sort-button ${column.active ? "table-sort-button-active" : ""}`}
-              onClick={() => toggleSort(column.sortable!)}
+              onClick={() => toggleSort(sortField)}
               aria-label={sortButtonLabel}
             >
               <span>{column.header}</span>
@@ -474,7 +488,7 @@ export function MonitorTable({
     );
   };
 
-  const renderHeaderCell = (column: (typeof headerColumns)[number], index: number, interactive: boolean) => {
+  const renderHeaderCell = (column: HeaderColumnState, index: number, interactive: boolean) => {
     const width = headerLayout.widths[showSelectionCheckboxes ? index + 1 : index];
     if (interactive) {
       return (
