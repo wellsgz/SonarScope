@@ -635,8 +635,9 @@ export function GroupsPage() {
   const regexTargetGroupID =
     editingID !== null ? editingID : batchGroupPreview?.used_existing_by_name ? (batchGroupPreview.group_id ?? null) : null;
   const regexReassignment = summarizeReassignment(batchGroupPreview?.preview.endpoint_ids || [], regexTargetGroupID);
+  const emptyReassignment = { impact: [] as Array<{ groupName: string; count: number }>, count: 0 };
   const activeReassignment =
-    membershipAction === "assign" ? (membershipMode === "regex" ? regexReassignment : manualReassignment) : null;
+    membershipAction === "assign" ? (membershipMode === "regex" ? regexReassignment : manualReassignment) : emptyReassignment;
   const targetGroupLabel =
     membershipMode === "regex"
       ? batchGroupPreview?.group_name || name.trim() || "the selected group"
