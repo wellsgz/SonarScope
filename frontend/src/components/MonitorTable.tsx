@@ -1,4 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode
+} from "react";
 import type { MonitorDataScope, MonitorEndpoint, MonitorSortCriterion, MonitorSortField } from "../types/api";
 
 type Props = {
@@ -291,6 +300,7 @@ export function MonitorTable({
 }: Props) {
   const sortableSet = useMemo(() => new Set<MonitorSortField>(sortableFields), [sortableFields]);
   const selectedEndpointIDSet = useMemo(() => new Set<number>(selectedEndpointIDs), [selectedEndpointIDs]);
+  const visibleEndpointIDs = useMemo(() => rows.map((row) => row.endpoint_id), [rows]);
   const sortIndexByField = useMemo(() => {
     const entries = sortCriteria.map((criterion, index) => [criterion.field, { index, criterion }] as const);
     return new Map(entries);
@@ -300,6 +310,7 @@ export function MonitorTable({
   const tableRef = useRef<HTMLTableElement | null>(null);
   const horizontalRailRef = useRef<HTMLDivElement | null>(null);
   const columnMenuRef = useRef<HTMLDivElement | null>(null);
+  const selectionAnchorEndpointIDRef = useRef<number | null>(null);
   const relativeScrollRef = useRef(0);
   const horizontalFrameRef = useRef(0);
   const thumbDragRef = useRef<{ pointerID: number; startX: number; startScrollLeft: number } | null>(null);
@@ -518,17 +529,80 @@ export function MonitorTable({
     );
   };
 
-  const nextSelectionIDs = (endpointID: number, selected: boolean) => {
+  const toggleMultiSelection = (endpointID: number, selected: boolean) => {
+    return selected
+      ? selectedEndpointIDs.filter((value) => value !== endpointID)
+      : [...selectedEndpointIDs, endpointID];
+  };
+
+  const nextSelectionIDs = (
+    endpointID: number,
+    selected: boolean,
+    modifiers?: {
+      shiftKey?: boolean;
+      metaKey?: boolean;
+      ctrlKey?: boolean;
+    }
+  ) => {
     if (selectionMode === "none") {
       return selectedEndpointIDs;
     }
     if (selectionMode === "replace") {
       return [endpointID];
     }
-    return selected
-      ? selectedEndpointIDs.filter((value) => value !== endpointID)
-      : [...selectedEndpointIDs, endpointID];
+
+    if (modifiers?.shiftKey) {
+      const anchorID = selectionAnchorEndpointIDRef.current;
+      if (anchorID !== null) {
+        const anchorIndex = visibleEndpointIDs.indexOf(anchorID);
+        const currentIndex = visibleEndpointIDs.indexOf(endpointID);
+        if (anchorIndex >= 0 && currentIndex >= 0) {
+          const [start, end] = anchorIndex < currentIndex ? [anchorIndex, currentIndex] : [currentIndex, anchorIndex];
+          const nextRange = visibleEndpointIDs.slice(start, end + 1);
+          return Array.from(new Set([...selectedEndpointIDs, ...nextRange]));
+        }
+      }
+    }
+
+    return toggleMultiSelection(endpointID, selected);
   };
+
+  const commitSelectionChange = (
+    endpointID: number,
+    selected: boolean,
+    modifiers?: {
+      shiftKey?: boolean;
+      metaKey?: boolean;
+      ctrlKey?: boolean;
+    }
+  ) => {
+    if (selectionMode === "multi") {
+      const hasAnchor = selectionAnchorEndpointIDRef.current !== null;
+      const usedShiftRange = Boolean(
+        modifiers?.shiftKey &&
+          hasAnchor &&
+          visibleEndpointIDs.includes(selectionAnchorEndpointIDRef.current!) &&
+          visibleEndpointIDs.includes(endpointID)
+      );
+      if (!usedShiftRange) {
+        selectionAnchorEndpointIDRef.current = endpointID;
+      }
+    }
+    onSelectionChange(nextSelectionIDs(endpointID, selected, modifiers));
+  };
+
+  useEffect(() => {
+    if (selectionMode !== "multi" || selectedEndpointIDs.length === 0) {
+      selectionAnchorEndpointIDRef.current = null;
+      return;
+    }
+    if (
+      selectionAnchorEndpointIDRef.current !== null &&
+      !visibleEndpointIDs.includes(selectionAnchorEndpointIDRef.current)
+    ) {
+      selectionAnchorEndpointIDRef.current = null;
+    }
+  }, [selectionMode, selectedEndpointIDs, visibleEndpointIDs]);
 
   useEffect(() => {
     if (!columnMenuOpen) {
@@ -970,13 +1044,22 @@ export function MonitorTable({
                       <tr
                         key={endpointID}
                         className={rowClassName}
-                        onClick={isSelectable ? () => onSelectionChange(nextSelectionIDs(endpointID, selected)) : undefined}
+                        onClick={
+                          isSelectable
+                            ? (event) =>
+                                commitSelectionChange(endpointID, selected, {
+                                  shiftKey: event.shiftKey,
+                                  metaKey: event.metaKey,
+                                  ctrlKey: event.ctrlKey
+                                })
+                            : undefined
+                        }
                         onKeyDown={
                           isSelectable
                             ? (event) => {
                                 if (event.key === "Enter" || event.key === " ") {
                                   event.preventDefault();
-                                  onSelectionChange(nextSelectionIDs(endpointID, selected));
+                                  commitSelectionChange(endpointID, selected);
                                 }
                               }
                             : undefined
@@ -990,8 +1073,15 @@ export function MonitorTable({
                               type="checkbox"
                               className="table-selection-checkbox"
                               checked={selected}
-                              onClick={(event) => event.stopPropagation()}
-                              onChange={() => onSelectionChange(nextSelectionIDs(endpointID, selected))}
+                              readOnly
+                              onClick={(event: ReactMouseEvent<HTMLInputElement>) => {
+                                event.stopPropagation();
+                                commitSelectionChange(endpointID, selected, {
+                                  shiftKey: event.shiftKey,
+                                  metaKey: event.metaKey,
+                                  ctrlKey: event.ctrlKey
+                                });
+                              }}
                               aria-label={`Select endpoint ${row.hostname || row.ip_address}`}
                             />
                           </td>

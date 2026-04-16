@@ -391,6 +391,7 @@ export function InventoryPage() {
   const [batchDeleteMatch, setBatchDeleteMatch] = useState<InventoryBatchMatchFormState>(defaultBatchMatchState);
   const [batchDeletePreview, setBatchDeletePreview] = useState<InventoryBatchDeletePreviewResponse | null>(null);
   const [batchDeleteConfirmOpen, setBatchDeleteConfirmOpen] = useState(false);
+  const [selectedDeleteConfirmOpen, setSelectedDeleteConfirmOpen] = useState(false);
   const [deleteGroupID, setDeleteGroupID] = useState("");
   const [groupDeleteConfirmOpen, setGroupDeleteConfirmOpen] = useState(false);
   const [groupDeleteConfirmTarget, setGroupDeleteConfirmTarget] = useState<{
@@ -414,7 +415,7 @@ export function InventoryPage() {
   const lastHandledDeleteJobRef = useRef<string>("");
 
   const filterCards: Array<{ key: keyof FilterState; label: string; options: string[] }> = [
-    { key: "activity", label: "Activity", options: ["Active", "Inactive"] },
+    { key: "activity", label: "Probe Status", options: ["Active", "Inactive"] },
     { key: "vlan", label: "VLAN", options: [] },
     { key: "switches", label: "Switch", options: [] },
     { key: "ports", label: "Port", options: [] },
@@ -646,6 +647,17 @@ export function InventoryPage() {
     }
   });
 
+  const startDeleteSelectedJobMutation = useMutation({
+    mutationFn: (payload: { endpoint_ids: number[]; target_summary?: string }) => startDeleteMatchJob(payload),
+    onSuccess: () => {
+      setSelectedDeleteConfirmOpen(false);
+      setSelectedEndpointIDs([]);
+      setSelectionAnchorEndpointID(null);
+      setDeleteJobNotice(null);
+      queryClient.invalidateQueries({ queryKey: ["inventory-delete-job-current"] });
+    }
+  });
+
   const startDeleteByGroupJobMutation = useMutation({
     mutationFn: (groupID: number) => startDeleteByGroupJob(groupID),
     onSuccess: () => {
@@ -782,12 +794,20 @@ export function InventoryPage() {
     [inventoryQuery.data]
   );
   const selectedEndpointIDSet = useMemo(() => new Set(selectedEndpointIDs), [selectedEndpointIDs]);
+  const selectedDeleteTargetSummary =
+    selectedEndpointCount > 0 ? `Selected endpoints (${selectedEndpointCount})` : "Selected endpoints (0)";
 
   useEffect(() => {
     const visibleIDSet = new Set(visibleEndpointIDs);
     setSelectedEndpointIDs((current) => current.filter((endpointID) => visibleIDSet.has(endpointID)));
     setSelectionAnchorEndpointID((current) => (current !== null && visibleIDSet.has(current) ? current : null));
   }, [visibleEndpointIDs]);
+
+  useEffect(() => {
+    if (selectedEndpointCount === 0) {
+      setSelectedDeleteConfirmOpen(false);
+    }
+  }, [selectedEndpointCount]);
 
   const applyEndpointActivity = (endpointIDs: number[], active: boolean) => {
     const uniqueIDs = Array.from(new Set(endpointIDs.filter((endpointID) => endpointID > 0)));
@@ -875,6 +895,7 @@ export function InventoryPage() {
     setGroupDeleteConfirmTarget(null);
     setDeleteAllFinalConfirmOpen(false);
     setBatchDeleteConfirmOpen(false);
+    setSelectedDeleteConfirmOpen(false);
   }, [deleteInProgress]);
 
   useEffect(() => {
@@ -1531,7 +1552,9 @@ export function InventoryPage() {
           <div className="button-row inventory-header-actions">
             <div className="inventory-bulk-actions" role="status" aria-live="polite">
               <span className="inventory-bulk-actions-copy">
-                {selectedEndpointCount > 0 ? `${selectedEndpointCount} selected` : "Select rows to bulk change activity"}
+                {selectedEndpointCount > 0
+                  ? `${selectedEndpointCount} selected for probe-state changes or deletion`
+                  : "Select rows to mark active, mark inactive, or delete"}
               </span>
               <button
                 className="btn btn-small"
@@ -1548,6 +1571,17 @@ export function InventoryPage() {
                 onClick={() => applyEndpointActivity(selectedEndpointIDs, false)}
               >
                 {updateActivityMutation.isPending ? "Updating..." : "Mark Inactive"}
+              </button>
+              <button
+                className="btn btn-small btn-danger"
+                type="button"
+                disabled={selectedEndpointCount === 0 || startDeleteSelectedJobMutation.isPending || deleteInProgress}
+                onClick={() => {
+                  startDeleteSelectedJobMutation.reset();
+                  setSelectedDeleteConfirmOpen(true);
+                }}
+              >
+                Delete Selected
               </button>
             </div>
             <button
@@ -1570,6 +1604,49 @@ export function InventoryPage() {
               Clear All Filters
             </button>
           </div>
+
+          {selectedDeleteConfirmOpen ? (
+            <div className="inventory-danger-inline-confirm" role="alert" aria-live="assertive">
+              <p className="inventory-danger-inline-confirm-title">Confirm selected delete job</p>
+              <p className="inventory-danger-inline-confirm-text">
+                Delete {selectedEndpointCount} selected endpoint(s) and related probe history? This action is permanent.
+              </p>
+              <div className="field-help">{selectedDeleteTargetSummary}</div>
+              <div className="field-help">Runs as a background delete job.</div>
+              {startDeleteSelectedJobMutation.error ? (
+                <div className="error-banner" role="alert" aria-live="assertive">
+                  {(startDeleteSelectedJobMutation.error as Error).message}
+                </div>
+              ) : null}
+              <div className="button-row inventory-danger-inline-confirm-actions">
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={startDeleteSelectedJobMutation.isPending || deleteInProgress}
+                  onClick={() => setSelectedDeleteConfirmOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-danger"
+                  type="button"
+                  disabled={selectedEndpointCount === 0 || startDeleteSelectedJobMutation.isPending || deleteInProgress}
+                  onClick={() => {
+                    if (selectedEndpointCount === 0) {
+                      return;
+                    }
+                    setDeleteJobNotice(null);
+                    startDeleteSelectedJobMutation.mutate({
+                      endpoint_ids: selectedEndpointIDs,
+                      target_summary: selectedDeleteTargetSummary
+                    });
+                  }}
+                >
+                  {startDeleteSelectedJobMutation.isPending ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="inventory-filter-section">
             <div className="inventory-filter-meta-row">
