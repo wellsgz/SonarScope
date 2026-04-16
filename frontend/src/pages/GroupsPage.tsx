@@ -157,6 +157,7 @@ export function GroupsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [endpointIDs, setEndpointIDs] = useState<number[]>([]);
+  const [addEndpointIDs, setAddEndpointIDs] = useState<number[]>([]);
   const [manualIPList, setManualIPList] = useState("");
   const [membershipMode, setMembershipMode] = useState<MembershipMode>("manual");
   const [membershipAction, setMembershipAction] = useState<MembershipAction>("assign");
@@ -211,6 +212,7 @@ export function GroupsPage() {
       setName("");
       setDescription("");
       setEndpointIDs([]);
+      setAddEndpointIDs([]);
       setManualIPList("");
       setMembershipMode("manual");
       setMembershipAction("assign");
@@ -296,6 +298,7 @@ export function GroupsPage() {
       setName(nextGroup.name);
       setDescription(nextGroup.description);
       setEndpointIDs(nextGroup.endpoint_ids || []);
+      setAddEndpointIDs([]);
       setManualIPList("");
       setBatchGroupPreview(null);
       setGroupUpdateNotice({
@@ -338,6 +341,7 @@ export function GroupsPage() {
       setName(nextGroup.name);
       setDescription(nextGroup.description);
       setEndpointIDs(nextGroup.endpoint_ids || []);
+      setAddEndpointIDs([]);
       setManualIPList("");
       setRemovalEndpointIDs([]);
       setBatchGroupRemovePreview(null);
@@ -436,15 +440,21 @@ export function GroupsPage() {
     setRemovalEndpointIDs([]);
   }
 
+  function resetAddState() {
+    setAddEndpointIDs([]);
+  }
+
   function resetEditorToCreate() {
     setEditingID(null);
     setName("");
     setDescription("");
     setEndpointIDs([]);
+    setAddEndpointIDs([]);
     setManualIPList("");
     setMembershipAction("assign");
     setMembershipMode("manual");
     setGroupUpdateNotice(null);
+    resetAddState();
     resetRemovalState();
     resetMembershipPreviewState();
   }
@@ -458,6 +468,7 @@ export function GroupsPage() {
     setName(group.name);
     setDescription(group.description);
     setEndpointIDs(group.endpoint_ids || []);
+    setAddEndpointIDs([]);
     setManualIPList("");
     setMembershipAction("assign");
     setGroupUpdateNotice(null);
@@ -478,6 +489,7 @@ export function GroupsPage() {
     setMembershipAction(nextAction);
     setManualIPList("");
     setGroupUpdateNotice(null);
+    resetAddState();
     resetRemovalState();
     resetMembershipPreviewState();
   }
@@ -491,7 +503,7 @@ export function GroupsPage() {
   const resolveSaveRequest = () => {
     const groupID = editingID;
     const trimmedName = name.trim();
-    let resolvedEndpointIDs = endpointIDs;
+    let resolvedEndpointIDs = editingID !== null ? endpointIDs : addEndpointIDs;
     const noticeParts: string[] = [];
     let removalMatchedCount = 0;
     let successMessage: string | null = null;
@@ -556,22 +568,13 @@ export function GroupsPage() {
         resolved.push(endpointID);
       });
 
-      resolvedEndpointIDs = resolved;
+      resolvedEndpointIDs = groupID !== null ? Array.from(new Set([...(endpointIDs || []), ...resolved])) : resolved;
 
       if (unknownIPs.length > 0) {
         noticeParts.push(`Unknown IPs ignored: ${unknownIPs.join(", ")}`);
       }
-
-      if (groupID !== null) {
-        const currentGroup = (groupsQuery.data || []).find((group) => group.id === groupID);
-        const currentEndpointIDs = currentGroup?.endpoint_ids || [];
-        const nextEndpointSet = new Set(resolvedEndpointIDs);
-        const removedEndpointIDs = currentEndpointIDs.filter((id) => !nextEndpointSet.has(id));
-        if (removedEndpointIDs.length > 0) {
-          const removedMembers = removedEndpointIDs.map((id) => endpointIPByID.get(id) || `endpoint_id:${id}`);
-          noticeParts.push(`Removed from group (not in provided IP list): ${removedMembers.join(", ")}`);
-        }
-      }
+    } else if (groupID !== null) {
+      resolvedEndpointIDs = Array.from(new Set([...(endpointIDs || []), ...addEndpointIDs]));
     }
 
     return {
@@ -794,7 +797,7 @@ export function GroupsPage() {
                   onClick={() => updateMembershipAction("assign")}
                   aria-pressed={membershipAction === "assign"}
                 >
-                  Add / Update
+                  Add
                 </button>
                 {canRemoveMembers ? (
                   <button
@@ -810,7 +813,7 @@ export function GroupsPage() {
               <span className="field-help">
                 {membershipAction === "remove"
                   ? 'Remove mode only affects existing members of this group. Removed endpoints are reassigned to "No Group".'
-                  : "Add / Update keeps the current group-editing workflow for creating a group or replacing its membership."}
+                  : 'Add mode only appends endpoints to the group. Existing members stay in place unless you switch to "Remove".'}
               </span>
             </div>
 
@@ -837,14 +840,14 @@ export function GroupsPage() {
               <span className="field-help">
                 {membershipAction === "remove"
                   ? "Manual IP List removes current members directly. Regex Match previews removals only against endpoints already in this group."
-                  : "Manual IP List keeps the current editor workflow. Regex Match previews the full inventory and moves the matches into this group."}
+                  : "Manual IP List adds endpoints directly. Regex Match previews the full inventory and adds the matches into this group."}
               </span>
             </div>
 
             {membershipMode === "manual" ? (
               <>
                 <label>
-                  {membershipAction === "remove" ? "Member IP List to Remove" : "Endpoint IP List (Manual Update)"}
+                  {membershipAction === "remove" ? "Member IP List to Remove" : editingID ? "Endpoint IP List to Add" : "Initial Endpoint IP List"}
                   <textarea
                     rows={3}
                     value={manualIPList}
@@ -857,14 +860,16 @@ export function GroupsPage() {
                   <span className="field-help">
                     {membershipAction === "remove"
                       ? "If provided, this list overrides the member multi-select and removes only current group members that match."
-                      : "If provided, this list overrides endpoint multi-select for create/update."}
+                      : editingID
+                        ? "If provided, this list overrides the add multi-select for this save and adds only the matching endpoints."
+                        : "If provided, this list overrides the endpoint multi-select for initial group membership."}
                   </span>
                 </label>
                 <label>
-                  {membershipAction === "remove" ? "Members to Remove" : "Endpoints"}
+                  {membershipAction === "remove" ? "Members to Remove" : editingID ? "Members to Add" : "Endpoints"}
                   <select
                     multiple
-                    value={(membershipAction === "remove" ? removalEndpointIDs : endpointIDs).map(String)}
+                    value={(membershipAction === "remove" ? removalEndpointIDs : addEndpointIDs).map(String)}
                     disabled={manualIPs.length > 0}
                     onChange={(event) => {
                       const selected = Array.from(event.target.selectedOptions).map((option) => Number(option.value));
@@ -872,7 +877,7 @@ export function GroupsPage() {
                         setRemovalEndpointIDs(selected);
                         return;
                       }
-                      setEndpointIDs(selected);
+                      setAddEndpointIDs(selected);
                     }}
                   >
                     {(membershipAction === "remove" ? currentGroupEndpointOptions : endpointOptions).map((option) => (
@@ -886,7 +891,9 @@ export function GroupsPage() {
                       ? "Manual IP list override is active."
                       : membershipAction === "remove"
                         ? "Hold Ctrl/Cmd to multi-select current group members to remove."
-                        : "Hold Ctrl/Cmd to multi-select endpoints."}
+                        : editingID
+                          ? "Hold Ctrl/Cmd to multi-select endpoints to add. Existing members are preserved."
+                          : "Hold Ctrl/Cmd to multi-select endpoints for the new group."}
                   </span>
                 </label>
               </>
@@ -1031,7 +1038,7 @@ export function GroupsPage() {
                     Boolean(manualRemoveInvalid)
                   }
                 >
-                  {membershipAction === "remove" ? "Remove Members" : editingID ? "Update Group" : "Create Group"}
+                  {membershipAction === "remove" ? "Remove Members" : editingID ? "Add Members" : "Create Group"}
                 </button>
               ) : (
                 <>
@@ -1087,7 +1094,9 @@ export function GroupsPage() {
                         : "Apply Member Removal"
                       : applyRegexMutation.isPending
                         ? "Applying..."
-                        : "Apply Regex Assignment"}
+                        : editingID
+                          ? "Apply Member Add"
+                          : "Create Group from Matches"}
                   </button>
                 </>
               )}
