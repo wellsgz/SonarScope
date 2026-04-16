@@ -941,6 +941,16 @@ label {
   color: var(--color-danger);
 }
 
+.badge-active {
+  background: color-mix(in srgb, var(--color-success) 16%, transparent);
+  color: var(--color-success);
+}
+
+.badge-inactive {
+  background: color-mix(in srgb, var(--color-text-subtle) 20%, transparent);
+  color: var(--color-text-muted);
+}
+
 .count-badge {
   display: inline-flex;
   align-items: center;

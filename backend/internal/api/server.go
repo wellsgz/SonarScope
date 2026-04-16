@@ -397,6 +397,7 @@ func (s *Server) Routes() http.Handler {
 			r.Post("/endpoints", s.handleInventoryEndpointCreate)
 			r.Get("/endpoints", s.handleInventoryEndpoints)
 			r.Get("/endpoints/export.csv", s.handleInventoryEndpointsExportCSV)
+			r.Post("/endpoints/activity", s.handleInventoryEndpointActivityUpdate)
 			r.Get("/import-template.csv", s.handleInventoryImportTemplateCSV)
 			r.Post("/batch/group/preview", s.handleInventoryBatchGroupPreview)
 			r.Post("/batch/group/apply", s.handleInventoryBatchGroupApply)
@@ -824,6 +825,10 @@ func (s *Server) inventoryListQueryFromRequest(
 	ctx context.Context,
 	r *http.Request,
 ) (store.InventoryListQuery, []model.CustomFieldConfig, error) {
+	activityStates, err := parseInventoryActivityQuery(r)
+	if err != nil {
+		return store.InventoryListQuery{}, nil, err
+	}
 	filters := store.MonitorFilters{
 		VLANs:      parseCSVQuery(r, "vlan"),
 		Switches:   parseCSVQuery(r, "switch"),
@@ -842,17 +847,22 @@ func (s *Server) inventoryListQueryFromRequest(
 	custom1, custom2, custom3 = filterCustomSearchesBySettings(settings.CustomFields, custom1, custom2, custom3)
 
 	return store.InventoryListQuery{
-		Filters: filters,
-		Custom1: custom1,
-		Custom2: custom2,
-		Custom3: custom3,
+		Filters:        filters,
+		ActivityStates: activityStates,
+		Custom1:        custom1,
+		Custom2:        custom2,
+		Custom3:        custom3,
 	}, normalizeCustomFieldConfigs(settings.CustomFields), nil
 }
 
 func (s *Server) handleInventoryEndpoints(w http.ResponseWriter, r *http.Request) {
 	listQuery, _, err := s.inventoryListQueryFromRequest(r.Context(), r)
 	if err != nil {
-		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "activity") {
+			status = http.StatusBadRequest
+		}
+		util.WriteError(w, status, err.Error())
 		return
 	}
 
@@ -867,7 +877,11 @@ func (s *Server) handleInventoryEndpoints(w http.ResponseWriter, r *http.Request
 func (s *Server) handleInventoryEndpointsExportCSV(w http.ResponseWriter, r *http.Request) {
 	listQuery, customFields, err := s.inventoryListQueryFromRequest(r.Context(), r)
 	if err != nil {
-		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "activity") {
+			status = http.StatusBadRequest
+		}
+		util.WriteError(w, status, err.Error())
 		return
 	}
 
@@ -896,6 +910,7 @@ func (s *Server) handleInventoryEndpointsExportCSV(w http.ResponseWriter, r *htt
 	header := []string{
 		"Hostname",
 		"IP Address",
+		"State",
 		"MAC",
 		"VLAN",
 		"Switch",
@@ -918,6 +933,12 @@ func (s *Server) handleInventoryEndpointsExportCSV(w http.ResponseWriter, r *htt
 		record := []string{
 			item.Hostname,
 			item.IPAddress,
+			func() string {
+				if item.Active {
+					return "Active"
+				}
+				return "Inactive"
+			}(),
 			item.MACAddress,
 			item.VLAN,
 			item.Switch,
@@ -950,6 +971,33 @@ func (s *Server) handleInventoryEndpointsExportCSV(w http.ResponseWriter, r *htt
 	if _, err := w.Write(csvBuffer.Bytes()); err != nil {
 		log.Printf("inventory export write response: %v", err)
 	}
+}
+
+func (s *Server) handleInventoryEndpointActivityUpdate(w http.ResponseWriter, r *http.Request) {
+	var req model.InventoryEndpointActivityUpdateRequest
+	if err := util.DecodeJSON(r, &req); err != nil {
+		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
+		return
+	}
+
+	req.EndpointIDs = uniqueInt64(req.EndpointIDs)
+	for _, endpointID := range req.EndpointIDs {
+		if endpointID < 1 {
+			util.WriteError(w, http.StatusBadRequest, "endpoint_ids must contain positive integers")
+			return
+		}
+	}
+
+	updatedCount, err := s.store.SetInventoryEndpointActivity(r.Context(), req.EndpointIDs, req.Active)
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	util.WriteJSON(w, http.StatusOK, model.InventoryEndpointActivityUpdateResponse{
+		UpdatedCount: updatedCount,
+		Active:       req.Active,
+	})
 }
 
 func (s *Server) handleInventoryEndpointUpdate(w http.ResponseWriter, r *http.Request) {
@@ -1141,7 +1189,7 @@ func (s *Server) handleInventoryDeleteJobCurrent(w http.ResponseWriter, _ *http.
 }
 
 func (s *Server) handleInventoryFilters(w http.ResponseWriter, r *http.Request) {
-	filters, err := s.store.ListDistinctFilters(r.Context())
+	filters, err := s.store.ListDistinctFilters(r.Context(), false)
 	if err != nil {
 		util.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1959,7 +2007,7 @@ func (s *Server) handleMonitorTimeSeries(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleMonitorFilters(w http.ResponseWriter, r *http.Request) {
-	filters, err := s.store.ListDistinctFilters(r.Context())
+	filters, err := s.store.ListDistinctFilters(r.Context(), true)
 	if err != nil {
 		util.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -2011,6 +2059,28 @@ func parseCSVQuery(r *http.Request, key string) []string {
 		return nil
 	}
 	return out
+}
+
+func parseInventoryActivityQuery(r *http.Request) ([]string, error) {
+	values := parseCSVQuery(r, "activity")
+	if len(values) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized != "active" && normalized != "inactive" {
+			return nil, fmt.Errorf("activity must contain only active or inactive")
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+	return out, nil
 }
 
 func uniqueStrings(values []string) []string {

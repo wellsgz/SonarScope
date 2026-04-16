@@ -19,6 +19,7 @@ import type {
   InventoryDeleteJobStatus,
   MonitorEndpoint,
   MonitorEndpointPageResponse,
+  InventoryEndpointActivityUpdateResponse,
   MonitorSortCriterion,
   MonitorSortField,
   ProbeStatus,
@@ -477,6 +478,7 @@ export async function listInventoryEndpoints(filters: {
   switches?: string[];
   ports?: string[];
   groups?: string[];
+  activity?: string[];
   custom1?: string;
   custom2?: string;
   custom3?: string;
@@ -486,6 +488,7 @@ export async function listInventoryEndpoints(filters: {
     switch: filters.switches?.join(","),
     port: filters.ports?.join(","),
     group: filters.groups?.join(","),
+    activity: filters.activity?.join(","),
     custom_1: filters.custom1?.trim() || undefined,
     custom_2: filters.custom2?.trim() || undefined,
     custom_3: filters.custom3?.trim() || undefined
@@ -498,6 +501,7 @@ export async function exportInventoryEndpointsCSV(filters: {
   switches?: string[];
   ports?: string[];
   groups?: string[];
+  activity?: string[];
   custom1?: string;
   custom2?: string;
   custom3?: string;
@@ -507,6 +511,7 @@ export async function exportInventoryEndpointsCSV(filters: {
     switch: filters.switches?.join(","),
     port: filters.ports?.join(","),
     group: filters.groups?.join(","),
+    activity: filters.activity?.join(","),
     custom_1: filters.custom1?.trim() || undefined,
     custom_2: filters.custom2?.trim() || undefined,
     custom_3: filters.custom3?.trim() || undefined
@@ -575,6 +580,16 @@ export async function updateInventoryEndpoint(
 ): Promise<InventoryEndpoint> {
   return request<InventoryEndpoint>(`/api/inventory/endpoints/${endpointID}`, {
     method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateInventoryEndpointActivity(payload: {
+  endpoint_ids: number[];
+  active: boolean;
+}): Promise<InventoryEndpointActivityUpdateResponse> {
+  return request<InventoryEndpointActivityUpdateResponse>("/api/inventory/endpoints/activity", {
+    method: "POST",
     body: JSON.stringify(payload)
   });
 }

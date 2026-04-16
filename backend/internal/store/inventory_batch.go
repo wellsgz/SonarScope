@@ -326,13 +326,14 @@ func (s *Store) ListInventoryEndpointsByIDs(
 			ie.port_type,
 			ie.description,
 			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
+			ie.is_active,
 			ie.updated_at
 		FROM inventory_endpoint ie
 		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
 		LEFT JOIN group_def gd ON gd.id = gm.group_id
 		WHERE ie.id = ANY($1)
 		GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.switch_name, ie.port,
-			ie.port_type, ie.description, ie.updated_at,
+			ie.port_type, ie.description, ie.is_active, ie.updated_at,
 			ie.custom_field_1_value, ie.custom_field_2_value, ie.custom_field_3_value
 		ORDER BY ie.ip
 		LIMIT $2
@@ -359,6 +360,7 @@ func (s *Store) ListInventoryEndpointsByIDs(
 			&item.PortType,
 			&item.Description,
 			&item.Groups,
+			&item.Active,
 			&item.UpdatedAt,
 		); err != nil {
 			return nil, err

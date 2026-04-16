@@ -65,7 +65,7 @@ export function SidebarNav({
   }, [groups, groupSearch]);
 
   const groupEndpointCountMap = useMemo(() => {
-    return new Map(groups.map((group) => [group.id, group.endpoint_ids?.length ?? 0]));
+    return new Map(groups.map((group) => [group.id, group.active_endpoint_count ?? group.endpoint_ids?.length ?? 0]));
   }, [groups]);
 
   const selectedDraftEndpointCount = useMemo(() => {
@@ -188,7 +188,9 @@ export function SidebarNav({
                             onChange={() => toggleDraftGroup(group.id)}
                           />
                           <span className="sidebar-group-picker-item-name">{group.name}</span>
-                          <span className="sidebar-group-picker-item-count">({group.endpoint_ids?.length ?? 0})</span>
+                          <span className="sidebar-group-picker-item-count">
+                            ({group.active_endpoint_count ?? group.endpoint_ids?.length ?? 0})
+                          </span>
                         </label>
                       ))
                     ) : (

@@ -7,6 +7,7 @@ import {
   listFilterOptions,
   listMonitorEndpointsPage,
   listMonitorTimeSeries,
+  updateInventoryEndpointActivity,
   updateSettings
 } from "../api/client";
 import { MonitorChart } from "../components/MonitorChart";
@@ -240,9 +241,8 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   const [rangeAnchorMs, setRangeAnchorMs] = useState<number>(Date.now());
   const [dashboardLookback, setDashboardLookback] = useState<string>("");
   const [internalDashboardMode, setInternalDashboardMode] = useState(false);
-  const [excludeModeActive, setExcludeModeActive] = useState(false);
-  const [pendingExcludedEndpointIDs, setPendingExcludedEndpointIDs] = useState<number[]>([]);
-  const [appliedExcludedEndpointIDs, setAppliedExcludedEndpointIDs] = useState<number[]>([]);
+  const [inactiveModeActive, setInactiveModeActive] = useState(false);
+  const [pendingInactiveEndpointIDs, setPendingInactiveEndpointIDs] = useState<number[]>([]);
   const [dashboardUnreachableExpanded, setDashboardUnreachableExpanded] = useState(false);
   const [sortScopeNotice, setSortScopeNotice] = useState<string | null>(null);
   const [controlsCollapsed, setControlsCollapsed] = useState<boolean>(() => {
@@ -275,20 +275,18 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
 
   const autoRefreshMs = Math.max(1000, (settingsQuery.data?.auto_refresh_sec ?? 30) * 1000);
   const tableDashboardMode = dashboardMode ?? internalDashboardMode;
-  const dashboardRefreshPaused = tableDashboardMode && excludeModeActive;
+  const dashboardRefreshPaused = tableDashboardMode && inactiveModeActive;
   const isNonDashboardCustomRange = !tableDashboardMode && dataScope === "range" && quickRange === "custom";
   const allowRealtimeInvalidation = !tableDashboardMode && !isNonDashboardCustomRange;
-  const effectiveExcludedEndpointIDs = tableDashboardMode ? appliedExcludedEndpointIDs : [];
 
-  const resetDashboardExclusionState = () => {
-    setExcludeModeActive(false);
-    setPendingExcludedEndpointIDs([]);
-    setAppliedExcludedEndpointIDs([]);
+  const resetDashboardInactiveState = () => {
+    setInactiveModeActive(false);
+    setPendingInactiveEndpointIDs([]);
   };
 
   const setTableDashboardMode = (enabled: boolean) => {
     if (!enabled) {
-      resetDashboardExclusionState();
+      resetDashboardInactiveState();
       setSortCriteria((current) => current.slice(0, 1));
     }
     if (dashboardMode === undefined) {
@@ -339,7 +337,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
 
   useEffect(() => {
     if (!tableDashboardMode) {
-      resetDashboardExclusionState();
+      resetDashboardInactiveState();
     }
   }, [tableDashboardMode]);
 
@@ -487,10 +485,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
         ? false
         : autoRefreshMs;
   const sortCriteriaKey = useMemo(() => serializeSortCriteria(sortCriteria), [sortCriteria]);
-  const excludedEndpointIDsKey = useMemo(
-    () => effectiveExcludedEndpointIDs.join(","),
-    [effectiveExcludedEndpointIDs]
-  );
   const monitorQueryFilters = useMemo(
     () => ({
       vlan: filters.vlan,
@@ -503,7 +497,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       custom2: customSearch.custom2,
       custom3: customSearch.custom3,
       ipList: ipListValues,
-      excludeEndpointIds: effectiveExcludedEndpointIDs,
       statsScope: dataScope,
       start: dataScope === "range" ? toApiTime(effectiveStart) : undefined,
       end: dataScope === "range" ? toApiTime(effectiveEnd) : undefined
@@ -514,7 +507,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       customSearch.custom3,
       dataScope,
       effectiveEnd,
-      effectiveExcludedEndpointIDs,
       effectiveStart,
       filters.groups,
       filters.ports,
@@ -542,8 +534,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       dataScope === "range" ? effectiveEnd.toISOString() : "",
       page,
       pageSize,
-      sortCriteriaKey,
-      excludedEndpointIDsKey
+      sortCriteriaKey
     ],
     queryFn: () =>
       listMonitorEndpointsPage({
@@ -572,7 +563,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       custom2: customSearch.custom2,
       custom3: customSearch.custom3,
       ipList: ipListValues,
-      excludeEndpointIds: effectiveExcludedEndpointIDs,
       statsScope: dataScope,
       start: dataScope === "range" ? toApiTime(effectiveStart) : undefined,
       end: dataScope === "range" ? toApiTime(effectiveEnd) : undefined,
@@ -585,7 +575,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       dashboardLookback,
       dataScope,
       effectiveEnd,
-      effectiveExcludedEndpointIDs,
       effectiveStart,
       filters.groups,
       filters.ports,
@@ -609,7 +598,6 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       dashboardSummaryFilters.custom2,
       dashboardSummaryFilters.custom3,
       dashboardSummaryFilters.ipList,
-      excludedEndpointIDsKey,
       dashboardSummaryFilters.statsScope,
       dashboardSummaryFilters.statsScope === "range" ? dashboardSummaryFilters.start ?? "" : "",
       dashboardSummaryFilters.statsScope === "range" ? dashboardSummaryFilters.end ?? "" : "",
@@ -693,10 +681,26 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     refetchOnMount: false
   });
 
+  const updateActivityMutation = useMutation({
+    mutationFn: (payload: { endpoint_ids: number[]; active: boolean }) => updateInventoryEndpointActivity(payload),
+    onSuccess: () => {
+      setPendingInactiveEndpointIDs([]);
+      setInactiveModeActive(false);
+      setPage(1);
+      queryClient.invalidateQueries({ queryKey: ["inventory-endpoints"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-filter-options"] });
+      queryClient.invalidateQueries({ queryKey: ["groups"] });
+      queryClient.invalidateQueries({ queryKey: ["monitor-endpoints-page"] });
+      queryClient.invalidateQueries({ queryKey: ["monitor-endpoints"] });
+      queryClient.invalidateQueries({ queryKey: ["monitor-dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["filter-options"] });
+    }
+  });
+
   const handleTableSelectionChange = (ids: number[]) => {
     if (tableDashboardMode) {
-      if (excludeModeActive) {
-        setPendingExcludedEndpointIDs(uniqueEndpointIDs(ids));
+      if (inactiveModeActive) {
+        setPendingInactiveEndpointIDs(uniqueEndpointIDs(ids));
       }
       return;
     }
@@ -722,30 +726,25 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
     });
   };
 
-  const handleDashboardExcludeStart = () => {
-    setPendingExcludedEndpointIDs([]);
-    setExcludeModeActive(true);
+  const handleDashboardInactiveStart = () => {
+    setPendingInactiveEndpointIDs([]);
+    setInactiveModeActive(true);
   };
 
-  const handleDashboardExcludeCancel = () => {
-    setPendingExcludedEndpointIDs([]);
-    setExcludeModeActive(false);
+  const handleDashboardInactiveCancel = () => {
+    setPendingInactiveEndpointIDs([]);
+    setInactiveModeActive(false);
   };
 
-  const handleDashboardExcludeApply = () => {
-    if (pendingExcludedEndpointIDs.length === 0) {
-      setExcludeModeActive(false);
+  const handleDashboardInactiveApply = () => {
+    if (pendingInactiveEndpointIDs.length === 0 || updateActivityMutation.isPending) {
+      setInactiveModeActive(false);
       return;
     }
-    setAppliedExcludedEndpointIDs((current) => uniqueEndpointIDs([...current, ...pendingExcludedEndpointIDs]));
-    setPendingExcludedEndpointIDs([]);
-    setExcludeModeActive(false);
-    setPage(1);
-  };
-
-  const handleDashboardClearExclusions = () => {
-    resetDashboardExclusionState();
-    setPage(1);
+    updateActivityMutation.mutate({
+      endpoint_ids: pendingInactiveEndpointIDs,
+      active: false
+    });
   };
 
   const settingsMutation = useMutation({
@@ -817,37 +816,34 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       <div className="monitor-dashboard-table-actions-group">
         <button
           type="button"
-          className={`btn btn-small ${excludeModeActive ? "btn-primary" : ""}`}
-          onClick={handleDashboardExcludeStart}
-          disabled={monitorRows.length === 0}
+          className={`btn btn-small ${inactiveModeActive ? "btn-primary" : ""}`}
+          onClick={handleDashboardInactiveStart}
+          disabled={monitorRows.length === 0 || updateActivityMutation.isPending}
         >
-          Exclude Endpoints
+          Make Inactive
         </button>
-        {excludeModeActive ? (
+        {inactiveModeActive ? (
           <>
             <button
               type="button"
               className="btn btn-small btn-primary"
-              onClick={handleDashboardExcludeApply}
-              disabled={pendingExcludedEndpointIDs.length === 0}
+              onClick={handleDashboardInactiveApply}
+              disabled={pendingInactiveEndpointIDs.length === 0 || updateActivityMutation.isPending}
             >
-              Apply
+              {updateActivityMutation.isPending ? "Applying..." : "Apply"}
             </button>
-            <button type="button" className="btn btn-small" onClick={handleDashboardExcludeCancel}>
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={handleDashboardInactiveCancel}
+              disabled={updateActivityMutation.isPending}
+            >
               Cancel
             </button>
           </>
         ) : null}
-        <button
-          type="button"
-          className="btn btn-small"
-          onClick={handleDashboardClearExclusions}
-          disabled={appliedExcludedEndpointIDs.length === 0 && pendingExcludedEndpointIDs.length === 0}
-        >
-          Clear Exclusions
-        </button>
-        {excludeModeActive ? (
-          <span className="monitor-dashboard-table-actions-note">Refresh paused while selecting endpoints to exclude.</span>
+        {inactiveModeActive ? (
+          <span className="monitor-dashboard-table-actions-note">Refresh paused while selecting endpoints to mark inactive.</span>
         ) : null}
       </div>
       <div className="monitor-dashboard-table-actions-group monitor-dashboard-sort-summary">
@@ -890,10 +886,10 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       columnVisibility={visibility}
       columnOrder={order}
       selectedEndpointIDs={
-        tableDashboardMode ? (excludeModeActive ? pendingExcludedEndpointIDs : []) : chartSnapshot ? [chartSnapshot.id] : []
+        tableDashboardMode ? (inactiveModeActive ? pendingInactiveEndpointIDs : []) : chartSnapshot ? [chartSnapshot.id] : []
       }
       onSelectionChange={handleTableSelectionChange}
-      selectionMode={tableDashboardMode ? (excludeModeActive ? "multi" : "none") : "replace"}
+      selectionMode={tableDashboardMode ? (inactiveModeActive ? "multi" : "none") : "replace"}
       page={monitorQuery.data?.page ?? page}
       pageSize={(monitorQuery.data?.page_size as 50 | 100 | 200) ?? pageSize}
       totalItems={monitorQuery.data?.total_items ?? 0}
@@ -918,7 +914,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       onColumnOrderChange={setColumnOrder}
       onResetColumnPreferences={resetToDefaults}
       actionSlot={dashboardTableActionSlot}
-      showSelectionCheckboxes={tableDashboardMode && excludeModeActive}
+      showSelectionCheckboxes={tableDashboardMode && inactiveModeActive}
       emptyMessage="No endpoints match the active filters."
       preserveRelativeScroll={tableDashboardMode}
       refreshSignal={monitorQuery.dataUpdatedAt}
@@ -929,10 +925,11 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   if (tableDashboardMode) {
     return (
       <div className="monitor-dashboard-view">
-        {(monitorQuery.error || settingsMutation.error) && (
+        {(monitorQuery.error || settingsMutation.error || updateActivityMutation.error) && (
           <div className="error-banner" role="alert" aria-live="assertive">
             {(monitorQuery.error as Error | undefined)?.message ||
-              (settingsMutation.error as Error | undefined)?.message}
+              (settingsMutation.error as Error | undefined)?.message ||
+              (updateActivityMutation.error as Error | undefined)?.message}
           </div>
         )}
 
@@ -1012,7 +1009,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
                             type="button"
                             className={`status-chip ${isActive ? "status-chip-live" : ""}`}
                             onClick={() => setDashboardLookback(value)}
-                            disabled={excludeModeActive}
+                            disabled={inactiveModeActive}
                           >
                             {label}
                           </button>
@@ -1181,10 +1178,11 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       </aside>
 
       <div className="monitor-data-stack">
-        {(monitorQuery.error || settingsMutation.error) && (
+        {(monitorQuery.error || settingsMutation.error || updateActivityMutation.error) && (
           <div className="error-banner" role="alert" aria-live="assertive">
             {(monitorQuery.error as Error | undefined)?.message ||
-              (settingsMutation.error as Error | undefined)?.message}
+              (settingsMutation.error as Error | undefined)?.message ||
+              (updateActivityMutation.error as Error | undefined)?.message}
           </div>
         )}
         {sortScopeNotice ? (

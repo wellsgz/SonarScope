@@ -72,6 +72,7 @@ export type InventoryEndpoint = {
   port_type: string;
   description: string;
   group: string[];
+  active: boolean;
   updated_at: string;
 };
 
@@ -98,6 +99,12 @@ export type Group = {
   created_at: string;
   updated_at: string;
   endpoint_ids?: number[];
+  active_endpoint_count?: number;
+};
+
+export type InventoryEndpointActivityUpdateResponse = {
+  updated_count: number;
+  active: boolean;
 };
 
 export type CustomFieldConfig = {

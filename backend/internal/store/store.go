@@ -65,10 +65,11 @@ type rangeFailureStreakStats struct {
 }
 
 type InventoryListQuery struct {
-	Filters MonitorFilters
-	Custom1 string
-	Custom2 string
-	Custom3 string
+	Filters        MonitorFilters
+	ActivityStates []string
+	Custom1        string
+	Custom2        string
+	Custom3        string
 }
 
 type ProbeTarget struct {
@@ -323,7 +324,7 @@ func (s *Store) GetSwitchIPMap(ctx context.Context) (map[string]string, error) {
 func (s *Store) InventoryByIP(ctx context.Context) (map[string]model.InventoryEndpoint, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, host(ip), mac, custom_field_1_value, custom_field_2_value, custom_field_3_value,
-		       vlan, switch_name, port, port_type, description, hostname, updated_at
+		       vlan, switch_name, port, port_type, description, hostname, is_active, updated_at
 		FROM inventory_endpoint
 	`)
 	if err != nil {
@@ -347,6 +348,7 @@ func (s *Store) InventoryByIP(ctx context.Context) (map[string]model.InventoryEn
 			&endpoint.PortType,
 			&endpoint.Description,
 			&endpoint.Hostname,
+			&endpoint.Active,
 			&endpoint.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -433,9 +435,11 @@ func (s *Store) ListGroups(ctx context.Context) ([]model.Group, error) {
 		       g.is_system,
 		       g.created_at,
 		       g.updated_at,
-		       COALESCE(array_agg(gm.endpoint_id) FILTER (WHERE gm.endpoint_id IS NOT NULL), '{}') AS endpoint_ids
+		       COALESCE(array_agg(gm.endpoint_id) FILTER (WHERE gm.endpoint_id IS NOT NULL), '{}') AS endpoint_ids,
+		       COUNT(*) FILTER (WHERE ie.is_active = TRUE)::BIGINT AS active_endpoint_count
 			FROM group_def g
 			LEFT JOIN group_member gm ON gm.group_id = g.id
+			LEFT JOIN inventory_endpoint ie ON ie.id = gm.endpoint_id
 			GROUP BY g.id
 			ORDER BY g.is_system DESC, lower(g.name), g.name
 		`)
@@ -447,7 +451,16 @@ func (s *Store) ListGroups(ctx context.Context) ([]model.Group, error) {
 	groups := []model.Group{}
 	for rows.Next() {
 		var g model.Group
-		if err := rows.Scan(&g.ID, &g.Name, &g.Description, &g.IsSystem, &g.CreatedAt, &g.UpdatedAt, &g.EndpointIDs); err != nil {
+		if err := rows.Scan(
+			&g.ID,
+			&g.Name,
+			&g.Description,
+			&g.IsSystem,
+			&g.CreatedAt,
+			&g.UpdatedAt,
+			&g.EndpointIDs,
+			&g.ActiveEndpointCount,
+		); err != nil {
 			return nil, err
 		}
 		groups = append(groups, g)
@@ -489,6 +502,10 @@ func (s *Store) CreateGroup(ctx context.Context, name string, description string
 		}
 	}
 	group.EndpointIDs = endpointIDs
+	group.ActiveEndpointCount, err = activeEndpointCountForGroupQuerier(ctx, tx, group.ID)
+	if err != nil {
+		return model.Group{}, err
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return model.Group{}, err
@@ -591,6 +608,10 @@ func (s *Store) UpdateGroup(ctx context.Context, id int64, name string, descript
 		return model.Group{}, err
 	}
 	group.EndpointIDs = endpointIDs
+	group.ActiveEndpointCount, err = activeEndpointCountForGroupQuerier(ctx, tx, id)
+	if err != nil {
+		return model.Group{}, err
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return model.Group{}, err
@@ -633,6 +654,10 @@ func (s *Store) GetGroupByID(ctx context.Context, id int64) (model.Group, error)
 		return model.Group{}, err
 	}
 	group.EndpointIDs = endpointIDs
+	group.ActiveEndpointCount, err = activeEndpointCountForGroupQuerier(ctx, s.pool, id)
+	if err != nil {
+		return model.Group{}, err
+	}
 	return group, nil
 }
 
@@ -653,6 +678,24 @@ func (s *Store) GetGroupByNameCI(ctx context.Context, name string) (model.Group,
 
 func (s *Store) GetNoGroup(ctx context.Context) (model.Group, error) {
 	return s.GetGroupByNameCI(ctx, noGroupName)
+}
+
+func activeEndpointCountForGroupQuerier(
+	ctx context.Context,
+	querier interface {
+		QueryRow(context.Context, string, ...any) pgx.Row
+	},
+	groupID int64,
+) (int64, error) {
+	var count int64
+	err := querier.QueryRow(ctx, `
+		SELECT COUNT(*)::BIGINT
+		FROM group_member gm
+		JOIN inventory_endpoint ie ON ie.id = gm.endpoint_id
+		WHERE gm.group_id = $1
+		  AND ie.is_active = TRUE
+	`, groupID).Scan(&count)
+	return count, err
 }
 
 func (s *Store) ResolveEndpointIDsByIPs(ctx context.Context, ips []string) ([]int64, error) {
@@ -754,7 +797,7 @@ func (s *Store) ListProbeTargets(ctx context.Context, scope string, groupIDs []i
 
 	switch scope {
 	case "all":
-		query += ` ORDER BY ie.id`
+		query += ` WHERE ie.is_active = TRUE ORDER BY ie.id`
 	case "groups":
 		if len(groupIDs) == 0 {
 			return nil, errors.New("group_ids required for groups scope")
@@ -762,6 +805,7 @@ func (s *Store) ListProbeTargets(ctx context.Context, scope string, groupIDs []i
 		query += `
 			JOIN group_member gm ON gm.endpoint_id = ie.id
 			WHERE gm.group_id = ANY($1)
+			  AND ie.is_active = TRUE
 			ORDER BY ie.id
 		`
 		args = append(args, uniqueInt64(groupIDs))
@@ -979,7 +1023,7 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 		LEFT JOIN endpoint_stats_current es ON es.endpoint_id = ie.id
 		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
 		LEFT JOIN group_def gd ON gd.id = gm.group_id
-		WHERE 1=1
+		WHERE ie.is_active = TRUE
 	`
 
 	args := []any{}
@@ -1683,6 +1727,7 @@ func (s *Store) ListInventoryEndpoints(ctx context.Context, listQuery InventoryL
 			ie.port_type,
 			ie.description,
 			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
+			ie.is_active,
 			ie.updated_at
 		FROM inventory_endpoint ie
 		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
@@ -1691,6 +1736,11 @@ func (s *Store) ListInventoryEndpoints(ctx context.Context, listQuery InventoryL
 	`
 
 	args := []any{}
+	includeActive, includeInactive := normalizeInventoryActivityStates(listQuery.ActivityStates)
+	if includeActive != includeInactive {
+		sql += fmt.Sprintf(" AND ie.is_active = $%d", len(args)+1)
+		args = append(args, includeActive)
+	}
 	if len(listQuery.Filters.VLANs) > 0 {
 		sql += fmt.Sprintf(" AND ie.vlan = ANY($%d)", len(args)+1)
 		args = append(args, listQuery.Filters.VLANs)
@@ -1730,7 +1780,7 @@ func (s *Store) ListInventoryEndpoints(ctx context.Context, listQuery InventoryL
 
 	sql += `
 		GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.switch_name, ie.port,
-			ie.port_type, ie.description, ie.updated_at,
+			ie.port_type, ie.description, ie.is_active, ie.updated_at,
 			ie.custom_field_1_value, ie.custom_field_2_value, ie.custom_field_3_value
 		ORDER BY ie.ip
 	`
@@ -1758,6 +1808,7 @@ func (s *Store) ListInventoryEndpoints(ctx context.Context, listQuery InventoryL
 			&item.PortType,
 			&item.Description,
 			&item.Groups,
+			&item.Active,
 			&item.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -1820,13 +1871,14 @@ func (s *Store) GetInventoryEndpointByID(ctx context.Context, endpointID int64) 
 			ie.port_type,
 			ie.description,
 			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
+			ie.is_active,
 			ie.updated_at
 		FROM inventory_endpoint ie
 		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
 		LEFT JOIN group_def gd ON gd.id = gm.group_id
 		WHERE ie.id = $1
 		GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.switch_name, ie.port,
-			ie.port_type, ie.description, ie.updated_at,
+			ie.port_type, ie.description, ie.is_active, ie.updated_at,
 			ie.custom_field_1_value, ie.custom_field_2_value, ie.custom_field_3_value
 	`, endpointID)
 
@@ -1845,11 +1897,31 @@ func (s *Store) GetInventoryEndpointByID(ctx context.Context, endpointID int64) 
 		&item.PortType,
 		&item.Description,
 		&item.Groups,
+		&item.Active,
 		&item.UpdatedAt,
 	); err != nil {
 		return model.InventoryEndpointView{}, err
 	}
 	return item, nil
+}
+
+func (s *Store) SetInventoryEndpointActivity(ctx context.Context, endpointIDs []int64, active bool) (int64, error) {
+	endpointIDs = uniqueInt64(endpointIDs)
+	if len(endpointIDs) == 0 {
+		return 0, nil
+	}
+
+	cmd, err := s.pool.Exec(ctx, `
+		UPDATE inventory_endpoint
+		SET is_active = $2,
+			updated_at = now()
+		WHERE id = ANY($1::bigint[])
+		  AND is_active IS DISTINCT FROM $2
+	`, endpointIDs, active)
+	if err != nil {
+		return 0, err
+	}
+	return cmd.RowsAffected(), nil
 }
 
 func (s *Store) CreateInventoryEndpoint(ctx context.Context, payload model.InventoryEndpointCreate) (model.InventoryEndpointView, error) {
@@ -2361,7 +2433,7 @@ func (s *Store) queryTimeSeriesFromRaw(ctx context.Context, endpointIDs []int64,
 	return series, rows.Err()
 }
 
-func (s *Store) ListDistinctFilters(ctx context.Context) (map[string][]string, error) {
+func (s *Store) ListDistinctFilters(ctx context.Context, activeOnly bool) (map[string][]string, error) {
 	out := map[string][]string{
 		"vlan":   {},
 		"switch": {},
@@ -2369,17 +2441,22 @@ func (s *Store) ListDistinctFilters(ctx context.Context) (map[string][]string, e
 		"group":  {},
 	}
 
-	if vals, err := scanDistinctText(ctx, s.pool, `SELECT DISTINCT vlan FROM inventory_endpoint WHERE vlan <> '' ORDER BY vlan`); err == nil {
+	baseWhere := "WHERE %s <> '' ORDER BY %s"
+	if activeOnly {
+		baseWhere = "WHERE is_active = TRUE AND %s <> '' ORDER BY %s"
+	}
+
+	if vals, err := scanDistinctText(ctx, s.pool, fmt.Sprintf(`SELECT DISTINCT vlan FROM inventory_endpoint `+baseWhere, "vlan", "vlan")); err == nil {
 		out["vlan"] = vals
 	} else {
 		return nil, err
 	}
-	if vals, err := scanDistinctText(ctx, s.pool, `SELECT DISTINCT switch_name FROM inventory_endpoint WHERE switch_name <> '' ORDER BY switch_name`); err == nil {
+	if vals, err := scanDistinctText(ctx, s.pool, fmt.Sprintf(`SELECT DISTINCT switch_name FROM inventory_endpoint `+baseWhere, "switch_name", "switch_name")); err == nil {
 		out["switch"] = vals
 	} else {
 		return nil, err
 	}
-	if vals, err := scanDistinctText(ctx, s.pool, `SELECT DISTINCT port FROM inventory_endpoint WHERE port <> '' ORDER BY port`); err == nil {
+	if vals, err := scanDistinctText(ctx, s.pool, fmt.Sprintf(`SELECT DISTINCT port FROM inventory_endpoint `+baseWhere, "port", "port")); err == nil {
 		out["port"] = vals
 	} else {
 		return nil, err
@@ -2441,6 +2518,18 @@ func uniqueStrings(values []string) []string {
 	return out
 }
 
+func normalizeInventoryActivityStates(values []string) (includeActive bool, includeInactive bool) {
+	for _, value := range values {
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "active":
+			includeActive = true
+		case "inactive":
+			includeInactive = true
+		}
+	}
+	return includeActive, includeInactive
+}
+
 func derefString(value *string) string {
 	if value == nil {
 		return ""
@@ -2478,7 +2567,7 @@ func buildMonitorWhereClause(
 	excludeEndpointIDs []int64,
 ) (string, []any) {
 	var query strings.Builder
-	query.WriteString(" WHERE 1=1")
+	query.WriteString(" WHERE ie.is_active = TRUE")
 
 	args := []any{}
 	if len(filters.VLANs) > 0 {
@@ -2541,8 +2630,8 @@ func buildMonitorWhereClause(
 }
 
 type monitorSortDefinition struct {
-	Expression         string
-	NullsFirstWhenAsc  bool
+	Expression        string
+	NullsFirstWhenAsc bool
 }
 
 func monitorSortExpression(sortBy string) (monitorSortDefinition, error) {

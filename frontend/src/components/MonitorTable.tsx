@@ -949,7 +949,7 @@ export function MonitorTable({
               <thead className="monitor-table-head-placeholder">
                 <tr>
                   {showSelectionCheckboxes ? (
-                    <th className="table-selection-column-head" aria-label="Exclude endpoint selection" />
+                    <th className="table-selection-column-head" aria-label="Endpoint selection" />
                   ) : null}
                   {headerColumns.map((column, index) => renderHeaderCell(column, index, false))}
                 </tr>
@@ -992,7 +992,7 @@ export function MonitorTable({
                               checked={selected}
                               onClick={(event) => event.stopPropagation()}
                               onChange={() => onSelectionChange(nextSelectionIDs(endpointID, selected))}
-                              aria-label={`Exclude endpoint ${row.hostname || row.ip_address}`}
+                              aria-label={`Select endpoint ${row.hostname || row.ip_address}`}
                             />
                           </td>
                         ) : null}

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyInventoryPreview,
@@ -19,6 +19,7 @@ import {
   startDeleteAllJob,
   startDeleteByGroupJob,
   startDeleteMatchJob,
+  updateInventoryEndpointActivity,
   updateInventoryEndpoint
 } from "../api/client";
 import type {
@@ -41,6 +42,7 @@ import {
 import { SwitchDirectory } from "../components/SwitchDirectory";
 
 type FilterState = {
+  activity: string[];
   vlan: string[];
   switches: string[];
   ports: string[];
@@ -61,6 +63,7 @@ type InventoryPatch = {
 };
 
 const defaultFilters: FilterState = {
+  activity: [],
   vlan: [],
   switches: [],
   ports: [],
@@ -180,6 +183,17 @@ function splitBatchIPList(value: string): string[] {
     .split(/[\n,]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function toInventoryActivityQuery(values: string[]): string[] | undefined {
+  const normalized = Array.from(
+    new Set(
+      values
+        .map((value) => value.trim().toLowerCase())
+        .filter((value): value is "active" | "inactive" => value === "active" || value === "inactive")
+    )
+  );
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function buildBatchMatchSpec(state: InventoryBatchMatchFormState): InventoryBatchMatchSpec {
@@ -354,6 +368,7 @@ export function InventoryPage() {
   const [importGuardError, setImportGuardError] = useState<string | null>(null);
 
   const initialFilterSearch: Record<keyof FilterState, string> = {
+    activity: "",
     vlan: "",
     switches: "",
     ports: "",
@@ -366,6 +381,8 @@ export function InventoryPage() {
   const [editingPatch, setEditingPatch] = useState<InventoryPatch | null>(null);
   const [deletingEndpointID, setDeletingEndpointID] = useState<number | null>(null);
   const [pendingDeleteEndpointID, setPendingDeleteEndpointID] = useState<number | null>(null);
+  const [selectedEndpointIDs, setSelectedEndpointIDs] = useState<number[]>([]);
+  const [selectionAnchorEndpointID, setSelectionAnchorEndpointID] = useState<number | null>(null);
   const [singleEndpoint, setSingleEndpoint] = useState<InventoryEndpointCreateRequest>(initialSingleEndpoint);
   const [lastAddedEndpoint, setLastAddedEndpoint] = useState<{ ip_address: string; hostname: string } | null>(null);
   const [showAddSuccessNotice, setShowAddSuccessNotice] = useState(false);
@@ -397,6 +414,7 @@ export function InventoryPage() {
   const lastHandledDeleteJobRef = useRef<string>("");
 
   const filterCards: Array<{ key: keyof FilterState; label: string; options: string[] }> = [
+    { key: "activity", label: "Activity", options: ["Active", "Inactive"] },
     { key: "vlan", label: "VLAN", options: [] },
     { key: "switches", label: "Switch", options: [] },
     { key: "ports", label: "Port", options: [] },
@@ -421,10 +439,10 @@ export function InventoryPage() {
     refetchInterval: 1000
   });
 
-  filterCards[0].options = filterOptionsQuery.data?.vlan || [];
-  filterCards[1].options = filterOptionsQuery.data?.switch || [];
-  filterCards[2].options = filterOptionsQuery.data?.port || [];
-  filterCards[3].options = filterOptionsQuery.data?.group || [];
+  filterCards[1].options = filterOptionsQuery.data?.vlan || [];
+  filterCards[2].options = filterOptionsQuery.data?.switch || [];
+  filterCards[3].options = filterOptionsQuery.data?.port || [];
+  filterCards[4].options = filterOptionsQuery.data?.group || [];
 
   const enabledCustomFields = useMemo(
     () => normalizeEnabledCustomFields(settingsQuery.data?.custom_fields),
@@ -456,6 +474,7 @@ export function InventoryPage() {
     queryKey: ["inventory-endpoints", filters, customSearch, enabledCustomFieldKey],
     queryFn: () =>
       listInventoryEndpoints({
+        activity: toInventoryActivityQuery(filters.activity),
         vlan: filters.vlan,
         switches: filters.switches,
         ports: filters.ports,
@@ -468,6 +487,7 @@ export function InventoryPage() {
   const exportCSVMutation = useMutation({
     mutationFn: () =>
       exportInventoryEndpointsCSV({
+        activity: toInventoryActivityQuery(filters.activity),
         vlan: filters.vlan,
         switches: filters.switches,
         ports: filters.ports,
@@ -507,6 +527,7 @@ export function InventoryPage() {
     queryClient.invalidateQueries({ queryKey: ["groups"] });
     queryClient.invalidateQueries({ queryKey: ["monitor-endpoints-page"] });
     queryClient.invalidateQueries({ queryKey: ["monitor-endpoints"] });
+    queryClient.invalidateQueries({ queryKey: ["monitor-dashboard-summary"] });
     queryClient.invalidateQueries({ queryKey: ["filter-options"] });
   }
 
@@ -565,6 +586,15 @@ export function InventoryPage() {
     onSuccess: () => {
       setEditingEndpointID(null);
       setEditingPatch(null);
+      invalidateInventoryAndMonitorQueries();
+    }
+  });
+
+  const updateActivityMutation = useMutation({
+    mutationFn: (payload: { endpoint_ids: number[]; active: boolean }) => updateInventoryEndpointActivity(payload),
+    onSuccess: () => {
+      setSelectedEndpointIDs([]);
+      setSelectionAnchorEndpointID(null);
       invalidateInventoryAndMonitorQueries();
     }
   });
@@ -741,11 +771,65 @@ export function InventoryPage() {
   const exportDisabled =
     exportCSVMutation.isPending || inventoryQuery.isLoading || (inventoryQuery.data?.length || 0) === 0;
   const filteredEndpointCount = inventoryQuery.data?.length ?? 0;
-  const inventoryTableColumnCount = 11 + enabledCustomFields.length;
+  const inventoryTableColumnCount = 12 + enabledCustomFields.length;
+  const selectedEndpointCount = selectedEndpointIDs.length;
   const batchDeleteMatchInvalid =
     batchDeleteMatch.mode === "criteria"
       ? !batchDeleteMatch.regex.trim()
       : splitBatchIPList(batchDeleteMatch.ipListText).length === 0;
+  const visibleEndpointIDs = useMemo(
+    () => (inventoryQuery.data || []).map((row) => row.endpoint_id),
+    [inventoryQuery.data]
+  );
+  const selectedEndpointIDSet = useMemo(() => new Set(selectedEndpointIDs), [selectedEndpointIDs]);
+
+  useEffect(() => {
+    const visibleIDSet = new Set(visibleEndpointIDs);
+    setSelectedEndpointIDs((current) => current.filter((endpointID) => visibleIDSet.has(endpointID)));
+    setSelectionAnchorEndpointID((current) => (current !== null && visibleIDSet.has(current) ? current : null));
+  }, [visibleEndpointIDs]);
+
+  const applyEndpointActivity = (endpointIDs: number[], active: boolean) => {
+    const uniqueIDs = Array.from(new Set(endpointIDs.filter((endpointID) => endpointID > 0)));
+    if (uniqueIDs.length === 0 || updateActivityMutation.isPending) {
+      return;
+    }
+    updateActivityMutation.mutate({ endpoint_ids: uniqueIDs, active });
+  };
+
+  const handleInventoryRowSelection = (endpointID: number, event: ReactMouseEvent<HTMLTableRowElement>) => {
+    if (editingEndpointID === endpointID) {
+      return;
+    }
+
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, input, select, textarea, a, label")) {
+      return;
+    }
+
+    const orderedIDs = visibleEndpointIDs;
+    if (event.shiftKey && selectionAnchorEndpointID !== null) {
+      const anchorIndex = orderedIDs.indexOf(selectionAnchorEndpointID);
+      const currentIndex = orderedIDs.indexOf(endpointID);
+      if (anchorIndex >= 0 && currentIndex >= 0) {
+        const [start, end] = anchorIndex < currentIndex ? [anchorIndex, currentIndex] : [currentIndex, anchorIndex];
+        const nextRange = orderedIDs.slice(start, end + 1);
+        setSelectedEndpointIDs((current) => Array.from(new Set([...current, ...nextRange])));
+        return;
+      }
+    }
+
+    if (event.metaKey || event.ctrlKey) {
+      setSelectedEndpointIDs((current) =>
+        current.includes(endpointID) ? current.filter((value) => value !== endpointID) : [...current, endpointID]
+      );
+      setSelectionAnchorEndpointID(endpointID);
+      return;
+    }
+
+    setSelectedEndpointIDs([endpointID]);
+    setSelectionAnchorEndpointID(endpointID);
+  };
 
   function updateBatchDeleteMatch(next: InventoryBatchMatchFormState) {
     setBatchDeleteMatch(next);
@@ -1445,6 +1529,27 @@ export function InventoryPage() {
 
         {inventoryListExpanded ? <div className="inventory-panel-body">
           <div className="button-row inventory-header-actions">
+            <div className="inventory-bulk-actions" role="status" aria-live="polite">
+              <span className="inventory-bulk-actions-copy">
+                {selectedEndpointCount > 0 ? `${selectedEndpointCount} selected` : "Select rows to bulk change activity"}
+              </span>
+              <button
+                className="btn btn-small"
+                type="button"
+                disabled={selectedEndpointCount === 0 || updateActivityMutation.isPending}
+                onClick={() => applyEndpointActivity(selectedEndpointIDs, true)}
+              >
+                {updateActivityMutation.isPending ? "Updating..." : "Mark Active"}
+              </button>
+              <button
+                className="btn btn-small"
+                type="button"
+                disabled={selectedEndpointCount === 0 || updateActivityMutation.isPending}
+                onClick={() => applyEndpointActivity(selectedEndpointIDs, false)}
+              >
+                {updateActivityMutation.isPending ? "Updating..." : "Mark Inactive"}
+              </button>
+            </div>
             <button
               className="btn btn-small"
               type="button"
@@ -1606,6 +1711,7 @@ export function InventoryPage() {
           {(inventoryQuery.error ||
             exportCSVMutation.error ||
             updateMutation.error ||
+            updateActivityMutation.error ||
             deleteEndpointMutation.error ||
             batchDeletePreviewMutation.error ||
             startDeleteMatchJobMutation.error ||
@@ -1617,6 +1723,7 @@ export function InventoryPage() {
               {(inventoryQuery.error as Error | undefined)?.message ||
                 (exportCSVMutation.error as Error | undefined)?.message ||
                 (updateMutation.error as Error | undefined)?.message ||
+                (updateActivityMutation.error as Error | undefined)?.message ||
                 (deleteEndpointMutation.error as Error | undefined)?.message ||
                 (batchDeletePreviewMutation.error as Error | undefined)?.message ||
                 (startDeleteMatchJobMutation.error as Error | undefined)?.message ||
@@ -1631,6 +1738,11 @@ export function InventoryPage() {
               Inventory endpoint updated.
             </div>
           )}
+          {updateActivityMutation.isSuccess ? (
+            <div className="success-banner" role="status" aria-live="polite">
+              Endpoint activity updated.
+            </div>
+          ) : null}
           {deleteJobNotice ? (
             <div
               className={
@@ -1669,6 +1781,7 @@ export function InventoryPage() {
                   <tr>
                     <th>Hostname</th>
                     <th>IP Address</th>
+                    <th>State</th>
                     <th>MAC</th>
                     <th>VLAN</th>
                     <th>Switch</th>
@@ -1692,11 +1805,15 @@ export function InventoryPage() {
                     </tr>
                   ) : (inventoryQuery.data || []).map((row) => {
                     const isEditing = editingEndpointID === row.endpoint_id && editingPatch !== null;
+                    const isSelected = selectedEndpointIDSet.has(row.endpoint_id);
                     const isPendingDeleteConfirmation = pendingDeleteEndpointID === row.endpoint_id;
                     const rowDeleteLabel = row.hostname?.trim() ? `${row.hostname} (${row.ip_address})` : row.ip_address;
                     return (
                       <Fragment key={row.endpoint_id}>
-                        <tr className={isEditing ? "row-selected" : ""}>
+                        <tr
+                          className={`${isEditing || isSelected ? "row-selected" : ""}${row.active ? "" : " inventory-row-inactive"}`}
+                          onClick={(event) => handleInventoryRowSelection(row.endpoint_id, event)}
+                        >
                           <td>
                             {isEditing ? (
                               <input
@@ -1710,6 +1827,11 @@ export function InventoryPage() {
                             )}
                           </td>
                           <td>{row.ip_address}</td>
+                          <td>
+                            <span className={`badge ${row.active ? "badge-active" : "badge-inactive"}`}>
+                              {row.active ? "Active" : "Inactive"}
+                            </span>
+                          </td>
                           <td>
                             {isEditing ? (
                               <input
@@ -1834,6 +1956,17 @@ export function InventoryPage() {
                                 </>
                               ) : (
                                 <>
+                                  <button
+                                    className="btn"
+                                    type="button"
+                                    disabled={updateActivityMutation.isPending || deleteEndpointMutation.isPending || deleteInProgress}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      applyEndpointActivity([row.endpoint_id], !row.active);
+                                    }}
+                                  >
+                                    {updateActivityMutation.isPending ? "Updating..." : row.active ? "Make Inactive" : "Make Active"}
+                                  </button>
                                   <button
                                     className="btn inventory-row-action-edit"
                                     type="button"

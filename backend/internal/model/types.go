@@ -24,6 +24,7 @@ type InventoryEndpoint struct {
 	PortType          string    `json:"port_type"`
 	Description       string    `json:"description"`
 	Hostname          string    `json:"hostname"`
+	Active            bool      `json:"active"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
@@ -98,6 +99,7 @@ type InventoryEndpointView struct {
 	PortType          string    `json:"port_type"`
 	Description       string    `json:"description"`
 	Groups            []string  `json:"group"`
+	Active            bool      `json:"active"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
@@ -129,14 +131,25 @@ type InventoryEndpointCreate struct {
 	GroupID           *int64 `json:"group_id,omitempty"`
 }
 
+type InventoryEndpointActivityUpdateRequest struct {
+	EndpointIDs []int64 `json:"endpoint_ids"`
+	Active      bool    `json:"active"`
+}
+
+type InventoryEndpointActivityUpdateResponse struct {
+	UpdatedCount int64 `json:"updated_count"`
+	Active       bool  `json:"active"`
+}
+
 type Group struct {
-	ID          int64     `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	IsSystem    bool      `json:"is_system"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	EndpointIDs []int64   `json:"endpoint_ids,omitempty"`
+	ID                  int64     `json:"id"`
+	Name                string    `json:"name"`
+	Description         string    `json:"description"`
+	IsSystem            bool      `json:"is_system"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+	EndpointIDs         []int64   `json:"endpoint_ids,omitempty"`
+	ActiveEndpointCount int64     `json:"active_endpoint_count"`
 }
 
 type CustomFieldConfig struct {
