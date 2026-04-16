@@ -390,6 +390,17 @@ type InventoryBatchGroupApplyResponse struct {
 	UsedExistingByName bool   `json:"used_existing_by_name,omitempty"`
 }
 
+type GroupMembershipRemovalPreviewRequest struct {
+	Match InventoryBatchMatchSpec `json:"match"`
+}
+
+type GroupMembershipRemovalPreviewResponse struct {
+	Preview     InventoryBatchMatchPreview `json:"preview"`
+	GroupID     int64                      `json:"group_id"`
+	GroupName   string                     `json:"group_name"`
+	WouldRemove int                        `json:"would_remove"`
+}
+
 type InventoryBatchDeletePreviewRequest struct {
 	Match InventoryBatchMatchSpec `json:"match"`
 }

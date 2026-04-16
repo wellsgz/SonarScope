@@ -55,6 +55,21 @@ func (s *Store) ResolveInventoryBatchMatch(
 	}
 }
 
+func (s *Store) ResolveGroupInventoryBatchMatch(
+	ctx context.Context,
+	groupID int64,
+	spec model.InventoryBatchMatchSpec,
+) (model.InventoryBatchMatchStats, []int64, error) {
+	switch spec.Mode {
+	case model.InventoryBatchMatchModeCriteria:
+		return s.resolveGroupInventoryBatchCriteria(ctx, groupID, spec.Field, spec.Regex)
+	case model.InventoryBatchMatchModeIPList:
+		return s.resolveGroupInventoryBatchIPList(ctx, groupID, spec.IPs)
+	default:
+		return model.InventoryBatchMatchStats{}, nil, fmt.Errorf("unsupported match mode %q", spec.Mode)
+	}
+}
+
 func (s *Store) resolveInventoryBatchCriteria(
 	ctx context.Context,
 	field model.InventoryBatchMatchField,
@@ -71,6 +86,49 @@ func (s *Store) resolveInventoryBatchCriteria(
 		WHERE COALESCE(%s, '') ~* $1
 		ORDER BY ie.id
 	`, fieldExpr), pattern)
+	if err != nil {
+		return model.InventoryBatchMatchStats{}, nil, err
+	}
+	defer rows.Close()
+
+	endpointIDs := make([]int64, 0)
+	for rows.Next() {
+		var endpointID int64
+		if err := rows.Scan(&endpointID); err != nil {
+			return model.InventoryBatchMatchStats{}, nil, err
+		}
+		endpointIDs = append(endpointIDs, endpointID)
+	}
+	if err := rows.Err(); err != nil {
+		return model.InventoryBatchMatchStats{}, nil, err
+	}
+
+	endpointIDs = uniqueInt64(endpointIDs)
+	return model.InventoryBatchMatchStats{
+		Mode:         model.InventoryBatchMatchModeCriteria,
+		MatchedCount: len(endpointIDs),
+	}, endpointIDs, nil
+}
+
+func (s *Store) resolveGroupInventoryBatchCriteria(
+	ctx context.Context,
+	groupID int64,
+	field model.InventoryBatchMatchField,
+	pattern string,
+) (model.InventoryBatchMatchStats, []int64, error) {
+	fieldExpr, err := inventoryBatchFieldExpression(field)
+	if err != nil {
+		return model.InventoryBatchMatchStats{}, nil, err
+	}
+
+	rows, err := s.pool.Query(ctx, fmt.Sprintf(`
+		SELECT ie.id
+		FROM inventory_endpoint ie
+		JOIN group_member gm ON gm.endpoint_id = ie.id
+		WHERE gm.group_id = $1
+		  AND COALESCE(%s, '') ~* $2
+		ORDER BY ie.id
+	`, fieldExpr), groupID, pattern)
 	if err != nil {
 		return model.InventoryBatchMatchStats{}, nil, err
 	}
@@ -126,6 +184,80 @@ func (s *Store) resolveInventoryBatchIPList(
 			WHERE host(ip) = ANY($1)
 			ORDER BY id
 		`, validIPs)
+		if err != nil {
+			return model.InventoryBatchMatchStats{}, nil, err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var endpointID int64
+			var ip string
+			if err := rows.Scan(&ip, &endpointID); err != nil {
+				return model.InventoryBatchMatchStats{}, nil, err
+			}
+			matchedByIP[ip] = struct{}{}
+			matchedIDs = append(matchedIDs, endpointID)
+		}
+		if err := rows.Err(); err != nil {
+			return model.InventoryBatchMatchStats{}, nil, err
+		}
+	}
+
+	unmatched := make([]string, 0)
+	for _, ip := range validIPs {
+		if _, ok := matchedByIP[ip]; ok {
+			continue
+		}
+		unmatched = append(unmatched, ip)
+	}
+
+	matchedIDs = uniqueInt64(matchedIDs)
+	stats := model.InventoryBatchMatchStats{
+		Mode:            model.InventoryBatchMatchModeIPList,
+		SubmittedCount:  submittedCount,
+		UniqueCount:     len(uniqueIPs),
+		InvalidCount:    invalidCount,
+		MatchedCount:    len(matchedIDs),
+		UnmatchedCount:  len(unmatched),
+		UnmatchedSample: append([]string(nil), unmatched[:minInt(len(unmatched), inventoryBatchUnmatchedSampleLimit)]...),
+	}
+	return stats, matchedIDs, nil
+}
+
+func (s *Store) resolveGroupInventoryBatchIPList(
+	ctx context.Context,
+	groupID int64,
+	ips []string,
+) (model.InventoryBatchMatchStats, []int64, error) {
+	submittedCount := 0
+	for _, value := range ips {
+		if strings.TrimSpace(value) != "" {
+			submittedCount++
+		}
+	}
+
+	uniqueIPs := uniqueStrings(ips)
+	validIPs := make([]string, 0, len(uniqueIPs))
+	invalidCount := 0
+	for _, ip := range uniqueIPs {
+		if net.ParseIP(ip) == nil {
+			invalidCount++
+			continue
+		}
+		validIPs = append(validIPs, ip)
+	}
+
+	matchedIDs := make([]int64, 0, len(validIPs))
+	matchedByIP := map[string]struct{}{}
+	if len(validIPs) > 0 {
+		rows, err := s.pool.Query(ctx, `
+			SELECT host(ie.ip) AS ip_address, ie.id
+			FROM inventory_endpoint ie
+			JOIN group_member gm ON gm.endpoint_id = ie.id
+			WHERE gm.group_id = $2
+			  AND host(ie.ip) = ANY($1)
+			ORDER BY ie.id
+		`, validIPs, groupID)
 		if err != nil {
 			return model.InventoryBatchMatchStats{}, nil, err
 		}

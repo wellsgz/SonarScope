@@ -6,12 +6,14 @@ import {
   getSettings,
   listGroups,
   listMonitorEndpoints,
+  previewGroupMembershipRemoval,
   previewInventoryBatchGroupAssignment,
   updateGroup
 } from "../api/client";
 import { InventoryBatchMatchBuilder, type InventoryBatchMatchFieldOption, type InventoryBatchMatchFormState } from "../components/InventoryBatchMatchBuilder";
 import type {
   CustomFieldConfig,
+  GroupMembershipRemovalPreviewResponse,
   InventoryBatchGroupPreviewResponse,
   InventoryBatchMatchField,
   InventoryEndpoint
@@ -23,6 +25,7 @@ type GroupUpdateNotice = {
 };
 
 type MembershipMode = "manual" | "regex";
+type MembershipAction = "assign" | "remove";
 
 type CustomFieldSlot = 1 | 2 | 3;
 
@@ -156,9 +159,12 @@ export function GroupsPage() {
   const [endpointIDs, setEndpointIDs] = useState<number[]>([]);
   const [manualIPList, setManualIPList] = useState("");
   const [membershipMode, setMembershipMode] = useState<MembershipMode>("manual");
+  const [membershipAction, setMembershipAction] = useState<MembershipAction>("assign");
   const [groupUpdateNotice, setGroupUpdateNotice] = useState<GroupUpdateNotice | null>(null);
+  const [removalEndpointIDs, setRemovalEndpointIDs] = useState<number[]>([]);
   const [batchGroupMatch, setBatchGroupMatch] = useState<InventoryBatchMatchFormState>(defaultBatchMatchState);
   const [batchGroupPreview, setBatchGroupPreview] = useState<InventoryBatchGroupPreviewResponse | null>(null);
+  const [batchGroupRemovePreview, setBatchGroupRemovePreview] = useState<GroupMembershipRemovalPreviewResponse | null>(null);
 
   const groupsQuery = useQuery({ queryKey: ["groups"], queryFn: listGroups });
   const endpointsQuery = useQuery({
@@ -188,6 +194,7 @@ export function GroupsPage() {
       description: string;
       endpointIDs: number[];
       notice: string | null;
+      successMessage: string | null;
     }) => {
       const body = {
         name: payload.name,
@@ -206,9 +213,13 @@ export function GroupsPage() {
       setEndpointIDs([]);
       setManualIPList("");
       setMembershipMode("manual");
+      setMembershipAction("assign");
+      setRemovalEndpointIDs([]);
+      setBatchGroupPreview(null);
+      setBatchGroupRemovePreview(null);
       setGroupUpdateNotice({
         tone: variables.notice ? "info" : "success",
-        message: variables.notice || (variables.groupID ? "Group updated." : "Group created.")
+        message: variables.notice || variables.successMessage || (variables.groupID ? "Group updated." : "Group created.")
       });
       await invalidateGroupRelatedQueries();
     }
@@ -221,6 +232,14 @@ export function GroupsPage() {
     }) => previewInventoryBatchGroupAssignment(payload),
     onSuccess: (preview) => {
       setBatchGroupPreview(preview);
+    }
+  });
+
+  const previewRemovalRegexMutation = useMutation({
+    mutationFn: (payload: { groupID: number; match: { mode: "criteria"; field: InventoryBatchMatchField; regex: string } }) =>
+      previewGroupMembershipRemoval(payload.groupID, { match: payload.match }),
+    onSuccess: (preview) => {
+      setBatchGroupRemovePreview(preview);
     }
   });
 
@@ -284,6 +303,47 @@ export function GroupsPage() {
         message: `Moved ${preview.would_assign} endpoint(s) into "${nextGroup.name}".${
           preview.already_in_group > 0 ? ` ${preview.already_in_group} already matched that group.` : ""
         }${preview.used_existing_by_name ? " Existing group reused by name." : ""}`
+      });
+    }
+  });
+
+  const applyRegexRemovalMutation = useMutation({
+    mutationFn: async (preview: GroupMembershipRemovalPreviewResponse) => {
+      if (editingID === null) {
+        throw new Error("Select an existing group to remove members.");
+      }
+      const trimmedName = name.trim();
+      if (!trimmedName) {
+        throw new Error("Group name is required.");
+      }
+
+      const removeSet = new Set(preview.preview.endpoint_ids);
+      const remainingEndpointIDs = endpointIDs.filter((endpointID) => !removeSet.has(endpointID));
+
+      return updateGroup(editingID, {
+        name: trimmedName,
+        description,
+        endpoint_ids: remainingEndpointIDs
+      });
+    },
+    onSuccess: async (group, preview) => {
+      await invalidateGroupRelatedQueries();
+      const refreshedGroups = await queryClient.fetchQuery({
+        queryKey: ["groups"],
+        queryFn: listGroups
+      });
+      const nextGroup = refreshedGroups.find((item) => item.id === group.id) || group;
+
+      setEditingID(nextGroup.id);
+      setName(nextGroup.name);
+      setDescription(nextGroup.description);
+      setEndpointIDs(nextGroup.endpoint_ids || []);
+      setManualIPList("");
+      setRemovalEndpointIDs([]);
+      setBatchGroupRemovePreview(null);
+      setGroupUpdateNotice({
+        tone: "success",
+        message: `Removed ${preview.would_remove} endpoint(s) from "${nextGroup.name}" and moved them to "No Group".`
       });
     }
   });
@@ -357,11 +417,23 @@ export function GroupsPage() {
   }, [groupsQuery.data]);
 
   const manualIPs = useMemo(() => parseManualIPList(manualIPList), [manualIPList]);
+  const currentGroupEndpointIDSet = useMemo(() => new Set(endpointIDs), [endpointIDs]);
+  const currentGroupEndpointOptions = useMemo(
+    () => endpointOptions.filter((option) => currentGroupEndpointIDSet.has(option.id)),
+    [currentGroupEndpointIDSet, endpointOptions]
+  );
 
-  function resetRegexAssignmentState() {
+  function resetMembershipPreviewState() {
     setBatchGroupPreview(null);
+    setBatchGroupRemovePreview(null);
     previewRegexMutation.reset();
     applyRegexMutation.reset();
+    previewRemovalRegexMutation.reset();
+    applyRegexRemovalMutation.reset();
+  }
+
+  function resetRemovalState() {
+    setRemovalEndpointIDs([]);
   }
 
   function resetEditorToCreate() {
@@ -370,8 +442,11 @@ export function GroupsPage() {
     setDescription("");
     setEndpointIDs([]);
     setManualIPList("");
+    setMembershipAction("assign");
+    setMembershipMode("manual");
     setGroupUpdateNotice(null);
-    resetRegexAssignmentState();
+    resetRemovalState();
+    resetMembershipPreviewState();
   }
 
   function loadGroupIntoEditor(groupID: number) {
@@ -384,29 +459,90 @@ export function GroupsPage() {
     setDescription(group.description);
     setEndpointIDs(group.endpoint_ids || []);
     setManualIPList("");
+    setMembershipAction("assign");
     setGroupUpdateNotice(null);
-    resetRegexAssignmentState();
+    resetRemovalState();
+    resetMembershipPreviewState();
   }
 
   function updateMembershipMode(nextMode: MembershipMode) {
     setMembershipMode(nextMode);
     setGroupUpdateNotice(null);
-    resetRegexAssignmentState();
+    resetMembershipPreviewState();
     if (nextMode === "regex") {
       setBatchGroupMatch((current) => ({ ...current, mode: "criteria" }));
     }
   }
 
+  function updateMembershipAction(nextAction: MembershipAction) {
+    setMembershipAction(nextAction);
+    setManualIPList("");
+    setGroupUpdateNotice(null);
+    resetRemovalState();
+    resetMembershipPreviewState();
+  }
+
   function updateRegexMatch(next: InventoryBatchMatchFormState) {
     setBatchGroupMatch({ ...next, mode: "criteria" });
     setGroupUpdateNotice(null);
-    resetRegexAssignmentState();
+    resetMembershipPreviewState();
   }
 
   const resolveSaveRequest = () => {
     const groupID = editingID;
+    const trimmedName = name.trim();
     let resolvedEndpointIDs = endpointIDs;
     const noticeParts: string[] = [];
+    let removalMatchedCount = 0;
+    let successMessage: string | null = null;
+
+    if (membershipAction === "remove") {
+      const currentEndpointIDs = endpointIDs;
+      let matchedRemovalIDs = removalEndpointIDs;
+
+      if (manualIPs.length > 0) {
+        const unknownIPs: string[] = [];
+        const nonMemberIPs: string[] = [];
+        const resolvedRemovalIDs: number[] = [];
+
+        manualIPs.forEach((ip) => {
+          const endpointID = endpointIDByIP.get(ip);
+          if (endpointID === undefined) {
+            unknownIPs.push(ip);
+            return;
+          }
+          if (!currentGroupEndpointIDSet.has(endpointID)) {
+            nonMemberIPs.push(ip);
+            return;
+          }
+          resolvedRemovalIDs.push(endpointID);
+        });
+
+        matchedRemovalIDs = resolvedRemovalIDs;
+
+        if (unknownIPs.length > 0) {
+          noticeParts.push(`Unknown IPs ignored: ${unknownIPs.join(", ")}`);
+        }
+        if (nonMemberIPs.length > 0) {
+          noticeParts.push(`Ignored because not currently in this group: ${nonMemberIPs.join(", ")}`);
+        }
+      }
+
+      const removalSet = new Set(matchedRemovalIDs);
+      removalMatchedCount = matchedRemovalIDs.length;
+      resolvedEndpointIDs = currentEndpointIDs.filter((endpointID) => !removalSet.has(endpointID));
+      successMessage = `Removed ${removalMatchedCount} endpoint(s) from "${trimmedName || "this group"}" and moved them to "No Group".`;
+
+      return {
+        groupID,
+        name: trimmedName,
+        description,
+        endpointIDs: resolvedEndpointIDs,
+        notice: noticeParts.length > 0 ? noticeParts.join(" | ") : null,
+        removalMatchedCount,
+        successMessage
+      };
+    }
 
     if (manualIPs.length > 0) {
       const unknownIPs: string[] = [];
@@ -440,15 +576,24 @@ export function GroupsPage() {
 
     return {
       groupID,
-      name: name.trim(),
+      name: trimmedName,
       description,
       endpointIDs: resolvedEndpointIDs,
-      notice: noticeParts.length > 0 ? noticeParts.join(" | ") : null
+      notice: noticeParts.length > 0 ? noticeParts.join(" | ") : null,
+      removalMatchedCount,
+      successMessage
     };
   };
 
   const saveRequest = resolveSaveRequest();
-  const effectiveEndpointPreviews = saveRequest.endpointIDs
+  const editingGroup = editingID ? (groupsQuery.data || []).find((group) => group.id === editingID) : null;
+  const canRemoveMembers = editingID !== null && !editingGroup?.is_system;
+  const removalPreviewEndpointIDs =
+    membershipAction === "remove" && membershipMode === "regex" && batchGroupRemovePreview
+      ? endpointIDs.filter((endpointID) => !new Set(batchGroupRemovePreview.preview.endpoint_ids).has(endpointID))
+      : saveRequest.endpointIDs;
+  const displayedEndpointPreviewIDs = membershipAction === "remove" ? removalPreviewEndpointIDs : saveRequest.endpointIDs;
+  const effectiveEndpointPreviews = displayedEndpointPreviewIDs
     .map((id) => ({
       id,
       label: endpointLabelByID.get(id) || endpointIPByID.get(id) || `endpoint_id:${id}`
@@ -490,7 +635,8 @@ export function GroupsPage() {
   const regexTargetGroupID =
     editingID !== null ? editingID : batchGroupPreview?.used_existing_by_name ? (batchGroupPreview.group_id ?? null) : null;
   const regexReassignment = summarizeReassignment(batchGroupPreview?.preview.endpoint_ids || [], regexTargetGroupID);
-  const activeReassignment = membershipMode === "regex" ? regexReassignment : manualReassignment;
+  const activeReassignment =
+    membershipAction === "assign" ? (membershipMode === "regex" ? regexReassignment : manualReassignment) : null;
   const targetGroupLabel =
     membershipMode === "regex"
       ? batchGroupPreview?.group_name || name.trim() || "the selected group"
@@ -498,16 +644,31 @@ export function GroupsPage() {
         ? (name.trim() || "this group")
         : "the new group";
 
-  const editingGroup = editingID ? (groupsQuery.data || []).find((group) => group.id === editingID) : null;
   const reservedGroupName = isReservedGroupName(name);
   const regexTargetInvalid = !name.trim() || reservedGroupName || Boolean(editingGroup?.is_system);
+  const regexRemovalInvalid = editingID === null || Boolean(editingGroup?.is_system);
   const regexMatchInvalid = !batchGroupMatch.regex.trim();
+  const manualRemoveInvalid =
+    membershipAction === "remove" &&
+    (editingID === null || (!manualIPs.length && removalEndpointIDs.length === 0) || Boolean(editingGroup?.is_system));
+  const removalInfoCount =
+    membershipAction === "remove"
+      ? membershipMode === "regex"
+        ? batchGroupRemovePreview?.would_remove ?? 0
+        : saveRequest.removalMatchedCount
+      : 0;
+  const membershipPreviewTitle =
+    membershipAction === "remove"
+      ? "Remaining Members"
+      : editingID
+        ? "Included Endpoints"
+        : "Selected Endpoints";
 
   useEffect(() => {
     const availableFields = new Set(batchMatchFieldOptions.map((option) => option.value));
     if (!availableFields.has(batchGroupMatch.field)) {
       setBatchGroupMatch((current) => ({ ...current, field: "hostname", mode: "criteria" }));
-      resetRegexAssignmentState();
+      resetMembershipPreviewState();
     }
   }, [batchGroupMatch.field, batchMatchFieldOptions]);
 
@@ -525,6 +686,20 @@ export function GroupsPage() {
         editingID !== null
           ? { mode: "existing", group_id: editingID }
           : { mode: "create", group_name: name.trim() }
+    });
+  };
+
+  const handlePreviewRegexRemoval = () => {
+    if (regexMatchInvalid || regexRemovalInvalid || editingID === null) {
+      return;
+    }
+    previewRemovalRegexMutation.mutate({
+      groupID: editingID,
+      match: {
+        mode: "criteria",
+        field: batchGroupMatch.field,
+        regex: batchGroupMatch.regex.trim()
+      }
     });
   };
 
@@ -565,7 +740,7 @@ export function GroupsPage() {
 
             <div className="group-membership-preview">
               <div className="group-membership-preview-head">
-                <span>{editingID ? "Included Endpoints" : "Selected Endpoints"}</span>
+                <span>{membershipPreviewTitle}</span>
                 <span className="count-badge">{effectiveEndpointPreviews.length}</span>
               </div>
               {effectiveEndpointPreviews.length > 0 ? (
@@ -591,7 +766,7 @@ export function GroupsPage() {
                   setName(event.target.value);
                   setGroupUpdateNotice(null);
                   if (editingID === null) {
-                    resetRegexAssignmentState();
+                    resetMembershipPreviewState();
                   }
                 }}
                 placeholder="DB Core"
@@ -608,6 +783,35 @@ export function GroupsPage() {
                 placeholder="Critical database nodes"
               />
             </label>
+
+            <div className="group-membership-mode">
+              <span className="group-membership-mode-label">Membership Action</span>
+              <div className="inventory-batch-mode-row" role="group" aria-label="Group membership action">
+                <button
+                  className={`btn btn-small ${membershipAction === "assign" ? "btn-primary" : ""}`}
+                  type="button"
+                  onClick={() => updateMembershipAction("assign")}
+                  aria-pressed={membershipAction === "assign"}
+                >
+                  Add / Update
+                </button>
+                {canRemoveMembers ? (
+                  <button
+                    className={`btn btn-small ${membershipAction === "remove" ? "btn-primary" : ""}`}
+                    type="button"
+                    onClick={() => updateMembershipAction("remove")}
+                    aria-pressed={membershipAction === "remove"}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+              <span className="field-help">
+                {membershipAction === "remove"
+                  ? 'Remove mode only affects existing members of this group. Removed endpoints are reassigned to "No Group".'
+                  : "Add / Update keeps the current group-editing workflow for creating a group or replacing its membership."}
+              </span>
+            </div>
 
             <div className="group-membership-mode">
               <span className="group-membership-mode-label">Membership Input</span>
@@ -630,15 +834,16 @@ export function GroupsPage() {
                 </button>
               </div>
               <span className="field-help">
-                Manual IP List keeps the current editor workflow. Regex Match previews the full inventory and moves the
-                matches into this group.
+                {membershipAction === "remove"
+                  ? "Manual IP List removes current members directly. Regex Match previews removals only against endpoints already in this group."
+                  : "Manual IP List keeps the current editor workflow. Regex Match previews the full inventory and moves the matches into this group."}
               </span>
             </div>
 
             {membershipMode === "manual" ? (
               <>
                 <label>
-                  Endpoint IP List (Manual Update)
+                  {membershipAction === "remove" ? "Member IP List to Remove" : "Endpoint IP List (Manual Update)"}
                   <textarea
                     rows={3}
                     value={manualIPList}
@@ -649,20 +854,27 @@ export function GroupsPage() {
                     placeholder="10.0.0.1,10.0.0.2 or newline separated"
                   />
                   <span className="field-help">
-                    If provided, this list overrides endpoint multi-select for create/update.
+                    {membershipAction === "remove"
+                      ? "If provided, this list overrides the member multi-select and removes only current group members that match."
+                      : "If provided, this list overrides endpoint multi-select for create/update."}
                   </span>
                 </label>
                 <label>
-                  Endpoints
+                  {membershipAction === "remove" ? "Members to Remove" : "Endpoints"}
                   <select
                     multiple
-                    value={endpointIDs.map(String)}
+                    value={(membershipAction === "remove" ? removalEndpointIDs : endpointIDs).map(String)}
                     disabled={manualIPs.length > 0}
-                    onChange={(event) =>
-                      setEndpointIDs(Array.from(event.target.selectedOptions).map((option) => Number(option.value)))
-                    }
+                    onChange={(event) => {
+                      const selected = Array.from(event.target.selectedOptions).map((option) => Number(option.value));
+                      if (membershipAction === "remove") {
+                        setRemovalEndpointIDs(selected);
+                        return;
+                      }
+                      setEndpointIDs(selected);
+                    }}
                   >
-                    {endpointOptions.map((option) => (
+                    {(membershipAction === "remove" ? currentGroupEndpointOptions : endpointOptions).map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.label}
                       </option>
@@ -671,7 +883,9 @@ export function GroupsPage() {
                   <span className="field-help">
                     {manualIPs.length > 0
                       ? "Manual IP list override is active."
-                      : "Hold Ctrl/Cmd to multi-select endpoints."}
+                      : membershipAction === "remove"
+                        ? "Hold Ctrl/Cmd to multi-select current group members to remove."
+                        : "Hold Ctrl/Cmd to multi-select endpoints."}
                   </span>
                 </label>
               </>
@@ -682,28 +896,38 @@ export function GroupsPage() {
                   onChange={updateRegexMatch}
                   fieldOptions={batchMatchFieldOptions}
                   modeOptions={["criteria"]}
+                  criteriaHelpText={
+                    membershipAction === "remove" ? (
+                      <>
+                        Regex matching is case-insensitive and is evaluated only against endpoints currently in this group.
+                        Example: <code>-N.{"{2}"}$</code> on the selected field matches current members ending in{" "}
+                        <code>-Nxx</code>.
+                      </>
+                    ) : undefined
+                  }
                 />
                 <div className="field-help">
-                  Regex matching is evaluated against the full inventory, not the current Inventory page filters. Matching
-                  endpoints already in this group stay where they are; the rest will be moved into it.
+                  {membershipAction === "remove"
+                    ? 'Regex matching is evaluated only against the current group membership. Matched endpoints will be moved to "No Group".'
+                    : "Regex matching is evaluated against the full inventory, not the current Inventory page filters. Matching endpoints already in this group stay where they are; the rest will be moved into it."}
                 </div>
-                {previewRegexMutation.error ? (
+                {(membershipAction === "remove" ? previewRemovalRegexMutation.error : previewRegexMutation.error) ? (
                   <div className="error-banner" role="alert" aria-live="assertive">
-                    {(previewRegexMutation.error as Error).message}
+                    {((membershipAction === "remove" ? previewRemovalRegexMutation.error : previewRegexMutation.error) as Error).message}
                   </div>
                 ) : null}
-                {applyRegexMutation.error ? (
+                {(membershipAction === "remove" ? applyRegexRemovalMutation.error : applyRegexMutation.error) ? (
                   <div className="error-banner" role="alert" aria-live="assertive">
-                    {(applyRegexMutation.error as Error).message}
+                    {((membershipAction === "remove" ? applyRegexRemovalMutation.error : applyRegexMutation.error) as Error).message}
                   </div>
                 ) : null}
-                {batchGroupPreview?.used_existing_by_name ? (
+                {membershipAction === "assign" && batchGroupPreview?.used_existing_by_name ? (
                   <div className="info-banner" role="status" aria-live="polite">
                     Group "{batchGroupPreview.group_name}" already exists; matched endpoints will be moved into that
                     existing group.
                   </div>
                 ) : null}
-                {batchGroupPreview ? (
+                {membershipAction === "assign" && batchGroupPreview ? (
                   <div className="inventory-batch-preview-card">
                     <BatchPreviewStatsChips
                       matchedCount={batchGroupPreview.preview.stats.matched_count}
@@ -728,6 +952,31 @@ export function GroupsPage() {
                     />
                   </div>
                 ) : null}
+                {membershipAction === "remove" && batchGroupRemovePreview ? (
+                  <div className="inventory-batch-preview-card inventory-batch-preview-card-danger">
+                    <BatchPreviewStatsChips
+                      matchedCount={batchGroupRemovePreview.preview.stats.matched_count}
+                      submittedCount={batchGroupRemovePreview.preview.stats.submitted_count}
+                      uniqueCount={batchGroupRemovePreview.preview.stats.unique_count}
+                      invalidCount={batchGroupRemovePreview.preview.stats.invalid_count}
+                      unmatchedCount={batchGroupRemovePreview.preview.stats.unmatched_count}
+                    />
+                    <div className="summary-row inventory-batch-summary-row">
+                      <span className="status-chip">Will remove: {batchGroupRemovePreview.would_remove}</span>
+                      <span className="status-chip">Target after removal: No Group</span>
+                      <span className="status-chip">From group: {batchGroupRemovePreview.group_name}</span>
+                    </div>
+                    {batchGroupRemovePreview.preview.stats.unmatched_sample?.length ? (
+                      <div className="field-help">
+                        Unmatched sample: {batchGroupRemovePreview.preview.stats.unmatched_sample.join(", ")}
+                      </div>
+                    ) : null}
+                    <BatchPreviewTable
+                      rows={batchGroupRemovePreview.preview.sample}
+                      emptyMessage="No current group members matched the current removal preview."
+                    />
+                  </div>
+                ) : null}
               </>
             )}
 
@@ -738,7 +987,13 @@ export function GroupsPage() {
                 ". Each endpoint can belong to only one group. Affected groups:{" "}
                 {activeReassignment.impact.map((item) => `${item.groupName} (${item.count})`).join(", ")}.
               </div>
-            )}
+              )}
+
+            {membershipAction === "remove" && removalInfoCount > 0 ? (
+              <div className="info-banner" role="status" aria-live="polite">
+                Matched endpoints will be moved to "No Group". Will remove: {removalInfoCount}. Target after removal: No Group.
+              </div>
+            ) : null}
 
             {groupUpdateNotice ? (
               <div
@@ -768,37 +1023,70 @@ export function GroupsPage() {
                   onClick={() => {
                     saveMutation.mutate(saveRequest);
                   }}
-                  disabled={!name.trim() || reservedGroupName || Boolean(editingGroup?.is_system)}
+                  disabled={
+                    !name.trim() ||
+                    reservedGroupName ||
+                    Boolean(editingGroup?.is_system) ||
+                    Boolean(manualRemoveInvalid)
+                  }
                 >
-                  {editingID ? "Update Group" : "Create Group"}
+                  {membershipAction === "remove" ? "Remove Members" : editingID ? "Update Group" : "Create Group"}
                 </button>
               ) : (
                 <>
                   <button
                     className="btn"
                     type="button"
-                    onClick={handlePreviewRegexAssignment}
-                    disabled={regexMatchInvalid || regexTargetInvalid || previewRegexMutation.isPending}
+                    onClick={membershipAction === "remove" ? handlePreviewRegexRemoval : handlePreviewRegexAssignment}
+                    disabled={
+                      regexMatchInvalid ||
+                      (membershipAction === "remove" ? regexRemovalInvalid : regexTargetInvalid) ||
+                      (membershipAction === "remove" ? previewRemovalRegexMutation.isPending : previewRegexMutation.isPending)
+                    }
                   >
-                    {previewRegexMutation.isPending ? "Previewing..." : "Preview Matches"}
+                    {membershipAction === "remove"
+                      ? previewRemovalRegexMutation.isPending
+                        ? "Previewing..."
+                        : "Preview Removal"
+                      : previewRegexMutation.isPending
+                        ? "Previewing..."
+                        : "Preview Matches"}
                   </button>
                   <button
                     className="btn btn-primary"
                     type="button"
                     onClick={() => {
+                      if (membershipAction === "remove") {
+                        if (!batchGroupRemovePreview) {
+                          return;
+                        }
+                        applyRegexRemovalMutation.mutate(batchGroupRemovePreview);
+                        return;
+                      }
                       if (!batchGroupPreview) {
                         return;
                       }
                       applyRegexMutation.mutate(batchGroupPreview);
                     }}
                     disabled={
-                      !batchGroupPreview ||
-                      batchGroupPreview.preview.endpoint_ids.length === 0 ||
-                      regexTargetInvalid ||
-                      applyRegexMutation.isPending
+                      membershipAction === "remove"
+                        ? !batchGroupRemovePreview ||
+                          batchGroupRemovePreview.preview.endpoint_ids.length === 0 ||
+                          regexRemovalInvalid ||
+                          applyRegexRemovalMutation.isPending
+                        : !batchGroupPreview ||
+                          batchGroupPreview.preview.endpoint_ids.length === 0 ||
+                          regexTargetInvalid ||
+                          applyRegexMutation.isPending
                     }
                   >
-                    {applyRegexMutation.isPending ? "Applying..." : "Apply Regex Assignment"}
+                    {membershipAction === "remove"
+                      ? applyRegexRemovalMutation.isPending
+                        ? "Applying..."
+                        : "Apply Member Removal"
+                      : applyRegexMutation.isPending
+                        ? "Applying..."
+                        : "Apply Regex Assignment"}
                   </button>
                 </>
               )}

@@ -420,6 +420,7 @@ func (s *Server) Routes() http.Handler {
 			r.Post("/", s.handleCreateGroup)
 			r.Put("/{groupID}", s.handleUpdateGroup)
 			r.Delete("/{groupID}", s.handleDeleteGroup)
+			r.Post("/{groupID}/membership/remove-preview", s.handleGroupMembershipRemovePreview)
 		})
 
 		r.Route("/probes", func(r chi.Router) {

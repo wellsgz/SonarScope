@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 
 	"sonarscope/backend/internal/model"
@@ -310,6 +312,62 @@ func (s *Server) handleInventoryBatchGroupApply(w http.ResponseWriter, r *http.R
 		AlreadyInGroup:     int(alreadyInGroup),
 		AssignedAdded:      int(assignedAdded),
 		UsedExistingByName: target.UsedExistingByName,
+	})
+}
+
+func (s *Server) handleGroupMembershipRemovePreview(w http.ResponseWriter, r *http.Request) {
+	groupID, err := strconv.ParseInt(chi.URLParam(r, "groupID"), 10, 64)
+	if err != nil || groupID < 1 {
+		util.WriteError(w, http.StatusBadRequest, "invalid group id")
+		return
+	}
+
+	var req model.GroupMembershipRemovalPreviewRequest
+	if err := util.DecodeJSON(r, &req); err != nil {
+		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
+		return
+	}
+
+	req.Match = normalizeInventoryBatchMatchSpec(req.Match)
+	if err := validateInventoryBatchMatchSpec(req.Match); err != nil {
+		util.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	group, err := s.store.GetGroupByID(r.Context(), groupID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			util.WriteError(w, http.StatusNotFound, "group not found")
+			return
+		}
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if group.IsSystem {
+		util.WriteError(w, http.StatusForbidden, `system group "no group" cannot be edited`)
+		return
+	}
+
+	stats, endpointIDs, err := s.store.ResolveGroupInventoryBatchMatch(r.Context(), groupID, req.Match)
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	sample, err := s.store.ListInventoryEndpointsByIDs(r.Context(), endpointIDs, 50)
+	if err != nil {
+		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	util.WriteJSON(w, http.StatusOK, model.GroupMembershipRemovalPreviewResponse{
+		Preview: model.InventoryBatchMatchPreview{
+			Stats:       stats,
+			EndpointIDs: endpointIDs,
+			Sample:      sample,
+		},
+		GroupID:     group.ID,
+		GroupName:   group.Name,
+		WouldRemove: len(endpointIDs),
 	})
 }
 

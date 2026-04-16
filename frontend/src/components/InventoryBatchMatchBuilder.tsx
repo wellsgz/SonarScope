@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { InventoryBatchMatchField, InventoryBatchMatchMode } from "../types/api";
 
 export type InventoryBatchMatchFieldOption = {
@@ -17,13 +18,17 @@ type Props = {
   onChange: (next: InventoryBatchMatchFormState) => void;
   fieldOptions: InventoryBatchMatchFieldOption[];
   modeOptions?: InventoryBatchMatchMode[];
+  criteriaHelpText?: ReactNode;
+  ipListHelpText?: ReactNode;
 };
 
 export function InventoryBatchMatchBuilder({
   value,
   onChange,
   fieldOptions,
-  modeOptions = ["criteria", "ip_list"]
+  modeOptions = ["criteria", "ip_list"],
+  criteriaHelpText,
+  ipListHelpText
 }: Props) {
   const selectedFieldLabel = fieldOptions.find((option) => option.value === value.field)?.label || "selected field";
   const showModeToggle = modeOptions.length > 1;
@@ -91,8 +96,12 @@ export function InventoryBatchMatchBuilder({
             />
           </label>
           <div className="field-help inventory-batch-help">
-            Regex matching is case-insensitive and is evaluated against the full inventory. Example:{" "}
-            <code>-N.{"{2}"}$</code> on {selectedFieldLabel} matches hostnames ending in <code>-Nxx</code>.
+            {criteriaHelpText || (
+              <>
+                Regex matching is case-insensitive and is evaluated against the full inventory. Example:{" "}
+                <code>-N.{"{2}"}$</code> on {selectedFieldLabel} matches hostnames ending in <code>-Nxx</code>.
+              </>
+            )}
           </div>
         </div>
       ) : (
@@ -111,7 +120,7 @@ export function InventoryBatchMatchBuilder({
             spellCheck={false}
           />
           <span className="field-help inventory-batch-help">
-            Paste IPs separated by commas or new lines. Duplicate entries are deduplicated before matching.
+            {ipListHelpText || "Paste IPs separated by commas or new lines. Duplicate entries are deduplicated before matching."}
           </span>
         </label>
       )}

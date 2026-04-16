@@ -283,6 +283,13 @@ export type InventoryBatchGroupApplyResponse = {
   used_existing_by_name?: boolean;
 };
 
+export type GroupMembershipRemovalPreviewResponse = {
+  preview: InventoryBatchMatchPreview;
+  group_id: number;
+  group_name: string;
+  would_remove: number;
+};
+
 export type InventoryBatchDeletePreviewResponse = {
   preview: InventoryBatchMatchPreview;
   target_summary: string;

@@ -3,6 +3,7 @@ import type {
   DeleteAllInventoryResponse,
   DeleteInventoryByGroupResponse,
   FilterOptions,
+  GroupMembershipRemovalPreviewResponse,
   Group,
   ImportApplyResponse,
   InventoryBatchDeletePreviewResponse,
@@ -334,6 +335,18 @@ export async function updateGroup(
 export async function deleteGroup(id: number): Promise<{ deleted: boolean }> {
   return request<{ deleted: boolean }>(`/api/groups/${id}`, {
     method: "DELETE"
+  });
+}
+
+export async function previewGroupMembershipRemoval(
+  groupID: number,
+  payload: {
+    match: InventoryBatchMatchSpec;
+  }
+): Promise<GroupMembershipRemovalPreviewResponse> {
+  return request<GroupMembershipRemovalPreviewResponse>(`/api/groups/${groupID}/membership/remove-preview`, {
+    method: "POST",
+    body: JSON.stringify(payload)
   });
 }
 
