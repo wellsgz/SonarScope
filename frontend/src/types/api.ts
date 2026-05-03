@@ -307,7 +307,7 @@ export type DeleteAllInventoryResponse = {
   deleted_count: number;
 };
 
-export type InventoryDeleteJobMode = "by_group" | "all" | "match";
+export type InventoryDeleteJobMode = "endpoint" | "by_group" | "all" | "match";
 export type InventoryDeleteJobState = "running" | "completed" | "failed";
 
 export type InventoryDeleteJobStatus = {

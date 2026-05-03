@@ -133,6 +133,7 @@ For `GET /api/monitor/endpoints-page` with `stats_scope=range`:
 - `POST /api/inventory/endpoints`
 - `PUT /api/inventory/endpoints/{endpointID}`
 - `DELETE /api/inventory/endpoints/{endpointID}`
+- `POST /api/inventory/delete-jobs/by-endpoint/{endpointID}`
 
 Inventory endpoint payloads include:
 - `custom_field_1_value`
@@ -145,7 +146,9 @@ Inventory CSV export:
 - CSV columns follow inventory view order and include enabled/configured custom fields by configured names.
 
 Delete inventory endpoint:
-- `DELETE /api/inventory/endpoints/{endpointID}` removes endpoint + group membership + current stats + probe history.
+- `POST /api/inventory/delete-jobs/by-endpoint/{endpointID}` starts a background delete job for one endpoint.
+- `DELETE /api/inventory/endpoints/{endpointID}` is a legacy-compatible alias that starts the same background delete job.
+- Endpoint delete jobs remove endpoint + group membership + current stats + probe history.
 - Returns `409 Conflict` when an inventory delete job is already running.
 
 ## WebSocket

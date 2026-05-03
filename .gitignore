@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
 
+# Local agent instructions
+AGENTS.md
+
 # Go
 backend/bin/
 backend/coverage.out

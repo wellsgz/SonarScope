@@ -609,7 +609,8 @@ export function InventoryPage() {
       setEditingEndpointID(null);
       setEditingPatch(null);
       setPendingDeleteEndpointID(null);
-      invalidateInventoryAndMonitorQueries();
+      setDeleteJobNotice(null);
+      queryClient.invalidateQueries({ queryKey: ["inventory-delete-job-current"] });
     },
     onSettled: () => {
       setDeletingEndpointID(null);
@@ -752,6 +753,9 @@ export function InventoryPage() {
     }
     if (deleteJobStatus.mode === "all") {
       return "Target: All endpoints";
+    }
+    if (deleteJobStatus.mode === "endpoint") {
+      return `Target: ${deleteJobStatus.target_summary || "Endpoint"}`;
     }
     if (deleteJobStatus.mode === "match") {
       return `Target: ${deleteJobStatus.target_summary || "Matched endpoints"}`;

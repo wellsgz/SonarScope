@@ -1,7 +1,5 @@
 import type {
   DashboardUnreachableSummary,
-  DeleteAllInventoryResponse,
-  DeleteInventoryByGroupResponse,
   FilterOptions,
   GroupMembershipRemovalPreviewResponse,
   Group,
@@ -596,17 +594,14 @@ export async function updateInventoryEndpointActivity(payload: {
 
 export async function deleteInventoryEndpoint(
   endpointID: number
-): Promise<{ deleted: boolean; endpoint_id: number; deleted_count: number }> {
-  return request<{ deleted: boolean; endpoint_id: number; deleted_count: number }>(
-    `/api/inventory/endpoints/${endpointID}`,
-    {
-      method: "DELETE"
-    }
-  );
+): Promise<InventoryDeleteJobStatus> {
+  return request<InventoryDeleteJobStatus>(`/api/inventory/delete-jobs/by-endpoint/${endpointID}`, {
+    method: "POST"
+  });
 }
 
-export async function deleteInventoryEndpointsByGroup(groupID: number): Promise<DeleteInventoryByGroupResponse> {
-  return request<DeleteInventoryByGroupResponse>(`/api/inventory/endpoints/by-group/${groupID}`, {
+export async function deleteInventoryEndpointsByGroup(groupID: number): Promise<InventoryDeleteJobStatus> {
+  return request<InventoryDeleteJobStatus>(`/api/inventory/endpoints/by-group/${groupID}`, {
     method: "DELETE"
   });
 }
@@ -640,8 +635,8 @@ export async function previewInventoryBatchDelete(payload: {
   });
 }
 
-export async function deleteAllInventoryEndpoints(confirmPhrase: string): Promise<DeleteAllInventoryResponse> {
-  return request<DeleteAllInventoryResponse>("/api/inventory/endpoints/delete-all", {
+export async function deleteAllInventoryEndpoints(confirmPhrase: string): Promise<InventoryDeleteJobStatus> {
+  return request<InventoryDeleteJobStatus>("/api/inventory/endpoints/delete-all", {
     method: "POST",
     body: JSON.stringify({ confirm_phrase: confirmPhrase })
   });

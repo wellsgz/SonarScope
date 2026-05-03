@@ -440,9 +440,10 @@ type DeleteAllInventoryResponse struct {
 type InventoryDeleteJobMode string
 
 const (
-	InventoryDeleteJobModeByGroup InventoryDeleteJobMode = "by_group"
-	InventoryDeleteJobModeAll     InventoryDeleteJobMode = "all"
-	InventoryDeleteJobModeMatch   InventoryDeleteJobMode = "match"
+	InventoryDeleteJobModeEndpoint InventoryDeleteJobMode = "endpoint"
+	InventoryDeleteJobModeByGroup  InventoryDeleteJobMode = "by_group"
+	InventoryDeleteJobModeAll      InventoryDeleteJobMode = "all"
+	InventoryDeleteJobModeMatch    InventoryDeleteJobMode = "match"
 )
 
 type InventoryDeleteJobState string

@@ -406,6 +406,7 @@ func (s *Server) Routes() http.Handler {
 			r.Delete("/endpoints/{endpointID}", s.handleInventoryEndpointDelete)
 			r.Delete("/endpoints/by-group/{groupID}", s.handleInventoryDeleteByGroup)
 			r.Post("/endpoints/delete-all", s.handleInventoryDeleteAll)
+			r.Post("/delete-jobs/by-endpoint/{endpointID}", s.handleInventoryDeleteJobByEndpoint)
 			r.Post("/delete-jobs/by-group/{groupID}", s.handleInventoryDeleteJobByGroup)
 			r.Post("/delete-jobs/all", s.handleInventoryDeleteJobAll)
 			r.Post("/delete-jobs/match", s.handleInventoryDeleteJobMatch)
@@ -1037,19 +1038,38 @@ func (s *Server) handleInventoryEndpointUpdate(w http.ResponseWriter, r *http.Re
 	util.WriteJSON(w, http.StatusOK, item)
 }
 
-func (s *Server) handleInventoryEndpointDelete(w http.ResponseWriter, r *http.Request) {
-	if s.isDeleteJobRunning() {
-		util.WriteError(w, http.StatusConflict, "inventory deletion already in progress")
-		return
+func buildEndpointDeleteTargetSummary(endpoint model.InventoryEndpointView) string {
+	ipAddress := strings.TrimSpace(endpoint.IPAddress)
+	hostname := strings.TrimSpace(endpoint.Hostname)
+	if hostname != "" && hostname != ipAddress {
+		return fmt.Sprintf("Endpoint %s (%s)", hostname, ipAddress)
 	}
+	if ipAddress != "" {
+		return fmt.Sprintf("Endpoint %s", ipAddress)
+	}
+	return fmt.Sprintf("Endpoint %d", endpoint.EndpointID)
+}
 
+func (s *Server) handleInventoryEndpointDelete(w http.ResponseWriter, r *http.Request) {
+	s.handleInventoryDeleteJobByEndpoint(w, r)
+}
+
+func (s *Server) handleInventoryDeleteByGroup(w http.ResponseWriter, r *http.Request) {
+	s.handleInventoryDeleteJobByGroup(w, r)
+}
+
+func (s *Server) handleInventoryDeleteAll(w http.ResponseWriter, r *http.Request) {
+	s.handleInventoryDeleteJobAll(w, r)
+}
+
+func (s *Server) handleInventoryDeleteJobByEndpoint(w http.ResponseWriter, r *http.Request) {
 	endpointID, err := strconv.ParseInt(chi.URLParam(r, "endpointID"), 10, 64)
 	if err != nil || endpointID < 1 {
 		util.WriteError(w, http.StatusBadRequest, "invalid endpoint id")
 		return
 	}
 
-	deletedCount, err := s.store.DeleteInventoryEndpointByID(r.Context(), endpointID)
+	endpoint, err := s.store.GetInventoryEndpointByID(r.Context(), endpointID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			util.WriteError(w, http.StatusNotFound, "inventory endpoint not found")
@@ -1059,69 +1079,15 @@ func (s *Server) handleInventoryEndpointDelete(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	util.WriteJSON(w, http.StatusOK, map[string]any{
-		"deleted":       true,
-		"endpoint_id":   endpointID,
-		"deleted_count": deletedCount,
-	})
-}
-
-func (s *Server) handleInventoryDeleteByGroup(w http.ResponseWriter, r *http.Request) {
-	if s.isDeleteJobRunning() {
-		util.WriteError(w, http.StatusConflict, "inventory deletion already in progress")
-		return
-	}
-
-	groupID, err := strconv.ParseInt(chi.URLParam(r, "groupID"), 10, 64)
-	if err != nil || groupID < 1 {
-		util.WriteError(w, http.StatusBadRequest, "invalid group id")
-		return
-	}
-
-	matchedCount, deletedCount, err := s.store.DeleteInventoryEndpointsByGroup(r.Context(), groupID)
+	job, err := s.beginDeleteJob(model.InventoryDeleteJobModeEndpoint, nil, buildEndpointDeleteTargetSummary(endpoint))
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			util.WriteError(w, http.StatusNotFound, "group not found")
-			return
-		}
-		util.WriteError(w, http.StatusInternalServerError, err.Error())
+		util.WriteError(w, http.StatusConflict, err.Error())
 		return
 	}
 
-	util.WriteJSON(w, http.StatusOK, model.DeleteInventoryByGroupResponse{
-		Deleted:      true,
-		MatchedCount: matchedCount,
-		DeletedCount: deletedCount,
-		GroupID:      groupID,
-	})
-}
-
-func (s *Server) handleInventoryDeleteAll(w http.ResponseWriter, r *http.Request) {
-	if s.isDeleteJobRunning() {
-		util.WriteError(w, http.StatusConflict, "inventory deletion already in progress")
-		return
-	}
-
-	var req model.DeleteAllInventoryRequest
-	if err := util.DecodeJSON(r, &req); err != nil {
-		util.WriteError(w, http.StatusBadRequest, "invalid request payload")
-		return
-	}
-
-	if strings.TrimSpace(req.ConfirmPhrase) != "DELETE ALL ENDPOINTS" {
-		util.WriteError(w, http.StatusBadRequest, "confirm_phrase must be DELETE ALL ENDPOINTS")
-		return
-	}
-
-	deletedCount, err := s.store.DeleteAllInventoryEndpoints(r.Context())
-	if err != nil {
-		util.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	util.WriteJSON(w, http.StatusOK, model.DeleteAllInventoryResponse{
-		Deleted:      true,
-		DeletedCount: deletedCount,
+	go s.runDeleteJob(job, []int64{endpointID})
+	util.WriteJSON(w, http.StatusAccepted, model.InventoryDeleteJobStartResponse{
+		InventoryDeleteJobStatusResponse: s.deleteJobSnapshot(),
 	})
 }
 
