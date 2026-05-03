@@ -148,7 +148,8 @@ Inventory CSV export:
 Delete inventory endpoint:
 - `POST /api/inventory/delete-jobs/by-endpoint/{endpointID}` starts a background delete job for one endpoint.
 - `DELETE /api/inventory/endpoints/{endpointID}` is a legacy-compatible alias that starts the same background delete job.
-- Endpoint delete jobs remove endpoint + group membership + current stats + probe history.
+- Endpoint, group, and match delete jobs remove selected endpoints + group membership + current stats + probe history.
+- Delete-all jobs use a fast-path purge for all endpoint-owned tables, so progress is phase-based rather than raw-row based.
 - Returns `409 Conflict` when an inventory delete job is already running.
 
 ## WebSocket

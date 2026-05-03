@@ -273,6 +273,11 @@ func (s *Server) runDeleteJob(job *inventoryDeleteJobState, endpointIDs []int64)
 		return
 	}
 
+	if job.Mode == model.InventoryDeleteJobModeAll {
+		s.runDeleteAllFastPath(jobID, endpointIDs, pausedJobs)
+		return
+	}
+
 	s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
 		current.Phase = "deleting endpoints"
 	})
@@ -327,6 +332,61 @@ func (s *Server) runDeleteJob(job *inventoryDeleteJobState, endpointIDs []int64)
 	s.completeDeleteJob(jobID, model.InventoryDeleteJobStateCompleted, "")
 }
 
+func (s *Server) runDeleteAllFastPath(jobID string, endpointIDs []int64, pausedJobs []int64) {
+	matchedEndpoints := int64(len(endpointIDs))
+	s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
+		current.Phase = "purging all probe history"
+		current.MatchedEndpoints = matchedEndpoints
+		current.ProcessedEndpoints = 0
+		current.DeletedEndpoints = 0
+		current.TotalPingRows = 0
+		current.DeletedPingRows = 0
+		current.ProgressPct = 35
+		current.EtaSeconds = estimateDeleteJobETAFromProgress(current.ProgressPct, current.StartedAt)
+	})
+
+	deletedCount, err := s.store.DeleteAllInventoryEndpointsFast(context.Background())
+	if err != nil {
+		if len(pausedJobs) > 0 {
+			if resumeErr := s.store.ResumeJobs(context.Background(), pausedJobs); resumeErr != nil {
+				log.Printf("delete job %s: failed to resume maintenance jobs after delete-all failure: %v", jobID, resumeErr)
+			}
+		}
+		s.completeDeleteJob(jobID, model.InventoryDeleteJobStateFailed, err.Error())
+		return
+	}
+
+	s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
+		current.Phase = "deleting endpoints"
+		current.MatchedEndpoints = matchedEndpoints
+		current.ProcessedEndpoints = matchedEndpoints
+		current.DeletedEndpoints = deletedCount
+		current.TotalPingRows = 0
+		current.DeletedPingRows = 0
+		current.ProgressPct = 90
+		current.EtaSeconds = estimateDeleteJobETAFromProgress(current.ProgressPct, current.StartedAt)
+	})
+
+	if len(pausedJobs) > 0 {
+		s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
+			current.Phase = "resuming maintenance jobs"
+		})
+		if err := s.store.ResumeJobs(context.Background(), pausedJobs); err != nil {
+			log.Printf("delete job %s: failed to resume maintenance jobs: %v", jobID, err)
+		}
+	}
+
+	s.updateDeleteJob(jobID, func(current *inventoryDeleteJobState) {
+		current.DeletedEndpoints = deletedCount
+		current.ProcessedEndpoints = matchedEndpoints
+		current.ProgressPct = 100
+		etaZero := int64(0)
+		current.EtaSeconds = &etaZero
+		current.Phase = "completed"
+	})
+	s.completeDeleteJob(jobID, model.InventoryDeleteJobStateCompleted, "")
+}
+
 func computeDeleteJobProgressPct(progress store.InventoryDeleteProgress) float64 {
 	endpointPct := 0.0
 	if progress.MatchedEndpoints > 0 {
@@ -339,6 +399,12 @@ func computeDeleteJobProgressPct(progress store.InventoryDeleteProgress) float64
 	}
 
 	if progress.TotalPingRows <= 0 {
+		if progress.Phase == "deleting ping history" {
+			return endpointPct * 85
+		}
+		if progress.Phase == "deleting endpoints" {
+			return 85 + (endpointPct * 15)
+		}
 		return endpointPct * 100
 	}
 

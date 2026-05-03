@@ -773,12 +773,24 @@ export function InventoryPage() {
 
   const deleteJobPingLabel = useMemo(() => {
     const totalPingRows = deleteJobStatus?.total_ping_rows || 0;
+    const deletedPingRows = deleteJobStatus?.deleted_ping_rows || 0;
     if (totalPingRows <= 0) {
+      const phase = deleteJobStatus?.phase || "";
+      if (deleteJobStatus?.mode === "all" && phase.includes("history")) {
+        return "probe history fast purge";
+      }
+      if (phase.includes("history")) {
+        return "probe history purge in progress";
+      }
       return "";
     }
-    const deletedPingRows = deleteJobStatus?.deleted_ping_rows || 0;
     return `${deletedPingRows}/${totalPingRows} ping rows purged`;
-  }, [deleteJobStatus?.total_ping_rows, deleteJobStatus?.deleted_ping_rows]);
+  }, [
+    deleteJobStatus?.total_ping_rows,
+    deleteJobStatus?.deleted_ping_rows,
+    deleteJobStatus?.phase,
+    deleteJobStatus?.mode
+  ]);
 
   const groupAssignmentInvalid =
     assignToGroup &&
@@ -2378,7 +2390,7 @@ export function InventoryPage() {
                       <div className="inventory-danger-row-content">
                         {!deleteAllArmed ? (
                           <button
-                            className="btn-link inventory-danger-link-trigger"
+                            className="btn inventory-danger-action-trigger"
                             type="button"
                             disabled={deleteInProgress}
                             onClick={() => {
@@ -2387,7 +2399,7 @@ export function InventoryPage() {
                               setDeleteAllFinalConfirmOpen(false);
                             }}
                           >
-                            Delete all endpoints...
+                            Delete All Endpoints
                           </button>
                         ) : (
                           <div className="inventory-delete-all-confirm">

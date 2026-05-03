@@ -2095,20 +2095,8 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 	if endpointBatchSize <= 0 {
 		endpointBatchSize = 500
 	}
-	if pingRowBatchSize <= 0 {
-		pingRowBatchSize = 25000
-	}
 
 	matchedEndpoints := int64(len(endpointIDs))
-	totalPingRows := int64(0)
-	err := s.pool.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM ping_raw
-		WHERE endpoint_id = ANY($1)
-	`, endpointIDs).Scan(&totalPingRows)
-	if err != nil {
-		return 0, 0, err
-	}
 
 	var processedCount int64
 	var deletedPingRows int64
@@ -2118,59 +2106,49 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 		onProgress(InventoryDeleteProgress{
 			Phase:            "deleting ping history",
 			MatchedEndpoints: matchedEndpoints,
-			TotalPingRows:    totalPingRows,
 		})
 	}
 
-	for start := 0; totalPingRows > 0 && start < len(endpointIDs); start += endpointBatchSize {
+	for _, endpointID := range endpointIDs {
 		if err := ctx.Err(); err != nil {
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
-		end := start + endpointBatchSize
-		if end > len(endpointIDs) {
-			end = len(endpointIDs)
-		}
-		batchIDs := endpointIDs[start:end]
 
 		tx, err := s.pool.Begin(ctx)
 		if err != nil {
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 
 		if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 		if _, err := tx.Exec(ctx, `SET LOCAL timescaledb.max_tuples_decompressed_per_dml_transaction = 0`); err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 		if _, err := tx.Exec(ctx, `SET LOCAL synchronous_commit = OFF`); err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 
-		// Delete directly by endpoint_id. The previous ORDER BY/LIMIT CTE can
-		// force very slow scans against compressed Timescale chunks even when
-		// only a handful of rows match a recently probed endpoint.
+		// Keep each ping-history purge narrowly indexed. Large ANY() deletes and
+		// row-window CTEs can trigger expensive scans across compressed chunks.
 		pingDeleteCmd, err := tx.Exec(ctx, `
 			DELETE FROM ping_raw
-			WHERE endpoint_id = ANY($1::BIGINT[])
-		`, batchIDs)
+			WHERE endpoint_id = $1
+		`, endpointID)
 		if err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 
-		deletedRows := pingDeleteCmd.RowsAffected()
-		deletedPingRows += deletedRows
-		if deletedPingRows > totalPingRows {
-			deletedPingRows = totalPingRows
-		}
+		processedCount++
+		deletedPingRows += pingDeleteCmd.RowsAffected()
 
 		if onProgress != nil {
 			onProgress(InventoryDeleteProgress{
@@ -2178,15 +2156,15 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 				MatchedEndpoints:   matchedEndpoints,
 				ProcessedEndpoints: processedCount,
 				DeletedEndpoints:   deletedCount,
-				TotalPingRows:      totalPingRows,
 				DeletedPingRows:    deletedPingRows,
 			})
 		}
 	}
 
+	processedCount = 0
 	for start := 0; start < len(endpointIDs); start += endpointBatchSize {
 		if err := ctx.Err(); err != nil {
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 		end := start + endpointBatchSize
 		if end > len(endpointIDs) {
@@ -2196,16 +2174,16 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 
 		tx, err := s.pool.Begin(ctx)
 		if err != nil {
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 
 		if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 		if _, err := tx.Exec(ctx, `SET LOCAL synchronous_commit = OFF`); err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 
 		if _, err := tx.Exec(ctx, `
@@ -2213,7 +2191,7 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 			WHERE endpoint_id = ANY($1::BIGINT[])
 		`, batchIDs); err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 
 		if _, err := tx.Exec(ctx, `
@@ -2221,7 +2199,7 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 			WHERE endpoint_id = ANY($1::BIGINT[])
 		`, batchIDs); err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 		cmd, err := tx.Exec(ctx, `
 			DELETE FROM inventory_endpoint
@@ -2229,11 +2207,11 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 		`, batchIDs)
 		if err != nil {
 			_ = tx.Rollback(ctx)
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			return deletedCount, totalPingRows, err
+			return deletedCount, deletedPingRows, err
 		}
 
 		processedCount += int64(len(batchIDs))
@@ -2244,13 +2222,51 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 				MatchedEndpoints:   matchedEndpoints,
 				ProcessedEndpoints: processedCount,
 				DeletedEndpoints:   deletedCount,
-				TotalPingRows:      totalPingRows,
 				DeletedPingRows:    deletedPingRows,
 			})
 		}
 	}
 
-	return deletedCount, totalPingRows, nil
+	return deletedCount, deletedPingRows, nil
+}
+
+func (s *Store) DeleteAllInventoryEndpointsFast(ctx context.Context) (int64, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	var matchedEndpoints int64
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM inventory_endpoint`).Scan(&matchedEndpoints); err != nil {
+		_ = tx.Rollback(ctx)
+		return 0, err
+	}
+
+	if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
+		_ = tx.Rollback(ctx)
+		return 0, err
+	}
+	if _, err := tx.Exec(ctx, `SET LOCAL synchronous_commit = OFF`); err != nil {
+		_ = tx.Rollback(ctx)
+		return 0, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		TRUNCATE TABLE
+			ping_raw,
+			endpoint_stats_current,
+			group_member,
+			inventory_endpoint
+	`); err != nil {
+		_ = tx.Rollback(ctx)
+		return 0, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+
+	return matchedEndpoints, nil
 }
 
 func (s *Store) PauseMaintenanceJobs(ctx context.Context) ([]int64, error) {
@@ -2338,14 +2354,7 @@ func (s *Store) DeleteInventoryEndpointsByGroup(ctx context.Context, groupID int
 }
 
 func (s *Store) DeleteAllInventoryEndpoints(ctx context.Context) (int64, error) {
-	endpointIDs, err := s.ListAllEndpointIDs(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if len(endpointIDs) == 0 {
-		return 0, nil
-	}
-	return s.DeleteInventoryEndpointsByIDs(ctx, endpointIDs, 500, nil)
+	return s.DeleteAllInventoryEndpointsFast(ctx)
 }
 
 func (s *Store) QueryTimeSeries(ctx context.Context, endpointIDs []int64, start time.Time, end time.Time, rollup string) ([]model.TimeSeriesPoint, error) {
