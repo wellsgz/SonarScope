@@ -2122,10 +2122,15 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 		})
 	}
 
-	for totalPingRows > 0 {
+	for start := 0; totalPingRows > 0 && start < len(endpointIDs); start += endpointBatchSize {
 		if err := ctx.Err(); err != nil {
 			return deletedCount, totalPingRows, err
 		}
+		end := start + endpointBatchSize
+		if end > len(endpointIDs) {
+			end = len(endpointIDs)
+		}
+		batchIDs := endpointIDs[start:end]
 
 		tx, err := s.pool.Begin(ctx)
 		if err != nil {
@@ -2145,19 +2150,13 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 			return deletedCount, totalPingRows, err
 		}
 
+		// Delete directly by endpoint_id. The previous ORDER BY/LIMIT CTE can
+		// force very slow scans against compressed Timescale chunks even when
+		// only a handful of rows match a recently probed endpoint.
 		pingDeleteCmd, err := tx.Exec(ctx, `
-			WITH doomed AS (
-				SELECT endpoint_id, ts
-				FROM ping_raw
-				WHERE endpoint_id = ANY($1::BIGINT[])
-				ORDER BY endpoint_id, ts DESC
-				LIMIT $2
-			)
-			DELETE FROM ping_raw pr
-			USING doomed d
-			WHERE pr.endpoint_id = d.endpoint_id
-			  AND pr.ts = d.ts
-		`, endpointIDs, pingRowBatchSize)
+			DELETE FROM ping_raw
+			WHERE endpoint_id = ANY($1::BIGINT[])
+		`, batchIDs)
 		if err != nil {
 			_ = tx.Rollback(ctx)
 			return deletedCount, totalPingRows, err
@@ -2168,10 +2167,6 @@ func (s *Store) DeleteInventoryEndpointsByIDsWithProgress(
 		}
 
 		deletedRows := pingDeleteCmd.RowsAffected()
-		if deletedRows == 0 {
-			break
-		}
-
 		deletedPingRows += deletedRows
 		if deletedPingRows > totalPingRows {
 			deletedPingRows = totalPingRows
