@@ -66,18 +66,15 @@ const rangeSortableFields: MonitorSortField[] = [
 ];
 const monitorControlsCollapsedKey = "sonarscope.monitor.controls_collapsed";
 
-type CustomFieldSlot = 1 | 2 | 3;
+const maxCustomFieldSlots = 10;
+type CustomFieldSlot = number;
 
 type EnabledCustomField = {
   slot: CustomFieldSlot;
   name: string;
 };
 
-type CustomSearchState = {
-  custom1: string;
-  custom2: string;
-  custom3: string;
-};
+type CustomSearchState = Record<number, string>;
 
 type ChartSnapshot = {
   id: number;
@@ -91,11 +88,9 @@ type ChartSnapshot = {
   capturedAtISO: string;
 };
 
-const defaultCustomSearch: CustomSearchState = {
-  custom1: "",
-  custom2: "",
-  custom3: ""
-};
+const defaultCustomSearch: CustomSearchState = Object.fromEntries(
+  Array.from({ length: maxCustomFieldSlots }, (_, index) => [index + 1, ""])
+) as CustomSearchState;
 const liveSnapshotChartRange: QuickRange = "30m";
 
 function formatMonitorSortFieldLabel(field: MonitorSortField): string {
@@ -160,37 +155,31 @@ function createDefaultCustomRange(): { start: string; end: string } {
 }
 
 function normalizeEnabledCustomFields(fields?: CustomFieldConfig[]): EnabledCustomField[] {
-  const bySlot: Record<CustomFieldSlot, EnabledCustomField | null> = {
-    1: null,
-    2: null,
-    3: null
-  };
+  const bySlot = new Map<number, EnabledCustomField>();
   (fields || []).forEach((field) => {
-    if (field.slot < 1 || field.slot > 3) {
+    if (field.slot < 1 || field.slot > maxCustomFieldSlots) {
       return;
     }
     if (!field.enabled || !field.name.trim()) {
       return;
     }
     const slot = field.slot as CustomFieldSlot;
-    bySlot[slot] = {
+    bySlot.set(slot, {
       slot,
       name: field.name.trim()
-    };
+    });
   });
-  return [bySlot[1], bySlot[2], bySlot[3]].filter((field): field is EnabledCustomField => field !== null);
+  return Array.from({ length: maxCustomFieldSlots }, (_, index) => bySlot.get(index + 1)).filter(
+    (field): field is EnabledCustomField => field !== undefined
+  );
 }
 
 function customSearchValueBySlot(values: CustomSearchState, slot: CustomFieldSlot): string {
-  if (slot === 1) return values.custom1;
-  if (slot === 2) return values.custom2;
-  return values.custom3;
+  return values[slot] || "";
 }
 
 function setCustomSearchBySlot(values: CustomSearchState, slot: CustomFieldSlot, next: string): CustomSearchState {
-  if (slot === 1) return { ...values, custom1: next };
-  if (slot === 2) return { ...values, custom2: next };
-  return { ...values, custom3: next };
+  return { ...values, [slot]: next };
 }
 
 function normalizeIPList(raw: string): string[] {
@@ -491,20 +480,16 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       switches: filters.switches,
       ports: filters.ports,
       groups: filters.groups,
-      hostname: hostnameSearch,
-      mac: macSearch,
-      custom1: customSearch.custom1,
-      custom2: customSearch.custom2,
-      custom3: customSearch.custom3,
-      ipList: ipListValues,
+	      hostname: hostnameSearch,
+	      mac: macSearch,
+	      customSearches: customSearch,
+	      ipList: ipListValues,
       statsScope: dataScope,
       start: dataScope === "range" ? toApiTime(effectiveStart) : undefined,
       end: dataScope === "range" ? toApiTime(effectiveEnd) : undefined
     }),
     [
-      customSearch.custom1,
-      customSearch.custom2,
-      customSearch.custom3,
+	      customSearch,
       dataScope,
       effectiveEnd,
       effectiveStart,
@@ -512,7 +497,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       filters.ports,
       filters.switches,
       filters.vlan,
-      hostnameSearch,
+	      hostnameSearch,
       ipListValues,
       macSearch
     ]
@@ -521,12 +506,10 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
   const monitorQuery = useQuery({
     queryKey: [
       "monitor-endpoints-page",
-      filters,
-      hostnameSearch,
-      macSearch,
-      customSearch.custom1,
-      customSearch.custom2,
-      customSearch.custom3,
+	      filters,
+	      hostnameSearch,
+	      macSearch,
+	      customSearch,
       enabledCustomFieldKey,
       ipListSearch,
       dataScope,
@@ -558,20 +541,16 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       ports: filters.ports,
       groups: filters.groups,
       hostname: hostnameSearch,
-      mac: macSearch,
-      custom1: customSearch.custom1,
-      custom2: customSearch.custom2,
-      custom3: customSearch.custom3,
-      ipList: ipListValues,
+	      mac: macSearch,
+	      customSearches: customSearch,
+	      ipList: ipListValues,
       statsScope: dataScope,
       start: dataScope === "range" ? toApiTime(effectiveStart) : undefined,
       end: dataScope === "range" ? toApiTime(effectiveEnd) : undefined,
       lookback: dataScope === "live" && dashboardLookback ? dashboardLookback : undefined
     }),
     [
-      customSearch.custom1,
-      customSearch.custom2,
-      customSearch.custom3,
+	      customSearch,
       dashboardLookback,
       dataScope,
       effectiveEnd,
@@ -594,9 +573,7 @@ export function MonitorPage({ dashboardMode, onDashboardModeChange, probeStatus,
       dashboardSummaryFilters.groups,
       dashboardSummaryFilters.hostname,
       dashboardSummaryFilters.mac,
-      dashboardSummaryFilters.custom1,
-      dashboardSummaryFilters.custom2,
-      dashboardSummaryFilters.custom3,
+	      dashboardSummaryFilters.customSearches,
       dashboardSummaryFilters.ipList,
       dashboardSummaryFilters.statsScope,
       dashboardSummaryFilters.statsScope === "range" ? dashboardSummaryFilters.start ?? "" : "",

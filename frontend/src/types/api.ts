@@ -7,6 +7,13 @@ export type MonitorEndpoint = {
   custom_field_1_value: string;
   custom_field_2_value: string;
   custom_field_3_value: string;
+  custom_field_4_value: string;
+  custom_field_5_value: string;
+  custom_field_6_value: string;
+  custom_field_7_value: string;
+  custom_field_8_value: string;
+  custom_field_9_value: string;
+  custom_field_10_value: string;
   reply_ip_address: string | null;
   last_success_on: string | null;
   success_count: number;
@@ -20,9 +27,14 @@ export type MonitorEndpoint = {
   last_ping_latency: number | null;
   average_latency: number | null;
   vlan: string;
+  zone: string;
   switch: string;
   port: string;
   port_type: string;
+  gateway: string;
+  mgmt_ip: string;
+  speed: string;
+  duplex: string;
   group: string[];
 };
 
@@ -66,10 +78,22 @@ export type InventoryEndpoint = {
   custom_field_1_value: string;
   custom_field_2_value: string;
   custom_field_3_value: string;
+  custom_field_4_value: string;
+  custom_field_5_value: string;
+  custom_field_6_value: string;
+  custom_field_7_value: string;
+  custom_field_8_value: string;
+  custom_field_9_value: string;
+  custom_field_10_value: string;
   vlan: string;
+  zone: string;
   switch: string;
   port: string;
   port_type: string;
+  gateway: string;
+  mgmt_ip: string;
+  speed: string;
+  duplex: string;
   description: string;
   group: string[];
   active: boolean;
@@ -83,12 +107,25 @@ export type InventoryEndpointCreateRequest = {
   custom_field_1_value?: string;
   custom_field_2_value?: string;
   custom_field_3_value?: string;
+  custom_field_4_value?: string;
+  custom_field_5_value?: string;
+  custom_field_6_value?: string;
+  custom_field_7_value?: string;
+  custom_field_8_value?: string;
+  custom_field_9_value?: string;
+  custom_field_10_value?: string;
   vlan?: string;
+  zone?: string;
   switch?: string;
   port?: string;
   port_type?: string;
+  gateway?: string;
+  mgmt_ip?: string;
+  speed?: string;
+  duplex?: string;
   description?: string;
   group_id?: number;
+  [key: `custom_field_${number}_value`]: string | undefined;
 };
 
 export type Group = {
@@ -177,10 +214,22 @@ export type ImportCandidate = {
   custom_field_1_value: string;
   custom_field_2_value: string;
   custom_field_3_value: string;
+  custom_field_4_value: string;
+  custom_field_5_value: string;
+  custom_field_6_value: string;
+  custom_field_7_value: string;
+  custom_field_8_value: string;
+  custom_field_9_value: string;
+  custom_field_10_value: string;
   vlan: string;
+  zone: string;
   switch: string;
   port: string;
   port_type: string;
+  gateway: string;
+  mgmt_ip: string;
+  speed: string;
+  duplex: string;
   description: string;
   sorting: string;
   message: string;
@@ -233,13 +282,25 @@ export type InventoryBatchMatchField =
   | "ip_address"
   | "mac_address"
   | "vlan"
+  | "zone"
   | "switch"
   | "port"
   | "port_type"
+  | "gateway"
+  | "mgmt_ip"
+  | "speed"
+  | "duplex"
   | "description"
   | "custom_field_1_value"
   | "custom_field_2_value"
-  | "custom_field_3_value";
+  | "custom_field_3_value"
+  | "custom_field_4_value"
+  | "custom_field_5_value"
+  | "custom_field_6_value"
+  | "custom_field_7_value"
+  | "custom_field_8_value"
+  | "custom_field_9_value"
+  | "custom_field_10_value";
 
 export type InventoryBatchMatchSpec = {
   mode: InventoryBatchMatchMode;

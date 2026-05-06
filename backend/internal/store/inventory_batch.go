@@ -22,12 +22,22 @@ func inventoryBatchFieldExpression(field model.InventoryBatchMatchField) (string
 		return "ie.mac", nil
 	case model.InventoryBatchMatchFieldVLAN:
 		return "ie.vlan", nil
+	case model.InventoryBatchMatchFieldZone:
+		return "ie.zone", nil
 	case model.InventoryBatchMatchFieldSwitch:
 		return "ie.switch_name", nil
 	case model.InventoryBatchMatchFieldPort:
 		return "ie.port", nil
 	case model.InventoryBatchMatchFieldPortType:
 		return "ie.port_type", nil
+	case model.InventoryBatchMatchFieldGateway:
+		return "host(ie.gateway)", nil
+	case model.InventoryBatchMatchFieldMgmtIP:
+		return "host(ie.mgmt_ip)", nil
+	case model.InventoryBatchMatchFieldSpeed:
+		return "ie.speed", nil
+	case model.InventoryBatchMatchFieldDuplex:
+		return "ie.duplex", nil
 	case model.InventoryBatchMatchFieldDescription:
 		return "ie.description", nil
 	case model.InventoryBatchMatchFieldCustom1:
@@ -36,6 +46,20 @@ func inventoryBatchFieldExpression(field model.InventoryBatchMatchField) (string
 		return "ie.custom_field_2_value", nil
 	case model.InventoryBatchMatchFieldCustom3:
 		return "ie.custom_field_3_value", nil
+	case model.InventoryBatchMatchFieldCustom4:
+		return "ie.custom_field_4_value", nil
+	case model.InventoryBatchMatchFieldCustom5:
+		return "ie.custom_field_5_value", nil
+	case model.InventoryBatchMatchFieldCustom6:
+		return "ie.custom_field_6_value", nil
+	case model.InventoryBatchMatchFieldCustom7:
+		return "ie.custom_field_7_value", nil
+	case model.InventoryBatchMatchFieldCustom8:
+		return "ie.custom_field_8_value", nil
+	case model.InventoryBatchMatchFieldCustom9:
+		return "ie.custom_field_9_value", nil
+	case model.InventoryBatchMatchFieldCustom10:
+		return "ie.custom_field_10_value", nil
 	default:
 		return "", fmt.Errorf("unsupported match field %q", field)
 	}
@@ -314,17 +338,20 @@ func (s *Store) ListInventoryEndpointsByIDs(
 	rows, err := s.pool.Query(ctx, `
 		SELECT
 			ie.id,
-			ie.hostname,
-			host(ie.ip) AS ip_address,
-			ie.mac,
-			ie.custom_field_1_value,
-			ie.custom_field_2_value,
-			ie.custom_field_3_value,
-			ie.vlan,
-			ie.switch_name,
-			ie.port,
-			ie.port_type,
-			ie.description,
+				ie.hostname,
+				host(ie.ip) AS ip_address,
+				ie.mac,
+				`+customFieldValueColumns("ie")+`,
+				ie.vlan,
+				ie.zone,
+				ie.switch_name,
+				ie.port,
+				ie.port_type,
+				COALESCE(host(ie.gateway), '') AS gateway,
+				COALESCE(host(ie.mgmt_ip), '') AS mgmt_ip,
+				ie.speed,
+				ie.duplex,
+				ie.description,
 			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
 			ie.is_active,
 			ie.updated_at
@@ -332,9 +359,9 @@ func (s *Store) ListInventoryEndpointsByIDs(
 		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
 		LEFT JOIN group_def gd ON gd.id = gm.group_id
 		WHERE ie.id = ANY($1)
-		GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.switch_name, ie.port,
-			ie.port_type, ie.description, ie.is_active, ie.updated_at,
-			ie.custom_field_1_value, ie.custom_field_2_value, ie.custom_field_3_value
+			GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.zone, ie.switch_name, ie.port,
+				ie.port_type, ie.gateway, ie.mgmt_ip, ie.speed, ie.duplex, ie.description, ie.is_active, ie.updated_at,
+				`+customFieldValueColumns("ie")+`
 		ORDER BY ie.ip
 		LIMIT $2
 	`, endpointIDs, limit)
@@ -346,23 +373,29 @@ func (s *Store) ListInventoryEndpointsByIDs(
 	items := make([]model.InventoryEndpointView, 0, minInt(len(endpointIDs), limit))
 	for rows.Next() {
 		var item model.InventoryEndpointView
-		if err := rows.Scan(
+		scanTargets := []any{
 			&item.EndpointID,
 			&item.Hostname,
 			&item.IPAddress,
 			&item.MACAddress,
-			&item.CustomField1Value,
-			&item.CustomField2Value,
-			&item.CustomField3Value,
+		}
+		scanTargets = append(scanTargets, inventoryEndpointViewCustomFieldScanTargets(&item)...)
+		scanTargets = append(scanTargets,
 			&item.VLAN,
+			&item.Zone,
 			&item.Switch,
 			&item.Port,
 			&item.PortType,
+			&item.Gateway,
+			&item.MgmtIP,
+			&item.Speed,
+			&item.Duplex,
 			&item.Description,
 			&item.Groups,
 			&item.Active,
 			&item.UpdatedAt,
-		); err != nil {
+		)
+		if err := rows.Scan(scanTargets...); err != nil {
 			return nil, err
 		}
 		items = append(items, item)

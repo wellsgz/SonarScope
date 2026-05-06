@@ -27,7 +27,8 @@ type GroupUpdateNotice = {
 type MembershipMode = "manual" | "regex";
 type MembershipAction = "assign" | "remove";
 
-type CustomFieldSlot = 1 | 2 | 3;
+const maxCustomFieldSlots = 10;
+type CustomFieldSlot = number;
 
 type EnabledCustomField = {
   slot: CustomFieldSlot;
@@ -61,25 +62,23 @@ function isReservedGroupName(value: string): boolean {
 }
 
 function normalizeEnabledCustomFields(fields?: CustomFieldConfig[]): EnabledCustomField[] {
-  const bySlot: Record<CustomFieldSlot, EnabledCustomField | null> = {
-    1: null,
-    2: null,
-    3: null
-  };
+  const bySlot = new Map<number, EnabledCustomField>();
   (fields || []).forEach((field) => {
-    if (field.slot < 1 || field.slot > 3) {
+    if (field.slot < 1 || field.slot > maxCustomFieldSlots) {
       return;
     }
     if (!field.enabled || !field.name.trim()) {
       return;
     }
     const slot = field.slot as CustomFieldSlot;
-    bySlot[slot] = {
+    bySlot.set(slot, {
       slot,
       name: field.name.trim()
-    };
+    });
   });
-  return [bySlot[1], bySlot[2], bySlot[3]].filter((field): field is EnabledCustomField => field !== null);
+  return Array.from({ length: maxCustomFieldSlots }, (_, index) => bySlot.get(index + 1)).filter(
+    (field): field is EnabledCustomField => field !== undefined
+  );
 }
 
 function BatchPreviewStatsChips({
@@ -380,9 +379,14 @@ export function GroupsPage() {
       { value: "ip_address", label: "IP Address" },
       { value: "mac_address", label: "MAC Address" },
       { value: "vlan", label: "VLAN" },
+      { value: "zone", label: "Zone" },
       { value: "switch", label: "Switch" },
       { value: "port", label: "Port" },
       { value: "port_type", label: "Port Type" },
+      { value: "gateway", label: "Gateway" },
+      { value: "mgmt_ip", label: "Mgmt IP" },
+      { value: "speed", label: "Speed" },
+      { value: "duplex", label: "Duplex" },
       { value: "description", label: "Description" },
       ...enabledCustomFields.map((field) => ({
         value: (`custom_field_${field.slot}_value` as InventoryBatchMatchField),

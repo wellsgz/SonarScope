@@ -37,9 +37,7 @@ type MonitorPageQuery struct {
 	Filters            MonitorFilters
 	Hostname           string
 	MAC                string
-	Custom1            string
-	Custom2            string
-	Custom3            string
+	CustomSearches     []string
 	IPList             []string
 	ExcludeEndpointIDs []int64
 	Page               int
@@ -67,9 +65,7 @@ type rangeFailureStreakStats struct {
 type InventoryListQuery struct {
 	Filters        MonitorFilters
 	ActivityStates []string
-	Custom1        string
-	Custom2        string
-	Custom3        string
+	CustomSearches []string
 }
 
 type ProbeTarget struct {
@@ -91,6 +87,74 @@ func New(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
+func customFieldValueColumns(alias string) string {
+	columns := make([]string, 0, model.MaxCustomFieldSlots)
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		columns = append(columns, fmt.Sprintf("%s.custom_field_%d_value", alias, slot))
+	}
+	return strings.Join(columns, ", ")
+}
+
+func inventoryEndpointCustomFieldScanTargets(endpoint *model.InventoryEndpoint) []any {
+	return []any{
+		&endpoint.CustomField1Value,
+		&endpoint.CustomField2Value,
+		&endpoint.CustomField3Value,
+		&endpoint.CustomField4Value,
+		&endpoint.CustomField5Value,
+		&endpoint.CustomField6Value,
+		&endpoint.CustomField7Value,
+		&endpoint.CustomField8Value,
+		&endpoint.CustomField9Value,
+		&endpoint.CustomField10Value,
+	}
+}
+
+func monitorEndpointCustomFieldScanTargets(endpoint *model.MonitorEndpoint) []any {
+	return []any{
+		&endpoint.CustomField1Value,
+		&endpoint.CustomField2Value,
+		&endpoint.CustomField3Value,
+		&endpoint.CustomField4Value,
+		&endpoint.CustomField5Value,
+		&endpoint.CustomField6Value,
+		&endpoint.CustomField7Value,
+		&endpoint.CustomField8Value,
+		&endpoint.CustomField9Value,
+		&endpoint.CustomField10Value,
+	}
+}
+
+func inventoryEndpointViewCustomFieldScanTargets(endpoint *model.InventoryEndpointView) []any {
+	return []any{
+		&endpoint.CustomField1Value,
+		&endpoint.CustomField2Value,
+		&endpoint.CustomField3Value,
+		&endpoint.CustomField4Value,
+		&endpoint.CustomField5Value,
+		&endpoint.CustomField6Value,
+		&endpoint.CustomField7Value,
+		&endpoint.CustomField8Value,
+		&endpoint.CustomField9Value,
+		&endpoint.CustomField10Value,
+	}
+}
+
+func importCandidateCustomFieldValues(row model.ImportCandidate) []any {
+	return []any{
+		row.CustomField1Value,
+		row.CustomField2Value,
+		row.CustomField3Value,
+		row.CustomField4Value,
+		row.CustomField5Value,
+		row.CustomField6Value,
+		row.CustomField7Value,
+		row.CustomField8Value,
+		row.CustomField9Value,
+		row.CustomField10Value,
+	}
+}
+
 func (s *Store) EnsureDefaultSettings(ctx context.Context, defaults model.Settings) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO app_settings(id, ping_interval_sec, icmp_payload_bytes, icmp_timeout_ms, auto_refresh_sec)
@@ -102,77 +166,69 @@ func (s *Store) EnsureDefaultSettings(ctx context.Context, defaults model.Settin
 
 func (s *Store) GetSettings(ctx context.Context) (model.Settings, error) {
 	settings := model.Settings{}
-	var custom1Enabled bool
-	var custom1Name string
-	var custom2Enabled bool
-	var custom2Name string
-	var custom3Enabled bool
-	var custom3Name string
-	err := s.pool.QueryRow(ctx, `
-		SELECT
-			ping_interval_sec,
-			icmp_payload_bytes,
-			icmp_timeout_ms,
-			auto_refresh_sec,
-			custom_field_1_enabled,
-			custom_field_1_name,
-			custom_field_2_enabled,
-			custom_field_2_name,
-			custom_field_3_enabled,
-			custom_field_3_name
-		FROM app_settings
-		WHERE id = TRUE
-	`).Scan(
+	selectColumns := []string{
+		"ping_interval_sec",
+		"icmp_payload_bytes",
+		"icmp_timeout_ms",
+		"auto_refresh_sec",
+	}
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		selectColumns = append(selectColumns,
+			fmt.Sprintf("custom_field_%d_enabled", slot),
+			fmt.Sprintf("custom_field_%d_name", slot),
+		)
+	}
+	customFields := make([]model.CustomFieldConfig, model.MaxCustomFieldSlots)
+	scanTargets := []any{
 		&settings.PingIntervalSec,
 		&settings.ICMPPayloadSize,
 		&settings.ICMPTimeoutMs,
 		&settings.AutoRefreshSec,
-		&custom1Enabled,
-		&custom1Name,
-		&custom2Enabled,
-		&custom2Name,
-		&custom3Enabled,
-		&custom3Name,
-	)
+	}
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		customFields[slot-1] = model.CustomFieldConfig{Slot: slot}
+		scanTargets = append(scanTargets, &customFields[slot-1].Enabled, &customFields[slot-1].Name)
+	}
+	err := s.pool.QueryRow(ctx, `
+			SELECT `+strings.Join(selectColumns, ", ")+`
+			FROM app_settings
+			WHERE id = TRUE
+		`).Scan(scanTargets...)
 	if err != nil {
 		return model.Settings{}, err
 	}
-	settings.CustomFields = []model.CustomFieldConfig{
-		{Slot: 1, Enabled: custom1Enabled, Name: custom1Name},
-		{Slot: 2, Enabled: custom2Enabled, Name: custom2Name},
-		{Slot: 3, Enabled: custom3Enabled, Name: custom3Name},
-	}
+	settings.CustomFields = customFields
 	return settings, nil
 }
 
 func (s *Store) UpdateSettings(ctx context.Context, settings model.Settings) error {
 	customBySlot := customFieldsBySlot(settings.CustomFields)
-	cmd, err := s.pool.Exec(ctx, `
-		UPDATE app_settings
-		SET ping_interval_sec = $1,
-			icmp_payload_bytes = $2,
-			icmp_timeout_ms = $3,
-			auto_refresh_sec = $4,
-			custom_field_1_enabled = $5,
-			custom_field_1_name = $6,
-			custom_field_2_enabled = $7,
-			custom_field_2_name = $8,
-			custom_field_3_enabled = $9,
-			custom_field_3_name = $10,
-			updated_at = now()
-		WHERE id = TRUE
-	`,
+	setClauses := []string{
+		"ping_interval_sec = $1",
+		"icmp_payload_bytes = $2",
+		"icmp_timeout_ms = $3",
+		"auto_refresh_sec = $4",
+	}
+	args := []any{
 		settings.PingIntervalSec,
 		settings.ICMPPayloadSize,
 		settings.ICMPTimeoutMs,
 		settings.AutoRefreshSec,
-		customBySlot[1].Enabled,
-		customBySlot[1].Name,
-		customBySlot[2].Enabled,
-		customBySlot[2].Name,
-		customBySlot[3].Enabled,
-		customBySlot[3].Name,
-	)
+	}
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		enabledPos := len(args) + 1
+		args = append(args, customBySlot[slot].Enabled)
+		setClauses = append(setClauses, fmt.Sprintf("custom_field_%d_enabled = $%d", slot, enabledPos))
+		namePos := len(args) + 1
+		args = append(args, customBySlot[slot].Name)
+		setClauses = append(setClauses, fmt.Sprintf("custom_field_%d_name = $%d", slot, namePos))
+	}
+	setClauses = append(setClauses, "updated_at = now()")
+	cmd, err := s.pool.Exec(ctx, `
+			UPDATE app_settings
+			SET `+strings.Join(setClauses, ", ")+`
+			WHERE id = TRUE
+		`, args...)
 	if err != nil {
 		return err
 	}
@@ -323,8 +379,9 @@ func (s *Store) GetSwitchIPMap(ctx context.Context) (map[string]string, error) {
 
 func (s *Store) InventoryByIP(ctx context.Context) (map[string]model.InventoryEndpoint, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, host(ip), mac, custom_field_1_value, custom_field_2_value, custom_field_3_value,
-		       vlan, switch_name, port, port_type, description, hostname, is_active, updated_at
+		SELECT id, host(ip), mac, `+customFieldValueColumns("inventory_endpoint")+`,
+		       vlan, zone, switch_name, port, port_type, COALESCE(host(gateway), ''), COALESCE(host(mgmt_ip), ''),
+		       speed, duplex, description, hostname, is_active, updated_at
 		FROM inventory_endpoint
 	`)
 	if err != nil {
@@ -335,22 +392,28 @@ func (s *Store) InventoryByIP(ctx context.Context) (map[string]model.InventoryEn
 	result := map[string]model.InventoryEndpoint{}
 	for rows.Next() {
 		var endpoint model.InventoryEndpoint
-		if err := rows.Scan(
+		scanTargets := []any{
 			&endpoint.ID,
 			&endpoint.IP,
 			&endpoint.MAC,
-			&endpoint.CustomField1Value,
-			&endpoint.CustomField2Value,
-			&endpoint.CustomField3Value,
+		}
+		scanTargets = append(scanTargets, inventoryEndpointCustomFieldScanTargets(&endpoint)...)
+		scanTargets = append(scanTargets,
 			&endpoint.VLAN,
+			&endpoint.Zone,
 			&endpoint.SwitchName,
 			&endpoint.Port,
 			&endpoint.PortType,
+			&endpoint.Gateway,
+			&endpoint.MgmtIP,
+			&endpoint.Speed,
+			&endpoint.Duplex,
 			&endpoint.Description,
 			&endpoint.Hostname,
 			&endpoint.Active,
 			&endpoint.UpdatedAt,
-		); err != nil {
+		)
+		if err := rows.Scan(scanTargets...); err != nil {
 			return nil, err
 		}
 		result[endpoint.IP] = endpoint
@@ -366,24 +429,29 @@ func (s *Store) ApplyImport(ctx context.Context, rows []model.ImportCandidate) (
 	for _, row := range rows {
 		switch row.Action {
 		case model.ImportAdd:
-			cmd, err := s.pool.Exec(ctx, `
-				INSERT INTO inventory_endpoint(
-					ip, mac,
-					custom_field_1_value, custom_field_2_value, custom_field_3_value,
-					vlan, switch_name, port, port_type, description, hostname, updated_at
-				)
-				VALUES (
-					$1::inet, $2,
-					$3, $4, $5,
-					$6, $7, $8, $9, $10,
-					COALESCE(NULLIF($11, ''), host($1::inet)),
-					now()
-				)
-				ON CONFLICT (ip) DO NOTHING
-			`, row.IP, row.MAC,
-				row.CustomField1Value, row.CustomField2Value, row.CustomField3Value,
-				row.VLAN, row.SwitchName, row.Port, row.PortType, row.Description, row.Hostname,
+			args := []any{row.IP, row.MAC}
+			args = append(args, importCandidateCustomFieldValues(row)...)
+			args = append(args,
+				row.VLAN, row.Zone, row.SwitchName, row.Port, row.PortType,
+				row.Gateway, row.MgmtIP, row.Speed, row.Duplex, row.Description, row.Hostname,
 			)
+			cmd, err := s.pool.Exec(ctx, `
+					INSERT INTO inventory_endpoint(
+						ip, mac,
+						custom_field_1_value, custom_field_2_value, custom_field_3_value, custom_field_4_value, custom_field_5_value,
+						custom_field_6_value, custom_field_7_value, custom_field_8_value, custom_field_9_value, custom_field_10_value,
+						vlan, zone, switch_name, port, port_type, gateway, mgmt_ip, speed, duplex, description, hostname, updated_at
+					)
+					VALUES (
+						$1::inet, $2,
+						$3, $4, $5, $6, $7,
+						$8, $9, $10, $11, $12,
+						$13, $14, $15, $16, $17, NULLIF($18, '')::inet, NULLIF($19, '')::inet, $20, $21, $22,
+						COALESCE(NULLIF($23, ''), host($1::inet)),
+						now()
+					)
+					ON CONFLICT (ip) DO NOTHING
+				`, args...)
 			if err != nil {
 				errorsOut = append(errorsOut, fmt.Sprintf("%s: %v", row.RowID, err))
 				continue
@@ -394,24 +462,39 @@ func (s *Store) ApplyImport(ctx context.Context, rows []model.ImportCandidate) (
 			}
 			added++
 		case model.ImportUpdate:
-			cmd, err := s.pool.Exec(ctx, `
-				UPDATE inventory_endpoint
-				SET mac = COALESCE(NULLIF($2, ''), mac),
-					custom_field_1_value = COALESCE(NULLIF($3, ''), custom_field_1_value),
-					custom_field_2_value = COALESCE(NULLIF($4, ''), custom_field_2_value),
-					custom_field_3_value = COALESCE(NULLIF($5, ''), custom_field_3_value),
-					vlan = COALESCE(NULLIF($6, ''), vlan),
-					switch_name = COALESCE(NULLIF($7, ''), switch_name),
-					port = COALESCE(NULLIF($8, ''), port),
-					port_type = COALESCE(NULLIF($9, ''), port_type),
-					description = COALESCE(NULLIF($10, ''), description),
-					hostname = COALESCE(NULLIF($11, ''), hostname),
-					updated_at = now()
-				WHERE ip = $1::inet
-			`, row.IP, row.MAC,
-				row.CustomField1Value, row.CustomField2Value, row.CustomField3Value,
-				row.VLAN, row.SwitchName, row.Port, row.PortType, row.Description, row.Hostname,
+			args := []any{row.IP, row.MAC}
+			args = append(args, importCandidateCustomFieldValues(row)...)
+			args = append(args,
+				row.VLAN, row.Zone, row.SwitchName, row.Port, row.PortType,
+				row.Gateway, row.MgmtIP, row.Speed, row.Duplex, row.Description, row.Hostname,
 			)
+			cmd, err := s.pool.Exec(ctx, `
+					UPDATE inventory_endpoint
+					SET mac = COALESCE(NULLIF($2, ''), mac),
+						custom_field_1_value = COALESCE(NULLIF($3, ''), custom_field_1_value),
+						custom_field_2_value = COALESCE(NULLIF($4, ''), custom_field_2_value),
+						custom_field_3_value = COALESCE(NULLIF($5, ''), custom_field_3_value),
+						custom_field_4_value = COALESCE(NULLIF($6, ''), custom_field_4_value),
+						custom_field_5_value = COALESCE(NULLIF($7, ''), custom_field_5_value),
+						custom_field_6_value = COALESCE(NULLIF($8, ''), custom_field_6_value),
+						custom_field_7_value = COALESCE(NULLIF($9, ''), custom_field_7_value),
+						custom_field_8_value = COALESCE(NULLIF($10, ''), custom_field_8_value),
+						custom_field_9_value = COALESCE(NULLIF($11, ''), custom_field_9_value),
+						custom_field_10_value = COALESCE(NULLIF($12, ''), custom_field_10_value),
+						vlan = COALESCE(NULLIF($13, ''), vlan),
+						zone = COALESCE(NULLIF($14, ''), zone),
+						switch_name = COALESCE(NULLIF($15, ''), switch_name),
+						port = COALESCE(NULLIF($16, ''), port),
+						port_type = COALESCE(NULLIF($17, ''), port_type),
+						gateway = COALESCE(NULLIF($18, '')::inet, gateway),
+						mgmt_ip = COALESCE(NULLIF($19, '')::inet, mgmt_ip),
+						speed = COALESCE(NULLIF($20, ''), speed),
+						duplex = COALESCE(NULLIF($21, ''), duplex),
+						description = COALESCE(NULLIF($22, ''), description),
+						hostname = COALESCE(NULLIF($23, ''), hostname),
+						updated_at = now()
+					WHERE ip = $1::inet
+				`, args...)
 			if err != nil {
 				errorsOut = append(errorsOut, fmt.Sprintf("%s: %v", row.RowID, err))
 				continue
@@ -995,15 +1078,13 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 	query := `
 		SELECT
 			ie.id,
-			ie.hostname,
-			es.last_failed_on,
-			host(ie.ip) AS ip_address,
-			ie.mac,
-			ie.custom_field_1_value,
-			ie.custom_field_2_value,
-			ie.custom_field_3_value,
-			COALESCE(host(es.reply_ip_address), NULL) AS reply_ip_address,
-			es.last_success_on,
+				ie.hostname,
+				es.last_failed_on,
+				host(ie.ip) AS ip_address,
+				ie.mac,
+				` + customFieldValueColumns("ie") + `,
+				COALESCE(host(es.reply_ip_address), NULL) AS reply_ip_address,
+				es.last_success_on,
 			COALESCE(es.success_count, 0) AS success_count,
 			COALESCE(es.failed_count, 0) AS failed_count,
 			COALESCE(es.consecutive_failed_count, 0) AS consecutive_failed_count,
@@ -1013,12 +1094,17 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 			COALESCE(es.total_sent_ping, 0) AS total_sent_ping,
 			COALESCE(es.last_ping_status, 'unknown') AS last_ping_status,
 			es.last_ping_latency,
-			es.average_latency,
-			ie.vlan,
-			ie.switch_name,
-			ie.port,
-			ie.port_type,
-			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups
+				es.average_latency,
+				ie.vlan,
+				ie.zone,
+				ie.switch_name,
+				ie.port,
+				ie.port_type,
+				COALESCE(host(ie.gateway), '') AS gateway,
+				COALESCE(host(ie.mgmt_ip), '') AS mgmt_ip,
+				ie.speed,
+				ie.duplex,
+				COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups
 		FROM inventory_endpoint ie
 		LEFT JOIN endpoint_stats_current es ON es.endpoint_id = ie.id
 		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
@@ -1055,10 +1141,10 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 	query += `
 		GROUP BY ie.id, ie.hostname, es.last_failed_on, ie.ip, ie.mac, es.reply_ip_address,
 			es.last_success_on, es.success_count, es.failed_count, es.consecutive_failed_count,
-			es.max_consecutive_failed_count, es.max_consecutive_failed_count_time, es.failed_pct,
-			es.total_sent_ping, es.last_ping_status, es.last_ping_latency, es.average_latency,
-			ie.vlan, ie.switch_name, ie.port, ie.port_type,
-			ie.custom_field_1_value, ie.custom_field_2_value, ie.custom_field_3_value
+				es.max_consecutive_failed_count, es.max_consecutive_failed_count_time, es.failed_pct,
+				es.total_sent_ping, es.last_ping_status, es.last_ping_latency, es.average_latency,
+				ie.vlan, ie.zone, ie.switch_name, ie.port, ie.port_type, ie.gateway, ie.mgmt_ip, ie.speed, ie.duplex,
+				` + customFieldValueColumns("ie") + `
 		ORDER BY ie.ip
 	`
 
@@ -1071,15 +1157,15 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 	items := []model.MonitorEndpoint{}
 	for rows.Next() {
 		var item model.MonitorEndpoint
-		if err := rows.Scan(
+		scanTargets := []any{
 			&item.EndpointID,
 			&item.Hostname,
 			&item.LastFailedOn,
 			&item.IPAddress,
 			&item.MACAddress,
-			&item.CustomField1Value,
-			&item.CustomField2Value,
-			&item.CustomField3Value,
+		}
+		scanTargets = append(scanTargets, monitorEndpointCustomFieldScanTargets(&item)...)
+		scanTargets = append(scanTargets,
 			&item.ReplyIPAddress,
 			&item.LastSuccessOn,
 			&item.SuccessCount,
@@ -1093,11 +1179,17 @@ func (s *Store) ListMonitorEndpoints(ctx context.Context, filters MonitorFilters
 			&item.LastPingLatency,
 			&item.AverageLatency,
 			&item.VLAN,
+			&item.Zone,
 			&item.Switch,
 			&item.Port,
 			&item.PortType,
+			&item.Gateway,
+			&item.MgmtIP,
+			&item.Speed,
+			&item.Duplex,
 			&item.Groups,
-		); err != nil {
+		)
+		if err := rows.Scan(scanTargets...); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -1110,9 +1202,7 @@ func (s *Store) ListMonitorEndpointsPage(ctx context.Context, query MonitorPageQ
 		query.Filters,
 		query.Hostname,
 		query.MAC,
-		query.Custom1,
-		query.Custom2,
-		query.Custom3,
+		query.CustomSearches,
 		query.IPList,
 		query.ExcludeEndpointIDs,
 	)
@@ -1146,9 +1236,7 @@ func (s *Store) DashboardUnreachableSummary(
 		query.Filters,
 		query.Hostname,
 		query.MAC,
-		query.Custom1,
-		query.Custom2,
-		query.Custom3,
+		query.CustomSearches,
 		query.IPList,
 		query.ExcludeEndpointIDs,
 	)
@@ -1336,14 +1424,12 @@ func (s *Store) listMonitorEndpointsPageLive(ctx context.Context, query MonitorP
 	itemsSQL := `
 		SELECT
 			ie.id,
-			ie.hostname,
-			es.last_failed_on,
-			host(ie.ip) AS ip_address,
-			ie.mac,
-			ie.custom_field_1_value,
-			ie.custom_field_2_value,
-			ie.custom_field_3_value,
-			COALESCE(host(es.reply_ip_address), NULL) AS reply_ip_address,
+				ie.hostname,
+				es.last_failed_on,
+				host(ie.ip) AS ip_address,
+				ie.mac,
+				` + customFieldValueColumns("ie") + `,
+				COALESCE(host(es.reply_ip_address), NULL) AS reply_ip_address,
 			es.last_success_on,
 			COALESCE(es.success_count, 0) AS success_count,
 			COALESCE(es.failed_count, 0) AS failed_count,
@@ -1354,12 +1440,17 @@ func (s *Store) listMonitorEndpointsPageLive(ctx context.Context, query MonitorP
 			COALESCE(es.total_sent_ping, 0) AS total_sent_ping,
 			COALESCE(es.last_ping_status, 'unknown') AS last_ping_status,
 			es.last_ping_latency,
-			es.average_latency,
-			ie.vlan,
-			ie.switch_name,
-			ie.port,
-			ie.port_type,
-			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups
+				es.average_latency,
+				ie.vlan,
+				ie.zone,
+				ie.switch_name,
+				ie.port,
+				ie.port_type,
+				COALESCE(host(ie.gateway), '') AS gateway,
+				COALESCE(host(ie.mgmt_ip), '') AS mgmt_ip,
+				ie.speed,
+				ie.duplex,
+				COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups
 		FROM inventory_endpoint ie
 		LEFT JOIN endpoint_stats_current es ON es.endpoint_id = ie.id
 		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
@@ -1367,10 +1458,10 @@ func (s *Store) listMonitorEndpointsPageLive(ctx context.Context, query MonitorP
 	` + whereClause + `
 		GROUP BY ie.id, ie.hostname, es.last_failed_on, ie.ip, ie.mac, es.reply_ip_address,
 			es.last_success_on, es.success_count, es.failed_count, es.consecutive_failed_count,
-			es.max_consecutive_failed_count, es.max_consecutive_failed_count_time, es.failed_pct,
-			es.total_sent_ping, es.last_ping_status, es.last_ping_latency, es.average_latency,
-			ie.vlan, ie.switch_name, ie.port, ie.port_type,
-			ie.custom_field_1_value, ie.custom_field_2_value, ie.custom_field_3_value
+				es.max_consecutive_failed_count, es.max_consecutive_failed_count_time, es.failed_pct,
+				es.total_sent_ping, es.last_ping_status, es.last_ping_latency, es.average_latency,
+				ie.vlan, ie.zone, ie.switch_name, ie.port, ie.port_type, ie.gateway, ie.mgmt_ip, ie.speed, ie.duplex,
+				` + customFieldValueColumns("ie") + `
 		ORDER BY ` + orderClause + `
 		LIMIT $%d OFFSET $%d
 	`
@@ -1389,15 +1480,15 @@ func (s *Store) listMonitorEndpointsPageLive(ctx context.Context, query MonitorP
 	items := []model.MonitorEndpoint{}
 	for rows.Next() {
 		var item model.MonitorEndpoint
-		if err := rows.Scan(
+		scanTargets := []any{
 			&item.EndpointID,
 			&item.Hostname,
 			&item.LastFailedOn,
 			&item.IPAddress,
 			&item.MACAddress,
-			&item.CustomField1Value,
-			&item.CustomField2Value,
-			&item.CustomField3Value,
+		}
+		scanTargets = append(scanTargets, monitorEndpointCustomFieldScanTargets(&item)...)
+		scanTargets = append(scanTargets,
 			&item.ReplyIPAddress,
 			&item.LastSuccessOn,
 			&item.SuccessCount,
@@ -1411,11 +1502,17 @@ func (s *Store) listMonitorEndpointsPageLive(ctx context.Context, query MonitorP
 			&item.LastPingLatency,
 			&item.AverageLatency,
 			&item.VLAN,
+			&item.Zone,
 			&item.Switch,
 			&item.Port,
 			&item.PortType,
+			&item.Gateway,
+			&item.MgmtIP,
+			&item.Speed,
+			&item.Duplex,
 			&item.Groups,
-		); err != nil {
+		)
+		if err := rows.Scan(scanTargets...); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -1467,14 +1564,12 @@ func (s *Store) listMonitorEndpointsPageRange(ctx context.Context, query Monitor
 		)
 		SELECT
 			ie.id,
-			ie.hostname,
-			rs.last_failed_on,
-			host(ie.ip) AS ip_address,
-			ie.mac,
-			ie.custom_field_1_value,
-			ie.custom_field_2_value,
-			ie.custom_field_3_value,
-			NULL::text AS reply_ip_address,
+				ie.hostname,
+				rs.last_failed_on,
+				host(ie.ip) AS ip_address,
+				ie.mac,
+				`+customFieldValueColumns("ie")+`,
+				NULL::text AS reply_ip_address,
 			rs.last_success_on,
 			COALESCE(rs.success_count, 0) AS success_count,
 			COALESCE(rs.failed_count, 0) AS failed_count,
@@ -1488,20 +1583,25 @@ func (s *Store) listMonitorEndpointsPageRange(ctx context.Context, query Monitor
 				ELSE 'No Data'
 			END AS last_ping_status,
 			NULL::double precision AS last_ping_latency,
-			rs.average_latency,
-			ie.vlan,
-			ie.switch_name,
-			ie.port,
-			ie.port_type,
-			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups
+				rs.average_latency,
+				ie.vlan,
+				ie.zone,
+				ie.switch_name,
+				ie.port,
+				ie.port_type,
+				COALESCE(host(ie.gateway), '') AS gateway,
+				COALESCE(host(ie.mgmt_ip), '') AS mgmt_ip,
+				ie.speed,
+				ie.duplex,
+				COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups
 		FROM inventory_endpoint ie
 		LEFT JOIN range_stats rs ON rs.endpoint_id = ie.id
 		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
 		LEFT JOIN group_def gd ON gd.id = gm.group_id
 		%s
-		GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.switch_name, ie.port, ie.port_type,
-			ie.custom_field_1_value, ie.custom_field_2_value, ie.custom_field_3_value,
-			rs.last_failed_on, rs.last_success_on, rs.success_count, rs.failed_count, rs.failed_pct,
+			GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.zone, ie.switch_name, ie.port, ie.port_type,
+				ie.gateway, ie.mgmt_ip, ie.speed, ie.duplex, `+customFieldValueColumns("ie")+`,
+				rs.last_failed_on, rs.last_success_on, rs.success_count, rs.failed_count, rs.failed_pct,
 			rs.total_sent_ping, rs.average_latency
 		ORDER BY %s
 		LIMIT $%d OFFSET $%d
@@ -1518,15 +1618,15 @@ func (s *Store) listMonitorEndpointsPageRange(ctx context.Context, query Monitor
 	items := []model.MonitorEndpoint{}
 	for rows.Next() {
 		var item model.MonitorEndpoint
-		if err := rows.Scan(
+		scanTargets := []any{
 			&item.EndpointID,
 			&item.Hostname,
 			&item.LastFailedOn,
 			&item.IPAddress,
 			&item.MACAddress,
-			&item.CustomField1Value,
-			&item.CustomField2Value,
-			&item.CustomField3Value,
+		}
+		scanTargets = append(scanTargets, monitorEndpointCustomFieldScanTargets(&item)...)
+		scanTargets = append(scanTargets,
 			&item.ReplyIPAddress,
 			&item.LastSuccessOn,
 			&item.SuccessCount,
@@ -1540,11 +1640,17 @@ func (s *Store) listMonitorEndpointsPageRange(ctx context.Context, query Monitor
 			&item.LastPingLatency,
 			&item.AverageLatency,
 			&item.VLAN,
+			&item.Zone,
 			&item.Switch,
 			&item.Port,
 			&item.PortType,
+			&item.Gateway,
+			&item.MgmtIP,
+			&item.Speed,
+			&item.Duplex,
 			&item.Groups,
-		); err != nil {
+		)
+		if err := rows.Scan(scanTargets...); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -1715,18 +1821,21 @@ func (s *Store) ListInventoryEndpoints(ctx context.Context, listQuery InventoryL
 	sql := `
 		SELECT
 			ie.id,
-			ie.hostname,
-			host(ie.ip) AS ip_address,
-			ie.mac,
-			ie.custom_field_1_value,
-			ie.custom_field_2_value,
-			ie.custom_field_3_value,
-			ie.vlan,
-			ie.switch_name,
-			ie.port,
-			ie.port_type,
-			ie.description,
-			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
+				ie.hostname,
+				host(ie.ip) AS ip_address,
+				ie.mac,
+				` + customFieldValueColumns("ie") + `,
+				ie.vlan,
+				ie.zone,
+				ie.switch_name,
+				ie.port,
+				ie.port_type,
+				COALESCE(host(ie.gateway), '') AS gateway,
+				COALESCE(host(ie.mgmt_ip), '') AS mgmt_ip,
+				ie.speed,
+				ie.duplex,
+				ie.description,
+				COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
 			ie.is_active,
 			ie.updated_at
 		FROM inventory_endpoint ie
@@ -1765,23 +1874,18 @@ func (s *Store) ListInventoryEndpoints(ctx context.Context, listQuery InventoryL
 		`, len(args)+1)
 		args = append(args, listQuery.Filters.GroupNames)
 	}
-	if listQuery.Custom1 != "" {
-		sql += fmt.Sprintf(" AND ie.custom_field_1_value ILIKE $%d", len(args)+1)
-		args = append(args, "%"+listQuery.Custom1+"%")
-	}
-	if listQuery.Custom2 != "" {
-		sql += fmt.Sprintf(" AND ie.custom_field_2_value ILIKE $%d", len(args)+1)
-		args = append(args, "%"+listQuery.Custom2+"%")
-	}
-	if listQuery.Custom3 != "" {
-		sql += fmt.Sprintf(" AND ie.custom_field_3_value ILIKE $%d", len(args)+1)
-		args = append(args, "%"+listQuery.Custom3+"%")
+	for slot, search := range normalizeCustomSearches(listQuery.CustomSearches) {
+		if search == "" {
+			continue
+		}
+		sql += fmt.Sprintf(" AND ie.custom_field_%d_value ILIKE $%d", slot+1, len(args)+1)
+		args = append(args, "%"+search+"%")
 	}
 
 	sql += `
-		GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.switch_name, ie.port,
-			ie.port_type, ie.description, ie.is_active, ie.updated_at,
-			ie.custom_field_1_value, ie.custom_field_2_value, ie.custom_field_3_value
+			GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.zone, ie.switch_name, ie.port,
+				ie.port_type, ie.gateway, ie.mgmt_ip, ie.speed, ie.duplex, ie.description, ie.is_active, ie.updated_at,
+				` + customFieldValueColumns("ie") + `
 		ORDER BY ie.ip
 	`
 
@@ -1794,23 +1898,29 @@ func (s *Store) ListInventoryEndpoints(ctx context.Context, listQuery InventoryL
 	items := []model.InventoryEndpointView{}
 	for rows.Next() {
 		var item model.InventoryEndpointView
-		if err := rows.Scan(
+		scanTargets := []any{
 			&item.EndpointID,
 			&item.Hostname,
 			&item.IPAddress,
 			&item.MACAddress,
-			&item.CustomField1Value,
-			&item.CustomField2Value,
-			&item.CustomField3Value,
+		}
+		scanTargets = append(scanTargets, inventoryEndpointViewCustomFieldScanTargets(&item)...)
+		scanTargets = append(scanTargets,
 			&item.VLAN,
+			&item.Zone,
 			&item.Switch,
 			&item.Port,
 			&item.PortType,
+			&item.Gateway,
+			&item.MgmtIP,
+			&item.Speed,
+			&item.Duplex,
 			&item.Description,
 			&item.Groups,
 			&item.Active,
 			&item.UpdatedAt,
-		); err != nil {
+		)
+		if err := rows.Scan(scanTargets...); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -1819,32 +1929,56 @@ func (s *Store) ListInventoryEndpoints(ctx context.Context, listQuery InventoryL
 }
 
 func (s *Store) UpdateInventoryEndpoint(ctx context.Context, endpointID int64, patch model.InventoryEndpointUpdate) (model.InventoryEndpointView, error) {
-	cmd, err := s.pool.Exec(ctx, `
-		UPDATE inventory_endpoint
-		SET hostname = $2,
-			mac = $3,
-			custom_field_1_value = $4,
-			custom_field_2_value = $5,
-			custom_field_3_value = $6,
-			vlan = $7,
-			switch_name = $8,
-			port = $9,
-			port_type = $10,
-			description = $11,
-			updated_at = now()
-		WHERE id = $1
-	`, endpointID,
-		patch.Hostname,
-		patch.MACAddress,
+	args := []any{endpointID, patch.Hostname, patch.MACAddress}
+	args = append(args,
 		patch.CustomField1Value,
 		patch.CustomField2Value,
 		patch.CustomField3Value,
+		patch.CustomField4Value,
+		patch.CustomField5Value,
+		patch.CustomField6Value,
+		patch.CustomField7Value,
+		patch.CustomField8Value,
+		patch.CustomField9Value,
+		patch.CustomField10Value,
 		patch.VLAN,
+		patch.Zone,
 		patch.Switch,
 		patch.Port,
 		patch.PortType,
+		patch.Gateway,
+		patch.MgmtIP,
+		patch.Speed,
+		patch.Duplex,
 		patch.Description,
 	)
+	cmd, err := s.pool.Exec(ctx, `
+			UPDATE inventory_endpoint
+			SET hostname = $2,
+				mac = $3,
+				custom_field_1_value = $4,
+				custom_field_2_value = $5,
+				custom_field_3_value = $6,
+				custom_field_4_value = $7,
+				custom_field_5_value = $8,
+				custom_field_6_value = $9,
+				custom_field_7_value = $10,
+				custom_field_8_value = $11,
+				custom_field_9_value = $12,
+				custom_field_10_value = $13,
+				vlan = $14,
+				zone = $15,
+				switch_name = $16,
+				port = $17,
+				port_type = $18,
+				gateway = NULLIF($19, '')::inet,
+				mgmt_ip = NULLIF($20, '')::inet,
+				speed = $21,
+				duplex = $22,
+				description = $23,
+				updated_at = now()
+			WHERE id = $1
+		`, args...)
 	if err != nil {
 		return model.InventoryEndpointView{}, err
 	}
@@ -1859,47 +1993,56 @@ func (s *Store) GetInventoryEndpointByID(ctx context.Context, endpointID int64) 
 	row := s.pool.QueryRow(ctx, `
 		SELECT
 			ie.id,
-			ie.hostname,
-			host(ie.ip) AS ip_address,
-			ie.mac,
-			ie.custom_field_1_value,
-			ie.custom_field_2_value,
-			ie.custom_field_3_value,
-			ie.vlan,
-			ie.switch_name,
-			ie.port,
-			ie.port_type,
-			ie.description,
-			COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
+				ie.hostname,
+				host(ie.ip) AS ip_address,
+				ie.mac,
+				`+customFieldValueColumns("ie")+`,
+				ie.vlan,
+				ie.zone,
+				ie.switch_name,
+				ie.port,
+				ie.port_type,
+				COALESCE(host(ie.gateway), '') AS gateway,
+				COALESCE(host(ie.mgmt_ip), '') AS mgmt_ip,
+				ie.speed,
+				ie.duplex,
+				ie.description,
+				COALESCE(array_remove(array_agg(DISTINCT gd.name), NULL), '{}') AS groups,
 			ie.is_active,
 			ie.updated_at
 		FROM inventory_endpoint ie
 		LEFT JOIN group_member gm ON gm.endpoint_id = ie.id
 		LEFT JOIN group_def gd ON gd.id = gm.group_id
 		WHERE ie.id = $1
-		GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.switch_name, ie.port,
-			ie.port_type, ie.description, ie.is_active, ie.updated_at,
-			ie.custom_field_1_value, ie.custom_field_2_value, ie.custom_field_3_value
+			GROUP BY ie.id, ie.hostname, ie.ip, ie.mac, ie.vlan, ie.zone, ie.switch_name, ie.port,
+				ie.port_type, ie.gateway, ie.mgmt_ip, ie.speed, ie.duplex, ie.description, ie.is_active, ie.updated_at,
+				`+customFieldValueColumns("ie")+`
 	`, endpointID)
 
 	var item model.InventoryEndpointView
-	if err := row.Scan(
+	scanTargets := []any{
 		&item.EndpointID,
 		&item.Hostname,
 		&item.IPAddress,
 		&item.MACAddress,
-		&item.CustomField1Value,
-		&item.CustomField2Value,
-		&item.CustomField3Value,
+	}
+	scanTargets = append(scanTargets, inventoryEndpointViewCustomFieldScanTargets(&item)...)
+	scanTargets = append(scanTargets,
 		&item.VLAN,
+		&item.Zone,
 		&item.Switch,
 		&item.Port,
 		&item.PortType,
+		&item.Gateway,
+		&item.MgmtIP,
+		&item.Speed,
+		&item.Duplex,
 		&item.Description,
 		&item.Groups,
 		&item.Active,
 		&item.UpdatedAt,
-	); err != nil {
+	)
+	if err := row.Scan(scanTargets...); err != nil {
 		return model.InventoryEndpointView{}, err
 	}
 	return item, nil
@@ -1932,37 +2075,67 @@ func (s *Store) CreateInventoryEndpoint(ctx context.Context, payload model.Inven
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var endpointID int64
-	err = tx.QueryRow(ctx, `
-		INSERT INTO inventory_endpoint(
-			ip,
-			hostname,
-			mac,
-			custom_field_1_value,
-			custom_field_2_value,
-			custom_field_3_value,
-			vlan,
-			switch_name,
-			port,
-			port_type,
-			description,
-			updated_at
-		)
-		VALUES ($1::inet, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
-		ON CONFLICT (ip) DO NOTHING
-		RETURNING id
-	`,
+	args := []any{
 		payload.IPAddress,
 		payload.Hostname,
 		payload.MACAddress,
 		payload.CustomField1Value,
 		payload.CustomField2Value,
 		payload.CustomField3Value,
+		payload.CustomField4Value,
+		payload.CustomField5Value,
+		payload.CustomField6Value,
+		payload.CustomField7Value,
+		payload.CustomField8Value,
+		payload.CustomField9Value,
+		payload.CustomField10Value,
 		payload.VLAN,
+		payload.Zone,
 		payload.Switch,
 		payload.Port,
 		payload.PortType,
+		payload.Gateway,
+		payload.MgmtIP,
+		payload.Speed,
+		payload.Duplex,
 		payload.Description,
-	).Scan(&endpointID)
+	}
+	err = tx.QueryRow(ctx, `
+			INSERT INTO inventory_endpoint(
+				ip,
+				hostname,
+				mac,
+				custom_field_1_value,
+				custom_field_2_value,
+				custom_field_3_value,
+				custom_field_4_value,
+				custom_field_5_value,
+				custom_field_6_value,
+				custom_field_7_value,
+				custom_field_8_value,
+				custom_field_9_value,
+				custom_field_10_value,
+				vlan,
+				zone,
+				switch_name,
+				port,
+				port_type,
+				gateway,
+				mgmt_ip,
+				speed,
+				duplex,
+				description,
+				updated_at
+			)
+			VALUES (
+				$1::inet, $2, $3,
+				$4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+				$14, $15, $16, $17, $18, NULLIF($19, '')::inet, NULLIF($20, '')::inet, $21, $22, $23,
+				now()
+			)
+			ON CONFLICT (ip) DO NOTHING
+			RETURNING id
+		`, args...).Scan(&endpointID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.InventoryEndpointView{}, ErrEndpointIPExists
@@ -2542,13 +2715,12 @@ func derefString(value *string) string {
 }
 
 func customFieldsBySlot(fields []model.CustomFieldConfig) map[int]model.CustomFieldConfig {
-	bySlot := map[int]model.CustomFieldConfig{
-		1: {Slot: 1, Enabled: false, Name: ""},
-		2: {Slot: 2, Enabled: false, Name: ""},
-		3: {Slot: 3, Enabled: false, Name: ""},
+	bySlot := map[int]model.CustomFieldConfig{}
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		bySlot[slot] = model.CustomFieldConfig{Slot: slot, Enabled: false, Name: ""}
 	}
 	for _, field := range fields {
-		if field.Slot < 1 || field.Slot > 3 {
+		if field.Slot < 1 || field.Slot > model.MaxCustomFieldSlots {
 			continue
 		}
 		bySlot[field.Slot] = model.CustomFieldConfig{
@@ -2560,13 +2732,22 @@ func customFieldsBySlot(fields []model.CustomFieldConfig) map[int]model.CustomFi
 	return bySlot
 }
 
+func normalizeCustomSearches(searches []string) []string {
+	normalized := make([]string, model.MaxCustomFieldSlots)
+	for idx, search := range searches {
+		if idx >= model.MaxCustomFieldSlots {
+			break
+		}
+		normalized[idx] = strings.TrimSpace(search)
+	}
+	return normalized
+}
+
 func buildMonitorWhereClause(
 	filters MonitorFilters,
 	hostname string,
 	mac string,
-	custom1 string,
-	custom2 string,
-	custom3 string,
+	customSearches []string,
 	ipList []string,
 	excludeEndpointIDs []int64,
 ) (string, []any) {
@@ -2611,17 +2792,12 @@ func buildMonitorWhereClause(
 			query.WriteString(fmt.Sprintf(" AND replace(replace(replace(lower(ie.mac), ':', ''), '-', ''), ' ', '') LIKE $%d", len(args)+1))
 			args = append(args, "%"+normalizeMACSearchTerm(mac)+"%")
 		}
-		if custom1 != "" {
-			query.WriteString(fmt.Sprintf(" AND ie.custom_field_1_value ILIKE $%d", len(args)+1))
-			args = append(args, "%"+custom1+"%")
-		}
-		if custom2 != "" {
-			query.WriteString(fmt.Sprintf(" AND ie.custom_field_2_value ILIKE $%d", len(args)+1))
-			args = append(args, "%"+custom2+"%")
-		}
-		if custom3 != "" {
-			query.WriteString(fmt.Sprintf(" AND ie.custom_field_3_value ILIKE $%d", len(args)+1))
-			args = append(args, "%"+custom3+"%")
+		for slot, search := range normalizeCustomSearches(customSearches) {
+			if search == "" {
+				continue
+			}
+			query.WriteString(fmt.Sprintf(" AND ie.custom_field_%d_value ILIKE $%d", slot+1, len(args)+1))
+			args = append(args, "%"+search+"%")
 		}
 	}
 

@@ -41,13 +41,25 @@ func validateInventoryBatchMatchSpec(spec model.InventoryBatchMatchSpec) error {
 			model.InventoryBatchMatchFieldIPAddress,
 			model.InventoryBatchMatchFieldMACAddress,
 			model.InventoryBatchMatchFieldVLAN,
+			model.InventoryBatchMatchFieldZone,
 			model.InventoryBatchMatchFieldSwitch,
 			model.InventoryBatchMatchFieldPort,
 			model.InventoryBatchMatchFieldPortType,
+			model.InventoryBatchMatchFieldGateway,
+			model.InventoryBatchMatchFieldMgmtIP,
+			model.InventoryBatchMatchFieldSpeed,
+			model.InventoryBatchMatchFieldDuplex,
 			model.InventoryBatchMatchFieldDescription,
 			model.InventoryBatchMatchFieldCustom1,
 			model.InventoryBatchMatchFieldCustom2,
-			model.InventoryBatchMatchFieldCustom3:
+			model.InventoryBatchMatchFieldCustom3,
+			model.InventoryBatchMatchFieldCustom4,
+			model.InventoryBatchMatchFieldCustom5,
+			model.InventoryBatchMatchFieldCustom6,
+			model.InventoryBatchMatchFieldCustom7,
+			model.InventoryBatchMatchFieldCustom8,
+			model.InventoryBatchMatchFieldCustom9,
+			model.InventoryBatchMatchFieldCustom10:
 			return nil
 		default:
 			return fmt.Errorf("unsupported match field %q", spec.Field)
@@ -72,12 +84,22 @@ func inventoryBatchFieldLabel(field model.InventoryBatchMatchField) string {
 		return "MAC Address"
 	case model.InventoryBatchMatchFieldVLAN:
 		return "VLAN"
+	case model.InventoryBatchMatchFieldZone:
+		return "Zone"
 	case model.InventoryBatchMatchFieldSwitch:
 		return "Switch"
 	case model.InventoryBatchMatchFieldPort:
 		return "Port"
 	case model.InventoryBatchMatchFieldPortType:
 		return "Port Type"
+	case model.InventoryBatchMatchFieldGateway:
+		return "Gateway"
+	case model.InventoryBatchMatchFieldMgmtIP:
+		return "Mgmt IP"
+	case model.InventoryBatchMatchFieldSpeed:
+		return "Speed"
+	case model.InventoryBatchMatchFieldDuplex:
+		return "Duplex"
 	case model.InventoryBatchMatchFieldDescription:
 		return "Description"
 	case model.InventoryBatchMatchFieldCustom1:
@@ -86,6 +108,20 @@ func inventoryBatchFieldLabel(field model.InventoryBatchMatchField) string {
 		return "Custom Field 2"
 	case model.InventoryBatchMatchFieldCustom3:
 		return "Custom Field 3"
+	case model.InventoryBatchMatchFieldCustom4:
+		return "Custom Field 4"
+	case model.InventoryBatchMatchFieldCustom5:
+		return "Custom Field 5"
+	case model.InventoryBatchMatchFieldCustom6:
+		return "Custom Field 6"
+	case model.InventoryBatchMatchFieldCustom7:
+		return "Custom Field 7"
+	case model.InventoryBatchMatchFieldCustom8:
+		return "Custom Field 8"
+	case model.InventoryBatchMatchFieldCustom9:
+		return "Custom Field 9"
+	case model.InventoryBatchMatchFieldCustom10:
+		return "Custom Field 10"
 	default:
 		return string(field)
 	}

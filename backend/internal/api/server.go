@@ -69,9 +69,15 @@ var reservedCustomFieldNames = map[string]struct{}{
 	"mac":                    {},
 	"mac address":            {},
 	"vlan":                   {},
+	"zone":                   {},
 	"switch":                 {},
 	"port":                   {},
 	"port type":              {},
+	"gateway":                {},
+	"mgmt ip":                {},
+	"management ip":          {},
+	"speed":                  {},
+	"duplex":                 {},
 	"description":            {},
 	"group":                  {},
 	"updated at":             {},
@@ -604,20 +610,25 @@ func (s *Server) handleInventoryImportTemplateCSV(w http.ResponseWriter, _ *http
 	var csvBuffer bytes.Buffer
 	csvWriter := csv.NewWriter(&csvBuffer)
 
-	comment := "# Required: ip_address; Optional: hostname, mac_address, vlan, switch, port, port_type, description, sorting, custom_field_1_value, custom_field_2_value, custom_field_3_value"
+	comment := "# Required: ip_address; Optional: hostname, mac_address, vlan, zone, switch, port, port_type, gateway, mgmt_ip, speed, duplex, description, sorting, custom_field_1_value through custom_field_10_value"
 	header := []string{
 		"ip_address",
 		"hostname",
 		"mac_address",
 		"vlan",
+		"zone",
 		"switch",
 		"port",
 		"port_type",
+		"gateway",
+		"mgmt_ip",
+		"speed",
+		"duplex",
 		"description",
 		"sorting",
-		"custom_field_1_value",
-		"custom_field_2_value",
-		"custom_field_3_value",
+	}
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		header = append(header, fmt.Sprintf("custom_field_%d_value", slot))
 	}
 
 	if err := csvWriter.Write([]string{comment}); err != nil {
@@ -826,13 +837,25 @@ func (s *Server) handleInventoryEndpointCreate(w http.ResponseWriter, r *http.Re
 	req.Hostname = strings.TrimSpace(req.Hostname)
 	req.MACAddress = strings.TrimSpace(req.MACAddress)
 	req.VLAN = strings.TrimSpace(req.VLAN)
+	req.Zone = strings.TrimSpace(req.Zone)
 	req.Switch = strings.TrimSpace(req.Switch)
 	req.Port = strings.TrimSpace(req.Port)
 	req.PortType = strings.ToLower(strings.TrimSpace(req.PortType))
+	req.Gateway = strings.TrimSpace(req.Gateway)
+	req.MgmtIP = strings.TrimSpace(req.MgmtIP)
+	req.Speed = strings.TrimSpace(req.Speed)
+	req.Duplex = strings.TrimSpace(req.Duplex)
 	req.Description = strings.TrimSpace(req.Description)
 	req.CustomField1Value = strings.TrimSpace(req.CustomField1Value)
 	req.CustomField2Value = strings.TrimSpace(req.CustomField2Value)
 	req.CustomField3Value = strings.TrimSpace(req.CustomField3Value)
+	req.CustomField4Value = strings.TrimSpace(req.CustomField4Value)
+	req.CustomField5Value = strings.TrimSpace(req.CustomField5Value)
+	req.CustomField6Value = strings.TrimSpace(req.CustomField6Value)
+	req.CustomField7Value = strings.TrimSpace(req.CustomField7Value)
+	req.CustomField8Value = strings.TrimSpace(req.CustomField8Value)
+	req.CustomField9Value = strings.TrimSpace(req.CustomField9Value)
+	req.CustomField10Value = strings.TrimSpace(req.CustomField10Value)
 
 	if req.IPAddress == "" {
 		util.WriteError(w, http.StatusBadRequest, "ip_address is required")
@@ -847,6 +870,14 @@ func (s *Server) handleInventoryEndpointCreate(w http.ResponseWriter, r *http.Re
 	}
 	if req.PortType != "" && req.PortType != "access" && req.PortType != "trunk" {
 		util.WriteError(w, http.StatusBadRequest, "port_type must be access, trunk, or empty")
+		return
+	}
+	if req.Gateway != "" && net.ParseIP(req.Gateway) == nil {
+		util.WriteError(w, http.StatusBadRequest, "gateway must be a valid IPv4 or IPv6 address")
+		return
+	}
+	if req.MgmtIP != "" && net.ParseIP(req.MgmtIP) == nil {
+		util.WriteError(w, http.StatusBadRequest, "mgmt_ip must be a valid IPv4 or IPv6 address")
 		return
 	}
 	if req.GroupID != nil {
@@ -878,14 +909,7 @@ func (s *Server) handleInventoryEndpointCreate(w http.ResponseWriter, r *http.Re
 }
 
 func inventoryCustomFieldValueBySlot(item model.InventoryEndpointView, slot int) string {
-	switch slot {
-	case 1:
-		return item.CustomField1Value
-	case 2:
-		return item.CustomField2Value
-	default:
-		return item.CustomField3Value
-	}
+	return model.InventoryEndpointViewCustomFieldValue(item, slot)
 }
 
 func (s *Server) inventoryListQueryFromRequest(
@@ -903,22 +927,18 @@ func (s *Server) inventoryListQueryFromRequest(
 		GroupNames: parseCSVQuery(r, "group"),
 	}
 
-	custom1 := strings.TrimSpace(r.URL.Query().Get("custom_1"))
-	custom2 := strings.TrimSpace(r.URL.Query().Get("custom_2"))
-	custom3 := strings.TrimSpace(r.URL.Query().Get("custom_3"))
+	customSearches := parseCustomSearchQuery(r)
 
 	settings, err := s.store.GetSettings(ctx)
 	if err != nil {
 		return store.InventoryListQuery{}, nil, err
 	}
-	custom1, custom2, custom3 = filterCustomSearchesBySettings(settings.CustomFields, custom1, custom2, custom3)
+	customSearches = filterCustomSearchesBySettings(settings.CustomFields, customSearches)
 
 	return store.InventoryListQuery{
 		Filters:        filters,
 		ActivityStates: activityStates,
-		Custom1:        custom1,
-		Custom2:        custom2,
-		Custom3:        custom3,
+		CustomSearches: customSearches,
 	}, normalizeCustomFieldConfigs(settings.CustomFields), nil
 }
 
@@ -980,9 +1000,14 @@ func (s *Server) handleInventoryEndpointsExportCSV(w http.ResponseWriter, r *htt
 		"State",
 		"MAC",
 		"VLAN",
+		"Zone",
 		"Switch",
 		"Port",
 		"Port Type",
+		"Gateway",
+		"Mgmt IP",
+		"Speed",
+		"Duplex",
 		"Description",
 		"Group",
 	}
@@ -1008,9 +1033,14 @@ func (s *Server) handleInventoryEndpointsExportCSV(w http.ResponseWriter, r *htt
 			}(),
 			item.MACAddress,
 			item.VLAN,
+			item.Zone,
 			item.Switch,
 			item.Port,
 			item.PortType,
+			item.Gateway,
+			item.MgmtIP,
+			item.Speed,
+			item.Duplex,
 			item.Description,
 			strings.Join(item.Groups, ", "),
 		}
@@ -1083,13 +1113,37 @@ func (s *Server) handleInventoryEndpointUpdate(w http.ResponseWriter, r *http.Re
 	patch.Hostname = strings.TrimSpace(patch.Hostname)
 	patch.MACAddress = strings.TrimSpace(patch.MACAddress)
 	patch.VLAN = strings.TrimSpace(patch.VLAN)
+	patch.Zone = strings.TrimSpace(patch.Zone)
 	patch.Switch = strings.TrimSpace(patch.Switch)
 	patch.Port = strings.TrimSpace(patch.Port)
 	patch.PortType = strings.ToLower(strings.TrimSpace(patch.PortType))
+	patch.Gateway = strings.TrimSpace(patch.Gateway)
+	patch.MgmtIP = strings.TrimSpace(patch.MgmtIP)
+	patch.Speed = strings.TrimSpace(patch.Speed)
+	patch.Duplex = strings.TrimSpace(patch.Duplex)
 	patch.Description = strings.TrimSpace(patch.Description)
 	patch.CustomField1Value = strings.TrimSpace(patch.CustomField1Value)
 	patch.CustomField2Value = strings.TrimSpace(patch.CustomField2Value)
 	patch.CustomField3Value = strings.TrimSpace(patch.CustomField3Value)
+	patch.CustomField4Value = strings.TrimSpace(patch.CustomField4Value)
+	patch.CustomField5Value = strings.TrimSpace(patch.CustomField5Value)
+	patch.CustomField6Value = strings.TrimSpace(patch.CustomField6Value)
+	patch.CustomField7Value = strings.TrimSpace(patch.CustomField7Value)
+	patch.CustomField8Value = strings.TrimSpace(patch.CustomField8Value)
+	patch.CustomField9Value = strings.TrimSpace(patch.CustomField9Value)
+	patch.CustomField10Value = strings.TrimSpace(patch.CustomField10Value)
+	if patch.PortType != "" && patch.PortType != "access" && patch.PortType != "trunk" {
+		util.WriteError(w, http.StatusBadRequest, "port_type must be access, trunk, or empty")
+		return
+	}
+	if patch.Gateway != "" && net.ParseIP(patch.Gateway) == nil {
+		util.WriteError(w, http.StatusBadRequest, "gateway must be a valid IPv4 or IPv6 address")
+		return
+	}
+	if patch.MgmtIP != "" && net.ParseIP(patch.MgmtIP) == nil {
+		util.WriteError(w, http.StatusBadRequest, "mgmt_ip must be a valid IPv4 or IPv6 address")
+		return
+	}
 
 	item, err := s.store.UpdateInventoryEndpoint(r.Context(), endpointID, patch)
 	if err != nil {
@@ -1855,9 +1909,7 @@ func (s *Server) monitorPageQueryFromRequest(
 
 	query.Hostname = strings.TrimSpace(r.URL.Query().Get("hostname"))
 	query.MAC = strings.TrimSpace(r.URL.Query().Get("mac"))
-	query.Custom1 = strings.TrimSpace(r.URL.Query().Get("custom_1"))
-	query.Custom2 = strings.TrimSpace(r.URL.Query().Get("custom_2"))
-	query.Custom3 = strings.TrimSpace(r.URL.Query().Get("custom_3"))
+	query.CustomSearches = parseCustomSearchQuery(r)
 
 	ipList, err := parseIPListQuery(r, "ip_list")
 	if err != nil {
@@ -1876,12 +1928,7 @@ func (s *Server) monitorPageQueryFromRequest(
 			Message: err.Error(),
 		}
 	}
-	query.Custom1, query.Custom2, query.Custom3 = filterCustomSearchesBySettings(
-		settings.CustomFields,
-		query.Custom1,
-		query.Custom2,
-		query.Custom3,
-	)
+	query.CustomSearches = filterCustomSearchesBySettings(settings.CustomFields, query.CustomSearches)
 
 	if statsScope == "range" {
 		startRaw := strings.TrimSpace(r.URL.Query().Get("start"))
@@ -2318,14 +2365,21 @@ func parseTimeQuery(r *http.Request, key string, fallback time.Time) time.Time {
 	return fallback
 }
 
+func parseCustomSearchQuery(r *http.Request) []string {
+	searches := make([]string, model.MaxCustomFieldSlots)
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		searches[slot-1] = strings.TrimSpace(r.URL.Query().Get(fmt.Sprintf("custom_%d", slot)))
+	}
+	return searches
+}
+
 func normalizeCustomFieldConfigs(fields []model.CustomFieldConfig) []model.CustomFieldConfig {
-	bySlot := map[int]model.CustomFieldConfig{
-		1: {Slot: 1, Enabled: false, Name: ""},
-		2: {Slot: 2, Enabled: false, Name: ""},
-		3: {Slot: 3, Enabled: false, Name: ""},
+	bySlot := map[int]model.CustomFieldConfig{}
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		bySlot[slot] = model.CustomFieldConfig{Slot: slot, Enabled: false, Name: ""}
 	}
 	for _, field := range fields {
-		if field.Slot < 1 || field.Slot > 3 {
+		if field.Slot < 1 || field.Slot > model.MaxCustomFieldSlots {
 			continue
 		}
 		bySlot[field.Slot] = model.CustomFieldConfig{
@@ -2334,11 +2388,11 @@ func normalizeCustomFieldConfigs(fields []model.CustomFieldConfig) []model.Custo
 			Name:    strings.TrimSpace(field.Name),
 		}
 	}
-	return []model.CustomFieldConfig{
-		bySlot[1],
-		bySlot[2],
-		bySlot[3],
+	normalized := make([]model.CustomFieldConfig, 0, model.MaxCustomFieldSlots)
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		normalized = append(normalized, bySlot[slot])
 	}
+	return normalized
 }
 
 func mergeCustomFieldPatch(
@@ -2346,16 +2400,15 @@ func mergeCustomFieldPatch(
 	patches []customFieldPatch,
 ) ([]model.CustomFieldConfig, error) {
 	merged := normalizeCustomFieldConfigs(current)
-	bySlot := map[int]model.CustomFieldConfig{
-		1: merged[0],
-		2: merged[1],
-		3: merged[2],
+	bySlot := map[int]model.CustomFieldConfig{}
+	for _, field := range merged {
+		bySlot[field.Slot] = field
 	}
 
 	seenSlots := map[int]struct{}{}
 	for _, patch := range patches {
-		if patch.Slot < 1 || patch.Slot > 3 {
-			return nil, errors.New("custom_fields slot must be between 1 and 3")
+		if patch.Slot < 1 || patch.Slot > model.MaxCustomFieldSlots {
+			return nil, fmt.Errorf("custom_fields slot must be between 1 and %d", model.MaxCustomFieldSlots)
 		}
 		if _, exists := seenSlots[patch.Slot]; exists {
 			return nil, fmt.Errorf("custom_fields contains duplicate slot %d", patch.Slot)
@@ -2372,11 +2425,11 @@ func mergeCustomFieldPatch(
 		bySlot[patch.Slot] = next
 	}
 
-	return []model.CustomFieldConfig{
-		bySlot[1],
-		bySlot[2],
-		bySlot[3],
-	}, nil
+	normalized := make([]model.CustomFieldConfig, 0, model.MaxCustomFieldSlots)
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		normalized = append(normalized, bySlot[slot])
+	}
+	return normalized, nil
 }
 
 func normalizeCustomFieldName(value string) string {
@@ -2430,26 +2483,21 @@ func validateCustomFieldConfigs(fields []model.CustomFieldConfig) error {
 
 func filterCustomSearchesBySettings(
 	fields []model.CustomFieldConfig,
-	custom1 string,
-	custom2 string,
-	custom3 string,
-) (string, string, string) {
+	searches []string,
+) []string {
 	normalized := normalizeCustomFieldConfigs(fields)
 	enabledBySlot := map[int]bool{}
 	for _, field := range normalized {
 		enabledBySlot[field.Slot] = field.Enabled && strings.TrimSpace(field.Name) != ""
 	}
 
-	if !enabledBySlot[1] {
-		custom1 = ""
+	filtered := make([]string, model.MaxCustomFieldSlots)
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		if enabledBySlot[slot] && slot-1 < len(searches) {
+			filtered[slot-1] = strings.TrimSpace(searches[slot-1])
+		}
 	}
-	if !enabledBySlot[2] {
-		custom2 = ""
-	}
-	if !enabledBySlot[3] {
-		custom3 = ""
-	}
-	return custom1, custom2, custom3
+	return filtered
 }
 
 func newPreviewID() string {

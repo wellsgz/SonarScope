@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSettings, updateSettings } from "../api/client";
 import type { CustomFieldConfig, Settings } from "../types/api";
 
-const defaultCustomFields: CustomFieldConfig[] = [
-  { slot: 1, enabled: false, name: "" },
-  { slot: 2, enabled: false, name: "" },
-  { slot: 3, enabled: false, name: "" }
-];
+const maxCustomFieldSlots = 10;
+const defaultCustomFields: CustomFieldConfig[] = Array.from({ length: maxCustomFieldSlots }, (_, index) => ({
+  slot: index + 1,
+  enabled: false,
+  name: ""
+}));
 
 const reservedCustomFieldNames = new Set([
   "hostname",
@@ -15,9 +16,15 @@ const reservedCustomFieldNames = new Set([
   "mac",
   "mac address",
   "vlan",
+  "zone",
   "switch",
   "port",
   "port type",
+  "gateway",
+  "mgmt ip",
+  "management ip",
+  "speed",
+  "duplex",
   "description",
   "group",
   "updated at",
@@ -57,7 +64,7 @@ function normalizeCustomFields(fields?: CustomFieldConfig[]): CustomFieldConfig[
     bySlot.set(field.slot, { ...field });
   });
   (fields || []).forEach((field) => {
-    if (field.slot < 1 || field.slot > 3) {
+    if (field.slot < 1 || field.slot > maxCustomFieldSlots) {
       return;
     }
     bySlot.set(field.slot, {
@@ -67,7 +74,7 @@ function normalizeCustomFields(fields?: CustomFieldConfig[]): CustomFieldConfig[
     });
   });
 
-  return [1, 2, 3].map((slot) => bySlot.get(slot) || { slot, enabled: false, name: "" });
+  return defaultCustomFields.map((field) => bySlot.get(field.slot) || { ...field });
 }
 
 function validateCustomFields(fields: CustomFieldConfig[]): CustomFieldValidationIssue[] {
@@ -228,10 +235,10 @@ export function SettingsPage() {
               <div>
                 <h3 className="panel-title">Custom Fields</h3>
                 <p className="settings-inline-help">
-                  Enable up to three custom endpoint fields. Enabled fields require unique non-overlapping names.
+                  Enable up to ten custom endpoint fields. Enabled fields require unique non-overlapping names.
                 </p>
               </div>
-              <span className="status-chip">{enabledCustomFieldCount}/3 enabled</span>
+              <span className="status-chip">{enabledCustomFieldCount}/{maxCustomFieldSlots} enabled</span>
             </div>
 
             <div className="settings-custom-field-list">

@@ -52,14 +52,17 @@ type FilterState = {
 type InventoryPatch = {
   hostname: string;
   mac_address: string;
-  custom_field_1_value: string;
-  custom_field_2_value: string;
-  custom_field_3_value: string;
   vlan: string;
+  zone: string;
   switch: string;
   port: string;
   port_type: string;
+  gateway: string;
+  mgmt_ip: string;
+  speed: string;
+  duplex: string;
   description: string;
+  [key: `custom_field_${number}_value`]: string;
 };
 
 const defaultFilters: FilterState = {
@@ -70,24 +73,19 @@ const defaultFilters: FilterState = {
   groups: []
 };
 
-type CustomFieldSlot = 1 | 2 | 3;
+const maxCustomFieldSlots = 10;
+type CustomFieldSlot = number;
 
 type EnabledCustomField = {
   slot: CustomFieldSlot;
   name: string;
 };
 
-type CustomSearchState = {
-  custom1: string;
-  custom2: string;
-  custom3: string;
-};
+type CustomSearchState = Record<number, string>;
 
-const defaultCustomSearch: CustomSearchState = {
-  custom1: "",
-  custom2: "",
-  custom3: ""
-};
+const defaultCustomSearch: CustomSearchState = Object.fromEntries(
+  Array.from({ length: maxCustomFieldSlots }, (_, index) => [index + 1, ""])
+) as CustomSearchState;
 
 const defaultBatchMatchState: InventoryBatchMatchFormState = {
   mode: "criteria",
@@ -97,50 +95,38 @@ const defaultBatchMatchState: InventoryBatchMatchFormState = {
 };
 
 function normalizeEnabledCustomFields(fields?: CustomFieldConfig[]): EnabledCustomField[] {
-  const bySlot: Record<CustomFieldSlot, EnabledCustomField | null> = {
-    1: null,
-    2: null,
-    3: null
-  };
+  const bySlot = new Map<number, EnabledCustomField>();
   (fields || []).forEach((field) => {
-    if (field.slot < 1 || field.slot > 3) {
+    if (field.slot < 1 || field.slot > maxCustomFieldSlots) {
       return;
     }
     if (!field.enabled || !field.name.trim()) {
       return;
     }
     const slot = field.slot as CustomFieldSlot;
-    bySlot[slot] = {
+    bySlot.set(slot, {
       slot,
       name: field.name.trim()
-    };
+    });
   });
-  return [bySlot[1], bySlot[2], bySlot[3]].filter((field): field is EnabledCustomField => field !== null);
+  return Array.from({ length: maxCustomFieldSlots }, (_, index) => bySlot.get(index + 1)).filter(
+    (field): field is EnabledCustomField => field !== undefined
+  );
 }
 
 function customFieldValueBySlot(
-  values: {
-    custom_field_1_value: string;
-    custom_field_2_value: string;
-    custom_field_3_value: string;
-  },
+  values: Partial<Record<`custom_field_${number}_value`, string>>,
   slot: CustomFieldSlot
 ): string {
-  if (slot === 1) return values.custom_field_1_value;
-  if (slot === 2) return values.custom_field_2_value;
-  return values.custom_field_3_value;
+  return values[`custom_field_${slot}_value`] || "";
 }
 
 function customSearchValueBySlot(values: CustomSearchState, slot: CustomFieldSlot): string {
-  if (slot === 1) return values.custom1;
-  if (slot === 2) return values.custom2;
-  return values.custom3;
+  return values[slot] || "";
 }
 
 function setCustomSearchBySlot(values: CustomSearchState, slot: CustomFieldSlot, next: string): CustomSearchState {
-  if (slot === 1) return { ...values, custom1: next };
-  if (slot === 2) return { ...values, custom2: next };
-  return { ...values, custom3: next };
+  return { ...values, [slot]: next };
 }
 
 function setInventoryPatchCustomFieldValue(
@@ -148,9 +134,7 @@ function setInventoryPatchCustomFieldValue(
   slot: CustomFieldSlot,
   next: string
 ): InventoryPatch {
-  if (slot === 1) return { ...values, custom_field_1_value: next };
-  if (slot === 2) return { ...values, custom_field_2_value: next };
-  return { ...values, custom_field_3_value: next };
+  return { ...values, [`custom_field_${slot}_value`]: next };
 }
 
 function setCreateRequestCustomFieldValue(
@@ -158,24 +142,36 @@ function setCreateRequestCustomFieldValue(
   slot: CustomFieldSlot,
   next: string
 ): InventoryEndpointCreateRequest {
-  if (slot === 1) return { ...values, custom_field_1_value: next };
-  if (slot === 2) return { ...values, custom_field_2_value: next };
-  return { ...values, custom_field_3_value: next };
+  return { ...values, [`custom_field_${slot}_value`]: next };
 }
 
 function toPatch(row: InventoryEndpoint): InventoryPatch {
   return {
     hostname: row.hostname,
     mac_address: row.mac_address,
-    custom_field_1_value: row.custom_field_1_value || "",
-    custom_field_2_value: row.custom_field_2_value || "",
-    custom_field_3_value: row.custom_field_3_value || "",
+    ...customFieldValuesFrom(row),
     vlan: row.vlan,
+    zone: row.zone,
     switch: row.switch,
     port: row.port,
     port_type: row.port_type,
+    gateway: row.gateway,
+    mgmt_ip: row.mgmt_ip,
+    speed: row.speed,
+    duplex: row.duplex,
     description: row.description
   };
+}
+
+function customFieldValuesFrom(
+  values: Partial<Record<`custom_field_${number}_value`, string | undefined>>
+): Record<`custom_field_${number}_value`, string> {
+  return Object.fromEntries(
+    Array.from({ length: maxCustomFieldSlots }, (_, index) => {
+      const slot = index + 1;
+      return [`custom_field_${slot}_value`, values[`custom_field_${slot}_value`] || ""];
+    })
+  ) as Record<`custom_field_${number}_value`, string>;
 }
 
 function splitBatchIPList(value: string): string[] {
@@ -331,13 +327,16 @@ export function InventoryPage() {
     ip_address: "",
     hostname: "",
     mac_address: "",
-    custom_field_1_value: "",
-    custom_field_2_value: "",
-    custom_field_3_value: "",
+    ...customFieldValuesFrom({}),
     vlan: "",
+    zone: "",
     switch: "",
     port: "",
     port_type: "",
+    gateway: "",
+    mgmt_ip: "",
+    speed: "",
+    duplex: "",
     description: "",
     group_id: undefined
   };
@@ -452,13 +451,18 @@ export function InventoryPage() {
   const batchMatchFieldOptions = useMemo<InventoryBatchMatchFieldOption[]>(
     () => [
       { value: "hostname", label: "Hostname" },
-      { value: "ip_address", label: "IP Address" },
-      { value: "mac_address", label: "MAC Address" },
-      { value: "vlan", label: "VLAN" },
-      { value: "switch", label: "Switch" },
-      { value: "port", label: "Port" },
-      { value: "port_type", label: "Port Type" },
-      { value: "description", label: "Description" },
+	      { value: "ip_address", label: "IP Address" },
+	      { value: "mac_address", label: "MAC Address" },
+	      { value: "vlan", label: "VLAN" },
+	      { value: "zone", label: "Zone" },
+	      { value: "switch", label: "Switch" },
+	      { value: "port", label: "Port" },
+	      { value: "port_type", label: "Port Type" },
+	      { value: "gateway", label: "Gateway" },
+	      { value: "mgmt_ip", label: "Mgmt IP" },
+	      { value: "speed", label: "Speed" },
+	      { value: "duplex", label: "Duplex" },
+	      { value: "description", label: "Description" },
       ...enabledCustomFields.map((field) => ({
         value: (`custom_field_${field.slot}_value` as InventoryBatchMatchField),
         label: field.name
@@ -480,9 +484,7 @@ export function InventoryPage() {
         switches: filters.switches,
         ports: filters.ports,
         groups: filters.groups,
-        custom1: customSearch.custom1,
-        custom2: customSearch.custom2,
-        custom3: customSearch.custom3
+        customSearches: customSearch
       })
   });
   const exportCSVMutation = useMutation({
@@ -493,9 +495,7 @@ export function InventoryPage() {
         switches: filters.switches,
         ports: filters.ports,
         groups: filters.groups,
-        custom1: customSearch.custom1,
-        custom2: customSearch.custom2,
-        custom3: customSearch.custom3
+        customSearches: customSearch
       }),
     onSuccess: ({ blob, filename }) => {
       const downloadURL = URL.createObjectURL(blob);
@@ -799,7 +799,7 @@ export function InventoryPage() {
   const exportDisabled =
     exportCSVMutation.isPending || inventoryQuery.isLoading || (inventoryQuery.data?.length || 0) === 0;
   const filteredEndpointCount = inventoryQuery.data?.length ?? 0;
-  const inventoryTableColumnCount = 12 + enabledCustomFields.length;
+  const inventoryTableColumnCount = 17 + enabledCustomFields.length;
   const selectedEndpointCount = selectedEndpointIDs.length;
   const batchDeleteMatchInvalid =
     batchDeleteMatch.mode === "criteria"
@@ -1240,16 +1240,21 @@ export function InventoryPage() {
                     <th>IP</th>
                     <th>Hostname</th>
                     <th>MAC</th>
-                    <th>Custom Field 1</th>
-                    <th>Custom Field 2</th>
-                    <th>Custom Field 3</th>
-                    <th>VLAN</th>
-                    <th>Switch</th>
-                    <th>Port</th>
-                    <th>Port Type</th>
-                    <th>Description</th>
-                    <th>Sorting</th>
-                    <th>Message</th>
+	                    <th>VLAN</th>
+	                    <th>Zone</th>
+	                    <th>Switch</th>
+	                    <th>Port</th>
+	                    <th>Port Type</th>
+	                    <th>Gateway</th>
+	                    <th>Mgmt IP</th>
+	                    <th>Speed</th>
+	                    <th>Duplex</th>
+	                    <th>Description</th>
+	                    <th>Sorting</th>
+	                    {Array.from({ length: maxCustomFieldSlots }, (_, index) => (
+	                      <th key={`import-preview-custom-${index + 1}`}>Custom Field {index + 1}</th>
+	                    ))}
+	                    <th>Message</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1298,16 +1303,23 @@ export function InventoryPage() {
                         <td>{candidate.ip}</td>
                         <td>{candidate.hostname || "-"}</td>
                         <td>{candidate.mac}</td>
-                        <td>{candidate.custom_field_1_value || "-"}</td>
-                        <td>{candidate.custom_field_2_value || "-"}</td>
-                        <td>{candidate.custom_field_3_value || "-"}</td>
-                        <td>{candidate.vlan}</td>
-                        <td>{candidate.switch}</td>
-                        <td>{candidate.port}</td>
-                        <td>{candidate.port_type || "-"}</td>
-                        <td>{candidate.description || "-"}</td>
-                        <td>{candidate.sorting || "-"}</td>
-                        <td>{candidate.message}</td>
+	                        <td>{candidate.vlan}</td>
+	                        <td>{candidate.zone || "-"}</td>
+	                        <td>{candidate.switch}</td>
+	                        <td>{candidate.port}</td>
+	                        <td>{candidate.port_type || "-"}</td>
+	                        <td>{candidate.gateway || "-"}</td>
+	                        <td>{candidate.mgmt_ip || "-"}</td>
+	                        <td>{candidate.speed || "-"}</td>
+	                        <td>{candidate.duplex || "-"}</td>
+	                        <td>{candidate.description || "-"}</td>
+	                        <td>{candidate.sorting || "-"}</td>
+	                        {Array.from({ length: maxCustomFieldSlots }, (_, index) => (
+	                          <td key={`import-preview-row-${candidate.row_id}-custom-${index + 1}`}>
+	                            {customFieldValueBySlot(candidate, index + 1) || "-"}
+	                          </td>
+	                        ))}
+	                        <td>{candidate.message}</td>
                       </tr>
                     );
                   })}
@@ -1409,9 +1421,9 @@ export function InventoryPage() {
                   placeholder="AA:BB:CC:DD:EE:FF"
                 />
               </label>
-              <label>
-                VLAN
-                <input
+	              <label>
+	                VLAN
+	                <input
                   value={singleEndpoint.vlan || ""}
                   onChange={(event) =>
                     setSingleEndpoint((prev) => ({
@@ -1419,11 +1431,24 @@ export function InventoryPage() {
                       vlan: event.target.value
                     }))
                   }
-                  placeholder="100"
-                />
-              </label>
-              <label>
-                Switch
+	                  placeholder="100"
+	                />
+	              </label>
+	              <label>
+	                Zone
+	                <input
+	                  value={singleEndpoint.zone || ""}
+	                  onChange={(event) =>
+	                    setSingleEndpoint((prev) => ({
+	                      ...prev,
+	                      zone: event.target.value
+	                    }))
+	                  }
+	                  placeholder="zone-a"
+	                />
+	              </label>
+	              <label>
+	                Switch
                 <input
                   value={singleEndpoint.switch || ""}
                   onChange={(event) =>
@@ -1462,10 +1487,62 @@ export function InventoryPage() {
                   <option value="">Select port type</option>
                   <option value="access">access</option>
                   <option value="trunk">trunk</option>
-                </select>
-              </label>
-              <label>
-                Description
+	                </select>
+	              </label>
+	              <label>
+	                Gateway
+	                <input
+	                  value={singleEndpoint.gateway || ""}
+	                  onChange={(event) =>
+	                    setSingleEndpoint((prev) => ({
+	                      ...prev,
+	                      gateway: event.target.value
+	                    }))
+	                  }
+	                  placeholder="10.20.30.1"
+	                />
+	              </label>
+	              <label>
+	                Mgmt IP
+	                <input
+	                  value={singleEndpoint.mgmt_ip || ""}
+	                  onChange={(event) =>
+	                    setSingleEndpoint((prev) => ({
+	                      ...prev,
+	                      mgmt_ip: event.target.value
+	                    }))
+	                  }
+	                  placeholder="10.20.30.2"
+	                />
+	              </label>
+	              <label>
+	                Speed
+	                <input
+	                  value={singleEndpoint.speed || ""}
+	                  onChange={(event) =>
+	                    setSingleEndpoint((prev) => ({
+	                      ...prev,
+	                      speed: event.target.value
+	                    }))
+	                  }
+	                  placeholder="1G"
+	                />
+	              </label>
+	              <label>
+	                Duplex
+	                <input
+	                  value={singleEndpoint.duplex || ""}
+	                  onChange={(event) =>
+	                    setSingleEndpoint((prev) => ({
+	                      ...prev,
+	                      duplex: event.target.value
+	                    }))
+	                  }
+	                  placeholder="full"
+	                />
+	              </label>
+	              <label>
+	                Description
                 <input
                   value={singleEndpoint.description || ""}
                   onChange={(event) =>
@@ -1480,15 +1557,8 @@ export function InventoryPage() {
               {enabledCustomFields.map((field) => (
                 <label key={`single-custom-field-${field.slot}`}>
                   {field.name}
-                  <input
-                    value={customFieldValueBySlot(
-                      {
-                        custom_field_1_value: singleEndpoint.custom_field_1_value || "",
-                        custom_field_2_value: singleEndpoint.custom_field_2_value || "",
-                        custom_field_3_value: singleEndpoint.custom_field_3_value || ""
-                      },
-                      field.slot
-                    )}
+	                  <input
+	                    value={customFieldValueBySlot(singleEndpoint, field.slot)}
                     onChange={(event) =>
                       setSingleEndpoint((prev) =>
                         setCreateRequestCustomFieldValue(prev, field.slot, event.target.value)
@@ -1531,17 +1601,20 @@ export function InventoryPage() {
               disabled={!singleEndpoint.ip_address?.trim() || createSingleEndpointMutation.isPending}
               onClick={() =>
                 createSingleEndpointMutation.mutate({
-                  ip_address: singleEndpoint.ip_address?.trim() || "",
-                  hostname: singleEndpoint.hostname?.trim() || "",
-                  mac_address: singleEndpoint.mac_address?.trim() || "",
-                  custom_field_1_value: singleEndpoint.custom_field_1_value?.trim() || "",
-                  custom_field_2_value: singleEndpoint.custom_field_2_value?.trim() || "",
-                  custom_field_3_value: singleEndpoint.custom_field_3_value?.trim() || "",
-                  vlan: singleEndpoint.vlan?.trim() || "",
-                  switch: singleEndpoint.switch?.trim() || "",
-                  port: singleEndpoint.port?.trim() || "",
-                  port_type: singleEndpoint.port_type?.trim() || "",
-                  description: singleEndpoint.description?.trim() || "",
+	                  ip_address: singleEndpoint.ip_address?.trim() || "",
+	                  hostname: singleEndpoint.hostname?.trim() || "",
+	                  mac_address: singleEndpoint.mac_address?.trim() || "",
+	                  ...customFieldValuesFrom(singleEndpoint),
+	                  vlan: singleEndpoint.vlan?.trim() || "",
+	                  zone: singleEndpoint.zone?.trim() || "",
+	                  switch: singleEndpoint.switch?.trim() || "",
+	                  port: singleEndpoint.port?.trim() || "",
+	                  port_type: singleEndpoint.port_type?.trim() || "",
+	                  gateway: singleEndpoint.gateway?.trim() || "",
+	                  mgmt_ip: singleEndpoint.mgmt_ip?.trim() || "",
+	                  speed: singleEndpoint.speed?.trim() || "",
+	                  duplex: singleEndpoint.duplex?.trim() || "",
+	                  description: singleEndpoint.description?.trim() || "",
                   group_id: singleEndpoint.group_id
                 })
               }
@@ -1874,13 +1947,18 @@ export function InventoryPage() {
                   <tr>
                     <th>Hostname</th>
                     <th>IP Address</th>
-                    <th>State</th>
-                    <th>MAC</th>
-                    <th>VLAN</th>
-                    <th>Switch</th>
-                    <th>Port</th>
-                    <th>Port Type</th>
-                    <th>Description</th>
+	                    <th>State</th>
+	                    <th>MAC</th>
+	                    <th>VLAN</th>
+	                    <th>Zone</th>
+	                    <th>Switch</th>
+	                    <th>Port</th>
+	                    <th>Port Type</th>
+	                    <th>Gateway</th>
+	                    <th>Mgmt IP</th>
+	                    <th>Speed</th>
+	                    <th>Duplex</th>
+	                    <th>Description</th>
                     <th>Group</th>
                     {enabledCustomFields.map((field) => (
                       <th key={`inventory-column-custom-${field.slot}`}>{field.name}</th>
@@ -1907,9 +1985,9 @@ export function InventoryPage() {
                           className={`${isEditing || isSelected ? "row-selected" : ""}${row.active ? "" : " inventory-row-inactive"}`}
                           onClick={(event) => handleInventoryRowSelection(row.endpoint_id, event)}
                         >
-                          <td>
-                            {isEditing ? (
-                              <input
+	                          <td>
+	                            {isEditing ? (
+	                              <input
                                 value={editingPatch.hostname}
                                 onChange={(event) =>
                                   setEditingPatch((prev) => (prev ? { ...prev, hostname: event.target.value } : prev))
@@ -1946,11 +2024,23 @@ export function InventoryPage() {
                                 }
                               />
                             ) : (
-                              row.vlan || "-"
-                            )}
-                          </td>
-                          <td>
-                            {isEditing ? (
+	                              row.vlan || "-"
+	                            )}
+	                          </td>
+	                          <td>
+	                            {isEditing ? (
+	                              <input
+	                                value={editingPatch.zone}
+	                                onChange={(event) =>
+	                                  setEditingPatch((prev) => (prev ? { ...prev, zone: event.target.value } : prev))
+	                                }
+	                              />
+	                            ) : (
+	                              row.zone || "-"
+	                            )}
+	                          </td>
+	                          <td>
+	                            {isEditing ? (
                               <input
                                 value={editingPatch.switch}
                                 onChange={(event) =>
@@ -1982,10 +2072,58 @@ export function InventoryPage() {
                                 }
                               />
                             ) : (
-                              row.port_type || "-"
-                            )}
-                          </td>
-                          <td>
+	                              row.port_type || "-"
+	                            )}
+	                          </td>
+	                          <td>
+	                            {isEditing ? (
+	                              <input
+	                                value={editingPatch.gateway}
+	                                onChange={(event) =>
+	                                  setEditingPatch((prev) => (prev ? { ...prev, gateway: event.target.value } : prev))
+	                                }
+	                              />
+	                            ) : (
+	                              row.gateway || "-"
+	                            )}
+	                          </td>
+	                          <td>
+	                            {isEditing ? (
+	                              <input
+	                                value={editingPatch.mgmt_ip}
+	                                onChange={(event) =>
+	                                  setEditingPatch((prev) => (prev ? { ...prev, mgmt_ip: event.target.value } : prev))
+	                                }
+	                              />
+	                            ) : (
+	                              row.mgmt_ip || "-"
+	                            )}
+	                          </td>
+	                          <td>
+	                            {isEditing ? (
+	                              <input
+	                                value={editingPatch.speed}
+	                                onChange={(event) =>
+	                                  setEditingPatch((prev) => (prev ? { ...prev, speed: event.target.value } : prev))
+	                                }
+	                              />
+	                            ) : (
+	                              row.speed || "-"
+	                            )}
+	                          </td>
+	                          <td>
+	                            {isEditing ? (
+	                              <input
+	                                value={editingPatch.duplex}
+	                                onChange={(event) =>
+	                                  setEditingPatch((prev) => (prev ? { ...prev, duplex: event.target.value } : prev))
+	                                }
+	                              />
+	                            ) : (
+	                              row.duplex || "-"
+	                            )}
+	                          </td>
+	                          <td>
                             {isEditing ? (
                               <input
                                 value={editingPatch.description}
@@ -2001,15 +2139,8 @@ export function InventoryPage() {
                           {enabledCustomFields.map((field) => (
                             <td key={`inventory-row-${row.endpoint_id}-custom-${field.slot}`}>
                               {isEditing ? (
-                                <input
-                                  value={customFieldValueBySlot(
-                                    {
-                                      custom_field_1_value: editingPatch.custom_field_1_value,
-                                      custom_field_2_value: editingPatch.custom_field_2_value,
-                                      custom_field_3_value: editingPatch.custom_field_3_value
-                                    },
-                                    field.slot
-                                  )}
+	                                <input
+	                                  value={customFieldValueBySlot(editingPatch, field.slot)}
                                   onChange={(event) =>
                                     setEditingPatch((prev) =>
                                       prev ? setInventoryPatchCustomFieldValue(prev, field.slot, event.target.value) : prev
@@ -2017,14 +2148,7 @@ export function InventoryPage() {
                                   }
                                 />
                               ) : (
-                                customFieldValueBySlot(
-                                  {
-                                    custom_field_1_value: row.custom_field_1_value || "",
-                                    custom_field_2_value: row.custom_field_2_value || "",
-                                    custom_field_3_value: row.custom_field_3_value || ""
-                                  },
-                                  field.slot
-                                ) || "-"
+	                                customFieldValueBySlot(row, field.slot) || "-"
                               )}
                             </td>
                           ))}

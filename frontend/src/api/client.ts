@@ -31,6 +31,7 @@ import type {
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const IMPORT_PREVIEW_TIMEOUT_MS = 120_000;
+const MAX_CUSTOM_FIELD_SLOTS = 10;
 
 function buildURL(path: string): string {
   if (!API_BASE) {
@@ -44,6 +45,17 @@ function buildWSURL(path: string): string {
   const base = API_BASE ? new URL(API_BASE) : new URL(window.location.origin);
   const protocol = base.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${base.host}${path}`;
+}
+
+function customSearchQuery(searches?: Record<number, string>): Record<string, string | undefined> {
+  const query: Record<string, string | undefined> = {};
+  for (let slot = 1; slot <= MAX_CUSTOM_FIELD_SLOTS; slot += 1) {
+    const value = searches?.[slot]?.trim();
+    if (value) {
+      query[`custom_${slot}`] = value;
+    }
+  }
+  return query;
 }
 
 function formatTimeoutMessage(timeoutMs: number): string {
@@ -371,9 +383,7 @@ export async function listMonitorEndpointsPage(filters: {
   groups?: string[];
   hostname?: string;
   mac?: string;
-  custom1?: string;
-  custom2?: string;
-  custom3?: string;
+  customSearches?: Record<number, string>;
   ipList?: string[];
   page: number;
   pageSize: 50 | 100 | 200;
@@ -385,6 +395,7 @@ export async function listMonitorEndpointsPage(filters: {
   sortBy?: MonitorSortField;
   sortDir?: "asc" | "desc";
 }): Promise<MonitorEndpointPageResponse> {
+  const customQuery = customSearchQuery(filters.customSearches);
   const path = buildQuery("/api/monitor/endpoints-page", {
     vlan: filters.vlan?.join(","),
     switch: filters.switches?.join(","),
@@ -392,9 +403,7 @@ export async function listMonitorEndpointsPage(filters: {
     group: filters.groups?.join(","),
     hostname: filters.hostname?.trim() || undefined,
     mac: filters.mac?.trim() || undefined,
-    custom_1: filters.custom1?.trim() || undefined,
-    custom_2: filters.custom2?.trim() || undefined,
-    custom_3: filters.custom3?.trim() || undefined,
+    ...customQuery,
     ip_list: filters.ipList?.join(","),
     page: String(filters.page),
     page_size: String(filters.pageSize),
@@ -437,9 +446,7 @@ export async function getMonitorDashboardSummary(filters: {
   groups?: string[];
   hostname?: string;
   mac?: string;
-  custom1?: string;
-  custom2?: string;
-  custom3?: string;
+  customSearches?: Record<number, string>;
   ipList?: string[];
   statsScope?: MonitorDataScope;
   start?: string;
@@ -447,6 +454,7 @@ export async function getMonitorDashboardSummary(filters: {
   lookback?: string;
   excludeEndpointIds?: number[];
 }): Promise<DashboardUnreachableSummary> {
+  const customQuery = customSearchQuery(filters.customSearches);
   const path = buildQuery("/api/monitor/dashboard-summary", {
     vlan: filters.vlan?.join(","),
     switch: filters.switches?.join(","),
@@ -454,9 +462,7 @@ export async function getMonitorDashboardSummary(filters: {
     group: filters.groups?.join(","),
     hostname: filters.hostname?.trim() || undefined,
     mac: filters.mac?.trim() || undefined,
-    custom_1: filters.custom1?.trim() || undefined,
-    custom_2: filters.custom2?.trim() || undefined,
-    custom_3: filters.custom3?.trim() || undefined,
+    ...customQuery,
     ip_list: filters.ipList?.join(","),
     stats_scope: filters.statsScope,
     start: filters.start,
@@ -477,19 +483,16 @@ export async function listInventoryEndpoints(filters: {
   ports?: string[];
   groups?: string[];
   activity?: string[];
-  custom1?: string;
-  custom2?: string;
-  custom3?: string;
+  customSearches?: Record<number, string>;
 }): Promise<InventoryEndpoint[]> {
+  const customQuery = customSearchQuery(filters.customSearches);
   const path = buildQuery("/api/inventory/endpoints", {
     vlan: filters.vlan?.join(","),
     switch: filters.switches?.join(","),
     port: filters.ports?.join(","),
     group: filters.groups?.join(","),
     activity: filters.activity?.join(","),
-    custom_1: filters.custom1?.trim() || undefined,
-    custom_2: filters.custom2?.trim() || undefined,
-    custom_3: filters.custom3?.trim() || undefined
+    ...customQuery
   });
   return request<InventoryEndpoint[]>(path);
 }
@@ -500,19 +503,16 @@ export async function exportInventoryEndpointsCSV(filters: {
   ports?: string[];
   groups?: string[];
   activity?: string[];
-  custom1?: string;
-  custom2?: string;
-  custom3?: string;
+  customSearches?: Record<number, string>;
 }): Promise<{ blob: Blob; filename: string }> {
+  const customQuery = customSearchQuery(filters.customSearches);
   const path = buildQuery("/api/inventory/endpoints/export.csv", {
     vlan: filters.vlan?.join(","),
     switch: filters.switches?.join(","),
     port: filters.ports?.join(","),
     group: filters.groups?.join(","),
     activity: filters.activity?.join(","),
-    custom_1: filters.custom1?.trim() || undefined,
-    custom_2: filters.custom2?.trim() || undefined,
-    custom_3: filters.custom3?.trim() || undefined
+    ...customQuery
   });
 
   const response = await fetch(buildURL(path), { method: "GET" });
@@ -566,14 +566,17 @@ export async function updateInventoryEndpoint(
   payload: {
     hostname: string;
     mac_address: string;
-    custom_field_1_value: string;
-    custom_field_2_value: string;
-    custom_field_3_value: string;
     vlan: string;
+    zone: string;
     switch: string;
     port: string;
     port_type: string;
+    gateway: string;
+    mgmt_ip: string;
+    speed: string;
+    duplex: string;
     description: string;
+    [key: `custom_field_${number}_value`]: string;
   }
 ): Promise<InventoryEndpoint> {
   return request<InventoryEndpoint>(`/api/inventory/endpoints/${endpointID}`, {

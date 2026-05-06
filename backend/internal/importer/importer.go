@@ -17,40 +17,62 @@ import (
 )
 
 var headerAliases = map[string]string{
-	"ip":                   "ip",
-	"ip_address":           "ip",
-	"ipaddress":            "ip",
-	"hostname":             "hostname",
-	"host":                 "hostname",
-	"mac":                  "mac",
-	"mac_address":          "mac",
-	"macaddress":           "mac",
-	"vlan":                 "vlan",
-	"switch":               "switch",
-	"switch_name":          "switch",
-	"switchname":           "switch",
-	"port":                 "port",
-	"port_type":            "port_type",
-	"porttype":             "port_type",
-	"description":          "description",
-	"desc":                 "description",
-	"sorting":              "sorting",
-	"sort":                 "sorting",
-	"custom_field_1":       "custom_field_1_value",
-	"custom_field1":        "custom_field_1_value",
-	"custom_field_1_value": "custom_field_1_value",
-	"custom_field1_value":  "custom_field_1_value",
-	"custom1":              "custom_field_1_value",
-	"custom_field_2":       "custom_field_2_value",
-	"custom_field2":        "custom_field_2_value",
-	"custom_field_2_value": "custom_field_2_value",
-	"custom_field2_value":  "custom_field_2_value",
-	"custom2":              "custom_field_2_value",
-	"custom_field_3":       "custom_field_3_value",
-	"custom_field3":        "custom_field_3_value",
-	"custom_field_3_value": "custom_field_3_value",
-	"custom_field3_value":  "custom_field_3_value",
-	"custom3":              "custom_field_3_value",
+	"ip":                    "ip",
+	"ip_address":            "ip",
+	"ipaddress":             "ip",
+	"hostname":              "hostname",
+	"host":                  "hostname",
+	"mac":                   "mac",
+	"mac_address":           "mac",
+	"macaddress":            "mac",
+	"vlan":                  "vlan",
+	"zone":                  "zone",
+	"switch":                "switch",
+	"switch_name":           "switch",
+	"switchname":            "switch",
+	"port":                  "port",
+	"port_type":             "port_type",
+	"porttype":              "port_type",
+	"gateway":               "gateway",
+	"gw":                    "gateway",
+	"mgmt_ip":               "mgmt_ip",
+	"mgmtip":                "mgmt_ip",
+	"mgmt_ip_address":       "mgmt_ip",
+	"management_ip":         "mgmt_ip",
+	"managementip":          "mgmt_ip",
+	"management_ip_address": "mgmt_ip",
+	"speed":                 "speed",
+	"duplex":                "duplex",
+	"description":           "description",
+	"desc":                  "description",
+	"sorting":               "sorting",
+	"sort":                  "sorting",
+	"custom_field_1":        "custom_field_1_value",
+	"custom_field1":         "custom_field_1_value",
+	"custom_field_1_value":  "custom_field_1_value",
+	"custom_field1_value":   "custom_field_1_value",
+	"custom1":               "custom_field_1_value",
+	"custom_field_2":        "custom_field_2_value",
+	"custom_field2":         "custom_field_2_value",
+	"custom_field_2_value":  "custom_field_2_value",
+	"custom_field2_value":   "custom_field_2_value",
+	"custom2":               "custom_field_2_value",
+	"custom_field_3":        "custom_field_3_value",
+	"custom_field3":         "custom_field_3_value",
+	"custom_field_3_value":  "custom_field_3_value",
+	"custom_field3_value":   "custom_field_3_value",
+	"custom3":               "custom_field_3_value",
+}
+
+func init() {
+	for slot := 1; slot <= model.MaxCustomFieldSlots; slot++ {
+		fieldName := fmt.Sprintf("custom_field_%d_value", slot)
+		headerAliases[fmt.Sprintf("custom_field_%d", slot)] = fieldName
+		headerAliases[fmt.Sprintf("custom_field%d", slot)] = fieldName
+		headerAliases[fieldName] = fieldName
+		headerAliases[fmt.Sprintf("custom_field%d_value", slot)] = fieldName
+		headerAliases[fmt.Sprintf("custom%d", slot)] = fieldName
+	}
 }
 
 func Parse(fileName string, raw []byte) ([]model.ImportCandidate, error) {
@@ -187,10 +209,22 @@ func parseRows(rows [][]string) ([]model.ImportCandidate, error) {
 		candidate.CustomField1Value = cellByKey(row, headerMap, "custom_field_1_value")
 		candidate.CustomField2Value = cellByKey(row, headerMap, "custom_field_2_value")
 		candidate.CustomField3Value = cellByKey(row, headerMap, "custom_field_3_value")
+		candidate.CustomField4Value = cellByKey(row, headerMap, "custom_field_4_value")
+		candidate.CustomField5Value = cellByKey(row, headerMap, "custom_field_5_value")
+		candidate.CustomField6Value = cellByKey(row, headerMap, "custom_field_6_value")
+		candidate.CustomField7Value = cellByKey(row, headerMap, "custom_field_7_value")
+		candidate.CustomField8Value = cellByKey(row, headerMap, "custom_field_8_value")
+		candidate.CustomField9Value = cellByKey(row, headerMap, "custom_field_9_value")
+		candidate.CustomField10Value = cellByKey(row, headerMap, "custom_field_10_value")
 		candidate.VLAN = cellByKey(row, headerMap, "vlan")
+		candidate.Zone = cellByKey(row, headerMap, "zone")
 		candidate.SwitchName = cellByKey(row, headerMap, "switch")
 		candidate.Port = cellByKey(row, headerMap, "port")
 		candidate.PortType = normalizePortType(cellByKey(row, headerMap, "port_type"))
+		candidate.Gateway = cellByKey(row, headerMap, "gateway")
+		candidate.MgmtIP = cellByKey(row, headerMap, "mgmt_ip")
+		candidate.Speed = cellByKey(row, headerMap, "speed")
+		candidate.Duplex = cellByKey(row, headerMap, "duplex")
 		candidate.Description = cellByKey(row, headerMap, "description")
 		candidate.Sorting = cellByKey(row, headerMap, "sorting")
 
@@ -201,6 +235,16 @@ func parseRows(rows [][]string) ([]model.ImportCandidate, error) {
 		}
 		if net.ParseIP(candidate.IP) == nil {
 			candidate.Message = "invalid IP format"
+			result = append(result, candidate)
+			continue
+		}
+		if candidate.Gateway != "" && net.ParseIP(candidate.Gateway) == nil {
+			candidate.Message = "invalid gateway IP format"
+			result = append(result, candidate)
+			continue
+		}
+		if candidate.MgmtIP != "" && net.ParseIP(candidate.MgmtIP) == nil {
+			candidate.Message = "invalid mgmt_ip IP format"
 			result = append(result, candidate)
 			continue
 		}
@@ -307,7 +351,15 @@ func hasDiff(candidate model.ImportCandidate, existing model.InventoryEndpoint) 
 	if hasProvidedDiff(candidate.CustomField3Value, existing.CustomField3Value) {
 		return true
 	}
+	for slot := 4; slot <= model.MaxCustomFieldSlots; slot++ {
+		if hasProvidedDiff(model.ImportCandidateCustomFieldValue(candidate, slot), model.InventoryEndpointCustomFieldValue(existing, slot)) {
+			return true
+		}
+	}
 	if hasProvidedDiff(candidate.VLAN, existing.VLAN) {
+		return true
+	}
+	if hasProvidedDiff(candidate.Zone, existing.Zone) {
 		return true
 	}
 	if hasProvidedDiff(candidate.SwitchName, existing.SwitchName) {
@@ -320,6 +372,18 @@ func hasDiff(candidate model.ImportCandidate, existing model.InventoryEndpoint) 
 		return true
 	}
 	if hasProvidedDiff(candidate.PortType, existing.PortType) {
+		return true
+	}
+	if hasProvidedDiff(candidate.Gateway, existing.Gateway) {
+		return true
+	}
+	if hasProvidedDiff(candidate.MgmtIP, existing.MgmtIP) {
+		return true
+	}
+	if hasProvidedDiff(candidate.Speed, existing.Speed) {
+		return true
+	}
+	if hasProvidedDiff(candidate.Duplex, existing.Duplex) {
 		return true
 	}
 	if hasProvidedDiff(candidate.Hostname, existing.Hostname) {

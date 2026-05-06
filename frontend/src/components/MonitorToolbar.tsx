@@ -11,14 +11,10 @@ export type FilterState = {
 
 type Props = {
   filters: FilterState;
-  customFields: Array<{ slot: 1 | 2 | 3; name: string }>;
+  customFields: Array<{ slot: number; name: string }>;
   hostnameSearch: string;
   macSearch: string;
-  customSearch: {
-    custom1: string;
-    custom2: string;
-    custom3: string;
-  };
+  customSearch: Record<number, string>;
   ipListSearch: string;
   options?: FilterOptions;
   quickRange: QuickRange;
@@ -31,11 +27,11 @@ type Props = {
   onClearAllFilters: () => void;
   onHostnameSearchChange: (next: string) => void;
   onMACSearchChange: (next: string) => void;
-  onCustomSearchChange: (slot: 1 | 2 | 3, next: string) => void;
+  onCustomSearchChange: (slot: number, next: string) => void;
   onIPListSearchChange: (next: string) => void;
   onClearHostnameSearch: () => void;
   onClearMACSearch: () => void;
-  onClearCustomSearch: (slot: 1 | 2 | 3) => void;
+  onClearCustomSearch: (slot: number) => void;
   onClearIPListSearch: () => void;
   onQuickRangeChange: (next: QuickRange) => void;
   onCustomStartChange: (value: string) => void;
@@ -43,13 +39,8 @@ type Props = {
   onDataScopeChange: (next: MonitorDataScope) => void;
 };
 
-function customSearchValueBySlot(
-  customSearch: { custom1: string; custom2: string; custom3: string },
-  slot: 1 | 2 | 3
-): string {
-  if (slot === 1) return customSearch.custom1;
-  if (slot === 2) return customSearch.custom2;
-  return customSearch.custom3;
+function customSearchValueBySlot(customSearch: Record<number, string>, slot: number): string {
+  return customSearch[slot] || "";
 }
 
 export function MonitorToolbar({

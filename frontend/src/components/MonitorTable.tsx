@@ -12,7 +12,7 @@ import type { MonitorDataScope, MonitorEndpoint, MonitorSortCriterion, MonitorSo
 
 type Props = {
   rows: MonitorEndpoint[];
-  customFields: Array<{ slot: 1 | 2 | 3; name: string }>;
+  customFields: Array<{ slot: number; name: string }>;
   columnVisibility: Record<string, boolean>;
   columnOrder: string[];
   selectedEndpointIDs: number[];
@@ -111,10 +111,8 @@ function formatPercent(value: number): string {
   return `${value.toFixed(2)}%`;
 }
 
-function customFieldValueBySlot(row: MonitorEndpoint, slot: 1 | 2 | 3): string {
-  if (slot === 1) return row.custom_field_1_value || "-";
-  if (slot === 2) return row.custom_field_2_value || "-";
-  return row.custom_field_3_value || "-";
+function customFieldValueBySlot(row: MonitorEndpoint, slot: number): string {
+  return (row[`custom_field_${slot}_value` as keyof MonitorEndpoint] as string | undefined) || "-";
 }
 
 function normalizeGroupName(groupName: string): string {
@@ -258,9 +256,14 @@ const baseColumnDefinitions: BaseColumnDefinition[] = [
     render: (row) => formatLatency(row.average_latency)
   },
   { key: "vlan", menuLabel: "VLAN", header: "VLAN", render: (row) => row.vlan || "-" },
+  { key: "zone", menuLabel: "Zone", header: "Zone", render: (row) => row.zone || "-" },
   { key: "switch", menuLabel: "Switch", header: "Switch", render: (row) => row.switch || "-" },
   { key: "port", menuLabel: "Port", header: "Port", render: (row) => row.port || "-" },
   { key: "port_type", menuLabel: "Port Type", header: "Port Type", render: (row) => row.port_type || "-" },
+  { key: "gateway", menuLabel: "Gateway", header: "Gateway", render: (row) => row.gateway || "-" },
+  { key: "mgmt_ip", menuLabel: "Mgmt IP", header: "Mgmt IP", render: (row) => row.mgmt_ip || "-" },
+  { key: "speed", menuLabel: "Speed", header: "Speed", render: (row) => row.speed || "-" },
+  { key: "duplex", menuLabel: "Duplex", header: "Duplex", render: (row) => row.duplex || "-" },
   { key: "group", menuLabel: "Group", header: "Group", render: (row) => row.group.join(", ") || "-" }
 ];
 

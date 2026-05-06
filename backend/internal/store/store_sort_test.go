@@ -78,9 +78,7 @@ func TestBuildMonitorWhereClauseWithIPListOverridesTextSearches(t *testing.T) {
 		},
 		"host-a",
 		"aa-bb",
-		"custom-one",
-		"custom-two",
-		"custom-three",
+		[]string{"custom-one", "custom-two", "custom-three"},
 		[]string{"10.0.0.1", "10.0.0.2"},
 		nil,
 	)
@@ -106,9 +104,7 @@ func TestBuildMonitorWhereClauseUsesTextSearchesWithoutIPList(t *testing.T) {
 		MonitorFilters{},
 		"host-a",
 		"aa-bb",
-		"custom-one",
-		"",
-		"",
+		[]string{"custom-one"},
 		nil,
 		nil,
 	)
@@ -128,9 +124,7 @@ func TestBuildMonitorWhereClauseExcludesEndpointIDs(t *testing.T) {
 		MonitorFilters{},
 		"",
 		"",
-		"",
-		"",
-		"",
+		nil,
 		nil,
 		[]int64{10, 12},
 	)

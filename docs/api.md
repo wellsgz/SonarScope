@@ -6,7 +6,7 @@
 
 - Multipart field: `file` (`.csv`, `.xlsx`, `.xls`, `.xlsm`)
 - Required header: `ip` or `ip_address`
-- Optional headers: `hostname`, `mac`/`mac_address`, `vlan`, `switch`/`switch_name`, `port`, `port_type`, `description`, `sorting`, `custom_field_1_value`, `custom_field_2_value`, `custom_field_3_value`
+- Optional headers: `hostname`, `mac`/`mac_address`, `vlan`, `zone`, `switch`/`switch_name`, `port`, `port_type`, `gateway`, `mgmt_ip`, `speed`, `duplex`, `description`, `sorting`, `custom_field_1_value` through `custom_field_10_value`
 - Comment rows are ignored when the first non-empty cell begins with `#`
 - IP-only files are valid for preview/apply
 - Returns `preview_id` and row-level classification.
@@ -95,17 +95,18 @@ Payload for create/update:
   "custom_fields": [
     { "slot": 1, "enabled": false, "name": "" },
     { "slot": 2, "enabled": false, "name": "" },
-    { "slot": 3, "enabled": false, "name": "" }
+    { "slot": 3, "enabled": false, "name": "" },
+    { "slot": 10, "enabled": false, "name": "" }
   ]
 }
 ```
 
-`PUT /api/settings/` accepts partial patch updates. `custom_fields` entries are merged by `slot` (`1..3`).
+`PUT /api/settings/` accepts partial patch updates. `custom_fields` entries are merged by `slot` (`1..10`).
 
 ## Monitoring
 
 - `GET /api/monitor/endpoints?vlan=100,200&switch=sw-a&port=1/1&group=DB-Core`
-- `GET /api/monitor/endpoints-page?vlan=100&group=DB-Core&page=1&page_size=100&sort_by=failed_count&sort_dir=desc&hostname=web&mac=AA:BB&custom_1=rack-a&custom_2=critical&custom_3=core&ip_list=10.0.0.1,10.0.0.2`
+- `GET /api/monitor/endpoints-page?vlan=100&group=DB-Core&page=1&page_size=100&sort_by=failed_count&sort_dir=desc&hostname=web&mac=AA:BB&custom_1=rack-a&custom_10=critical&ip_list=10.0.0.1,10.0.0.2`
 - `GET /api/monitor/timeseries?endpoint_ids=1001,1002&start=2026-02-08-00-00-00&end=2026-02-08-01-00-00`
 - `GET /api/monitor/filter-options`
 
@@ -114,9 +115,8 @@ Payload for create/update:
 - range scope: `last_failed_on`, `last_success_on`, `success_count`, `failed_count`, `failed_pct`, `average_latency`
 
 Monitor endpoint payloads (`/api/monitor/endpoints` and `/api/monitor/endpoints-page`) include:
-- `custom_field_1_value`
-- `custom_field_2_value`
-- `custom_field_3_value`
+- built-in metadata: `zone`, `gateway`, `mgmt_ip`, `speed`, `duplex`
+- custom metadata: `custom_field_1_value` through `custom_field_10_value`
 
 For `GET /api/monitor/endpoints-page` with `stats_scope=range`:
 - `consecutive_failed_count` is the trailing failed streak at the end of the selected time window.
@@ -128,20 +128,19 @@ For `GET /api/monitor/endpoints-page` with `stats_scope=range`:
 
 ## Inventory
 
-- `GET /api/inventory/endpoints?vlan=100&group=DB-Core&custom_1=rack-a&custom_2=critical&custom_3=core`
-- `GET /api/inventory/endpoints/export.csv?vlan=100&group=DB-Core&custom_1=rack-a&custom_2=critical&custom_3=core`
+- `GET /api/inventory/endpoints?vlan=100&group=DB-Core&custom_1=rack-a&custom_10=critical`
+- `GET /api/inventory/endpoints/export.csv?vlan=100&group=DB-Core&custom_1=rack-a&custom_10=critical`
 - `POST /api/inventory/endpoints`
 - `PUT /api/inventory/endpoints/{endpointID}`
 - `DELETE /api/inventory/endpoints/{endpointID}`
 - `POST /api/inventory/delete-jobs/by-endpoint/{endpointID}`
 
 Inventory endpoint payloads include:
-- `custom_field_1_value`
-- `custom_field_2_value`
-- `custom_field_3_value`
+- built-in metadata: `zone`, `gateway`, `mgmt_ip`, `speed`, `duplex`
+- custom metadata: `custom_field_1_value` through `custom_field_10_value`
 
 Inventory CSV export:
-- Query params mirror `GET /api/inventory/endpoints` filters (`vlan`, `switch`, `port`, `group`, `custom_1`, `custom_2`, `custom_3`).
+- Query params mirror `GET /api/inventory/endpoints` filters (`vlan`, `switch`, `port`, `group`, `custom_1` through `custom_10`).
 - Response is `text/csv` with attachment filename `inventory-export-<timestamp>.csv`.
 - CSV columns follow inventory view order and include enabled/configured custom fields by configured names.
 

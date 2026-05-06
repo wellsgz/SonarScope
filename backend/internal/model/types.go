@@ -2,6 +2,8 @@ package model
 
 import "time"
 
+const MaxCustomFieldSlots = 10
+
 type ImportClassification string
 
 const (
@@ -12,20 +14,32 @@ const (
 )
 
 type InventoryEndpoint struct {
-	ID                int64     `json:"id"`
-	IP                string    `json:"ip"`
-	MAC               string    `json:"mac"`
-	CustomField1Value string    `json:"custom_field_1_value"`
-	CustomField2Value string    `json:"custom_field_2_value"`
-	CustomField3Value string    `json:"custom_field_3_value"`
-	VLAN              string    `json:"vlan"`
-	SwitchName        string    `json:"switch"`
-	Port              string    `json:"port"`
-	PortType          string    `json:"port_type"`
-	Description       string    `json:"description"`
-	Hostname          string    `json:"hostname"`
-	Active            bool      `json:"active"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                 int64     `json:"id"`
+	IP                 string    `json:"ip"`
+	MAC                string    `json:"mac"`
+	CustomField1Value  string    `json:"custom_field_1_value"`
+	CustomField2Value  string    `json:"custom_field_2_value"`
+	CustomField3Value  string    `json:"custom_field_3_value"`
+	CustomField4Value  string    `json:"custom_field_4_value"`
+	CustomField5Value  string    `json:"custom_field_5_value"`
+	CustomField6Value  string    `json:"custom_field_6_value"`
+	CustomField7Value  string    `json:"custom_field_7_value"`
+	CustomField8Value  string    `json:"custom_field_8_value"`
+	CustomField9Value  string    `json:"custom_field_9_value"`
+	CustomField10Value string    `json:"custom_field_10_value"`
+	VLAN               string    `json:"vlan"`
+	Zone               string    `json:"zone"`
+	SwitchName         string    `json:"switch"`
+	Port               string    `json:"port"`
+	PortType           string    `json:"port_type"`
+	Gateway            string    `json:"gateway"`
+	MgmtIP             string    `json:"mgmt_ip"`
+	Speed              string    `json:"speed"`
+	Duplex             string    `json:"duplex"`
+	Description        string    `json:"description"`
+	Hostname           string    `json:"hostname"`
+	Active             bool      `json:"active"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type EndpointStats struct {
@@ -53,6 +67,13 @@ type MonitorEndpoint struct {
 	CustomField1Value      string     `json:"custom_field_1_value"`
 	CustomField2Value      string     `json:"custom_field_2_value"`
 	CustomField3Value      string     `json:"custom_field_3_value"`
+	CustomField4Value      string     `json:"custom_field_4_value"`
+	CustomField5Value      string     `json:"custom_field_5_value"`
+	CustomField6Value      string     `json:"custom_field_6_value"`
+	CustomField7Value      string     `json:"custom_field_7_value"`
+	CustomField8Value      string     `json:"custom_field_8_value"`
+	CustomField9Value      string     `json:"custom_field_9_value"`
+	CustomField10Value     string     `json:"custom_field_10_value"`
 	ReplyIPAddress         *string    `json:"reply_ip_address"`
 	LastSuccessOn          *time.Time `json:"last_success_on"`
 	SuccessCount           int64      `json:"success_count"`
@@ -66,9 +87,14 @@ type MonitorEndpoint struct {
 	LastPingLatency        *float64   `json:"last_ping_latency"`
 	AverageLatency         *float64   `json:"average_latency"`
 	VLAN                   string     `json:"vlan"`
+	Zone                   string     `json:"zone"`
 	Switch                 string     `json:"switch"`
 	Port                   string     `json:"port"`
 	PortType               string     `json:"port_type"`
+	Gateway                string     `json:"gateway"`
+	MgmtIP                 string     `json:"mgmt_ip"`
+	Speed                  string     `json:"speed"`
+	Duplex                 string     `json:"duplex"`
 	Groups                 []string   `json:"group"`
 	EndpointID             int64      `json:"endpoint_id"`
 }
@@ -86,49 +112,85 @@ type MonitorEndpointsPageResponse struct {
 }
 
 type InventoryEndpointView struct {
-	EndpointID        int64     `json:"endpoint_id"`
-	Hostname          string    `json:"hostname"`
-	IPAddress         string    `json:"ip_address"`
-	MACAddress        string    `json:"mac_address"`
-	CustomField1Value string    `json:"custom_field_1_value"`
-	CustomField2Value string    `json:"custom_field_2_value"`
-	CustomField3Value string    `json:"custom_field_3_value"`
-	VLAN              string    `json:"vlan"`
-	Switch            string    `json:"switch"`
-	Port              string    `json:"port"`
-	PortType          string    `json:"port_type"`
-	Description       string    `json:"description"`
-	Groups            []string  `json:"group"`
-	Active            bool      `json:"active"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	EndpointID         int64     `json:"endpoint_id"`
+	Hostname           string    `json:"hostname"`
+	IPAddress          string    `json:"ip_address"`
+	MACAddress         string    `json:"mac_address"`
+	CustomField1Value  string    `json:"custom_field_1_value"`
+	CustomField2Value  string    `json:"custom_field_2_value"`
+	CustomField3Value  string    `json:"custom_field_3_value"`
+	CustomField4Value  string    `json:"custom_field_4_value"`
+	CustomField5Value  string    `json:"custom_field_5_value"`
+	CustomField6Value  string    `json:"custom_field_6_value"`
+	CustomField7Value  string    `json:"custom_field_7_value"`
+	CustomField8Value  string    `json:"custom_field_8_value"`
+	CustomField9Value  string    `json:"custom_field_9_value"`
+	CustomField10Value string    `json:"custom_field_10_value"`
+	VLAN               string    `json:"vlan"`
+	Zone               string    `json:"zone"`
+	Switch             string    `json:"switch"`
+	Port               string    `json:"port"`
+	PortType           string    `json:"port_type"`
+	Gateway            string    `json:"gateway"`
+	MgmtIP             string    `json:"mgmt_ip"`
+	Speed              string    `json:"speed"`
+	Duplex             string    `json:"duplex"`
+	Description        string    `json:"description"`
+	Groups             []string  `json:"group"`
+	Active             bool      `json:"active"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type InventoryEndpointUpdate struct {
-	Hostname          string `json:"hostname"`
-	MACAddress        string `json:"mac_address"`
-	CustomField1Value string `json:"custom_field_1_value"`
-	CustomField2Value string `json:"custom_field_2_value"`
-	CustomField3Value string `json:"custom_field_3_value"`
-	VLAN              string `json:"vlan"`
-	Switch            string `json:"switch"`
-	Port              string `json:"port"`
-	PortType          string `json:"port_type"`
-	Description       string `json:"description"`
+	Hostname           string `json:"hostname"`
+	MACAddress         string `json:"mac_address"`
+	CustomField1Value  string `json:"custom_field_1_value"`
+	CustomField2Value  string `json:"custom_field_2_value"`
+	CustomField3Value  string `json:"custom_field_3_value"`
+	CustomField4Value  string `json:"custom_field_4_value"`
+	CustomField5Value  string `json:"custom_field_5_value"`
+	CustomField6Value  string `json:"custom_field_6_value"`
+	CustomField7Value  string `json:"custom_field_7_value"`
+	CustomField8Value  string `json:"custom_field_8_value"`
+	CustomField9Value  string `json:"custom_field_9_value"`
+	CustomField10Value string `json:"custom_field_10_value"`
+	VLAN               string `json:"vlan"`
+	Zone               string `json:"zone"`
+	Switch             string `json:"switch"`
+	Port               string `json:"port"`
+	PortType           string `json:"port_type"`
+	Gateway            string `json:"gateway"`
+	MgmtIP             string `json:"mgmt_ip"`
+	Speed              string `json:"speed"`
+	Duplex             string `json:"duplex"`
+	Description        string `json:"description"`
 }
 
 type InventoryEndpointCreate struct {
-	IPAddress         string `json:"ip_address"`
-	Hostname          string `json:"hostname"`
-	MACAddress        string `json:"mac_address"`
-	CustomField1Value string `json:"custom_field_1_value"`
-	CustomField2Value string `json:"custom_field_2_value"`
-	CustomField3Value string `json:"custom_field_3_value"`
-	VLAN              string `json:"vlan"`
-	Switch            string `json:"switch"`
-	Port              string `json:"port"`
-	PortType          string `json:"port_type"`
-	Description       string `json:"description"`
-	GroupID           *int64 `json:"group_id,omitempty"`
+	IPAddress          string `json:"ip_address"`
+	Hostname           string `json:"hostname"`
+	MACAddress         string `json:"mac_address"`
+	CustomField1Value  string `json:"custom_field_1_value"`
+	CustomField2Value  string `json:"custom_field_2_value"`
+	CustomField3Value  string `json:"custom_field_3_value"`
+	CustomField4Value  string `json:"custom_field_4_value"`
+	CustomField5Value  string `json:"custom_field_5_value"`
+	CustomField6Value  string `json:"custom_field_6_value"`
+	CustomField7Value  string `json:"custom_field_7_value"`
+	CustomField8Value  string `json:"custom_field_8_value"`
+	CustomField9Value  string `json:"custom_field_9_value"`
+	CustomField10Value string `json:"custom_field_10_value"`
+	VLAN               string `json:"vlan"`
+	Zone               string `json:"zone"`
+	Switch             string `json:"switch"`
+	Port               string `json:"port"`
+	PortType           string `json:"port_type"`
+	Gateway            string `json:"gateway"`
+	MgmtIP             string `json:"mgmt_ip"`
+	Speed              string `json:"speed"`
+	Duplex             string `json:"duplex"`
+	Description        string `json:"description"`
+	GroupID            *int64 `json:"group_id,omitempty"`
 }
 
 type InventoryEndpointActivityUpdateRequest struct {
@@ -241,29 +303,122 @@ type PingResult struct {
 }
 
 type ImportCandidate struct {
-	RowID             string               `json:"row_id"`
-	SourceRow         int                  `json:"source_row"`
-	IP                string               `json:"ip"`
-	MAC               string               `json:"mac"`
-	CustomField1Value string               `json:"custom_field_1_value"`
-	CustomField2Value string               `json:"custom_field_2_value"`
-	CustomField3Value string               `json:"custom_field_3_value"`
-	VLAN              string               `json:"vlan"`
-	SwitchName        string               `json:"switch"`
-	Port              string               `json:"port"`
-	PortType          string               `json:"port_type"`
-	Description       string               `json:"description"`
-	Sorting           string               `json:"sorting"`
-	Hostname          string               `json:"hostname"`
-	Message           string               `json:"message"`
-	Action            ImportClassification `json:"action"`
-	ExistingID        *int64               `json:"existing_id,omitempty"`
+	RowID              string               `json:"row_id"`
+	SourceRow          int                  `json:"source_row"`
+	IP                 string               `json:"ip"`
+	MAC                string               `json:"mac"`
+	CustomField1Value  string               `json:"custom_field_1_value"`
+	CustomField2Value  string               `json:"custom_field_2_value"`
+	CustomField3Value  string               `json:"custom_field_3_value"`
+	CustomField4Value  string               `json:"custom_field_4_value"`
+	CustomField5Value  string               `json:"custom_field_5_value"`
+	CustomField6Value  string               `json:"custom_field_6_value"`
+	CustomField7Value  string               `json:"custom_field_7_value"`
+	CustomField8Value  string               `json:"custom_field_8_value"`
+	CustomField9Value  string               `json:"custom_field_9_value"`
+	CustomField10Value string               `json:"custom_field_10_value"`
+	VLAN               string               `json:"vlan"`
+	Zone               string               `json:"zone"`
+	SwitchName         string               `json:"switch"`
+	Port               string               `json:"port"`
+	PortType           string               `json:"port_type"`
+	Gateway            string               `json:"gateway"`
+	MgmtIP             string               `json:"mgmt_ip"`
+	Speed              string               `json:"speed"`
+	Duplex             string               `json:"duplex"`
+	Description        string               `json:"description"`
+	Sorting            string               `json:"sorting"`
+	Hostname           string               `json:"hostname"`
+	Message            string               `json:"message"`
+	Action             ImportClassification `json:"action"`
+	ExistingID         *int64               `json:"existing_id,omitempty"`
 }
 
 type ImportPreview struct {
 	PreviewID  string            `json:"preview_id"`
 	CreatedAt  time.Time         `json:"created_at"`
 	Candidates []ImportCandidate `json:"candidates"`
+}
+
+func InventoryEndpointCustomFieldValue(endpoint InventoryEndpoint, slot int) string {
+	switch slot {
+	case 1:
+		return endpoint.CustomField1Value
+	case 2:
+		return endpoint.CustomField2Value
+	case 3:
+		return endpoint.CustomField3Value
+	case 4:
+		return endpoint.CustomField4Value
+	case 5:
+		return endpoint.CustomField5Value
+	case 6:
+		return endpoint.CustomField6Value
+	case 7:
+		return endpoint.CustomField7Value
+	case 8:
+		return endpoint.CustomField8Value
+	case 9:
+		return endpoint.CustomField9Value
+	case 10:
+		return endpoint.CustomField10Value
+	default:
+		return ""
+	}
+}
+
+func InventoryEndpointViewCustomFieldValue(endpoint InventoryEndpointView, slot int) string {
+	switch slot {
+	case 1:
+		return endpoint.CustomField1Value
+	case 2:
+		return endpoint.CustomField2Value
+	case 3:
+		return endpoint.CustomField3Value
+	case 4:
+		return endpoint.CustomField4Value
+	case 5:
+		return endpoint.CustomField5Value
+	case 6:
+		return endpoint.CustomField6Value
+	case 7:
+		return endpoint.CustomField7Value
+	case 8:
+		return endpoint.CustomField8Value
+	case 9:
+		return endpoint.CustomField9Value
+	case 10:
+		return endpoint.CustomField10Value
+	default:
+		return ""
+	}
+}
+
+func ImportCandidateCustomFieldValue(candidate ImportCandidate, slot int) string {
+	switch slot {
+	case 1:
+		return candidate.CustomField1Value
+	case 2:
+		return candidate.CustomField2Value
+	case 3:
+		return candidate.CustomField3Value
+	case 4:
+		return candidate.CustomField4Value
+	case 5:
+		return candidate.CustomField5Value
+	case 6:
+		return candidate.CustomField6Value
+	case 7:
+		return candidate.CustomField7Value
+	case 8:
+		return candidate.CustomField8Value
+	case 9:
+		return candidate.CustomField9Value
+	case 10:
+		return candidate.CustomField10Value
+	default:
+		return ""
+	}
 }
 
 type ImportApplySelection struct {
@@ -337,6 +492,18 @@ const (
 	InventoryBatchMatchFieldCustom1     InventoryBatchMatchField = "custom_field_1_value"
 	InventoryBatchMatchFieldCustom2     InventoryBatchMatchField = "custom_field_2_value"
 	InventoryBatchMatchFieldCustom3     InventoryBatchMatchField = "custom_field_3_value"
+	InventoryBatchMatchFieldCustom4     InventoryBatchMatchField = "custom_field_4_value"
+	InventoryBatchMatchFieldCustom5     InventoryBatchMatchField = "custom_field_5_value"
+	InventoryBatchMatchFieldCustom6     InventoryBatchMatchField = "custom_field_6_value"
+	InventoryBatchMatchFieldCustom7     InventoryBatchMatchField = "custom_field_7_value"
+	InventoryBatchMatchFieldCustom8     InventoryBatchMatchField = "custom_field_8_value"
+	InventoryBatchMatchFieldCustom9     InventoryBatchMatchField = "custom_field_9_value"
+	InventoryBatchMatchFieldCustom10    InventoryBatchMatchField = "custom_field_10_value"
+	InventoryBatchMatchFieldZone        InventoryBatchMatchField = "zone"
+	InventoryBatchMatchFieldGateway     InventoryBatchMatchField = "gateway"
+	InventoryBatchMatchFieldMgmtIP      InventoryBatchMatchField = "mgmt_ip"
+	InventoryBatchMatchFieldSpeed       InventoryBatchMatchField = "speed"
+	InventoryBatchMatchFieldDuplex      InventoryBatchMatchField = "duplex"
 )
 
 type InventoryBatchMatchSpec struct {
